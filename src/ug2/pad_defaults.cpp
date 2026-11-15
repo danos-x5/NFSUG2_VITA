@@ -21,7 +21,7 @@ const reg32 Race[20] = {
     7,  6,  5,  8,      // shift up, nitrous, handbrake, shift down
     8,  7,  2,  1,      // shift down, shift up, brake/reverse, throttle
     14, 12, 9,  10,     // reset car, pause, look back, camera
-    16, 15, 18, 17,     // world map, enter race/shop, career statistics, read SMS
+    15, 17, 18, 16,     // enter race/shop, read SMS, career statistics, world map
     0,  0,  0,  0,
 };
 const reg32 Menu[20] = {

@@ -119,10 +119,10 @@ controller (Cross is shown as Button 3), and the tables below are the defaults.
 
 | Button | Action |
 |--------|--------|
-| D-pad up | World map |
-| D-pad right | Enter a race or shop |
+| D-pad up | Enter a race or shop |
+| D-pad right | Read SMS |
 | D-pad down | Career statistics |
-| D-pad left | Read SMS |
+| D-pad left | World map |
 
 Text fields, such as a profile name, open the Vita keyboard. To quit, use the PS button.
 

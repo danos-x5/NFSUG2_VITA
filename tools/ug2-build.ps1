@@ -85,7 +85,7 @@ function Get-GeneratorStamp([string]$gameDir) {
 }
 
 $stampFile = Join-Path $generated '.stamp'
-$haveCode = Test-Path (Join-Path $generated 'nfsu.cpp')
+$haveCode = Test-Path (Join-Path $generated 'ug2.cpp')
 $gameDir = Resolve-GameDir
 if ($gameDir) {
     Set-Content -Path $remembered -Value $gameDir -Encoding UTF8
@@ -95,6 +95,12 @@ if ($gameDir) {
         Write-Host "Generating the recompiled code from $(Join-Path $gameDir $exeName)..."
         & (Join-Path $PSScriptRoot 'ug2-generate.ps1') -Binaries $gameDir -FlagAudit:$FlagAudit
         Set-Content -Path $stampFile -Value $stamp -Encoding ASCII
+    }
+    $fxTables = Join-Path $repo 'include/winapi/d3d9_fxtables.h'
+    if ($Regenerate -or -not (Test-Path $fxTables) -or $stamp -ne $current) {
+        Write-Host 'Generating the effect tables...'
+        $fxArguments = @('-I', (Join-Path $PSScriptRoot 'fx/fxtable.py'), '--exe', (Join-Path $gameDir $exeName), '--out', $fxTables)
+        if ((Invoke-Python @fxArguments) -ne 0) { throw 'effect table generation failed' }
     }
 } elseif (-not $haveCode) {
     throw "The game folder was not found: run tools/ug2-build.ps1 -Game '<the game folder with $exeName>'."

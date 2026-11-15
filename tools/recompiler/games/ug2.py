@@ -29,13 +29,13 @@ NATIVE_OVERRIDES = [
     0x6f5fc5,   # Cyrix probe (sahf/div/lahf): the translated div keeps the flags, which reads as a Cyrix
     0x75cfd0,   # CRT memcpy: `neg ecx; jmp [ecx*4 + 0x75d268]` reads its table downwards; discovery keeps one entry
     0x760df0,   # CRT memmove: the same code (table 0x761088)
-    # Widescreen (src/ug2/widescreen.cpp, docs/widescreen.md)
+    # Widescreen (src/ug2/widescreen.cpp)
     0x5bf610,   # racing resolution (thiscall; width*, height*): the display size
     0x537480,   # FEng package render (thiscall, package argument): HUD or menu flush
     0x51a5d0,   # FERenderObject draw (thiscall): canvas mapping of the object
     0x5c7ec0,   # projection (thiscall, view): hor+ factors of the player views
     0x5bd4a0,   # draw queue material setup (cdecl; material, packet flags): D3D material or effect vectors
-    # Front touch (src/ug2/padbind.cpp, docs/pad-binding.md)
+    # Front touch (src/ug2/padbind.cpp)
     0x50b460,   # FE mouse cursor draw (cdecl; x, y): skipped with front_touch=on
     # Forwarding placeholders for the hot-function conversions (src/ug2/native/stubs.cpp, tools/native/placeholders.txt)
     0x5cf420, 0x5bc300, 0x61b670, 0x5bdde0, 0x5c5930, 0x5d6570,
@@ -79,7 +79,7 @@ NATIVE_OVERRIDES = [
 # 16-bit pairs.
 EXTRA_ENTRIES = [0x7201c2, 0x7201fe, 0x72023c, 0x72025f, 0x7202fb, 0x720376, 0x7203bd]
 
-# Widescreen (docs/widescreen.md). Slots past .rdata (zero bytes inside its raw size) written by widescreen.cpp:
+# Widescreen. Slots past .rdata (zero bytes inside its raw size) written by widescreen.cpp:
 # 0x7E7FE0 2D x scale, 0x7E7FE4 2D x offset, 0x7E7FE8 controls picture width, 0x7E7FEC / 0x7E7FF0 projection.
 PATCHES = [
     # 2D polygon 0x5C5020 and line quads 0x50DCD0: x scale [0x79AC10] (1/320) -> [0x7E7FE0]

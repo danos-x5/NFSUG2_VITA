@@ -1,5 +1,5 @@
 // EA SND mixer render loop 0x725C8E outside the execution lock, with audits that retake it on failure. Native x87
-// kernels, bit-identical to the guest's. Design notes: development branch, docs/audio-mixer-port.md.
+// kernels, bit-identical to the guest's.
 
 #include "audio_mixer.h"
 #include "audio_defer.h"

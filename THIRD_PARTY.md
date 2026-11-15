@@ -19,7 +19,7 @@ installs it into `.pydeps/`.
 The optional profile-guided build links compiler-rt's profile runtime (Apache License 2.0 with LLVM Exceptions). It
 is not part of the repository: `cmake/pgo-runtime.cmake` downloads it for the compiler's version.
 
-## Need for Speed Underground
+## Need for Speed Underground 2
 
 Game code, binaries and assets are the property of Electronic Arts Inc. and its licensors and are not part of this
 repository. Users supply their own copy of the game; the code generated from its executable (`src/ug2/generated/`)

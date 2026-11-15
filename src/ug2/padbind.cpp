@@ -1,5 +1,5 @@
 // Pad bindings. pad_layout=vita (port defaults) and game leave the EMS adapter's bindings to the game (profile save);
-// custom and classic force the port's layout into the slot each frame. Tables: docs/pad-binding.md (development branch).
+// custom and classic force the port's layout into the slot each frame.
 
 #include "padbind.h"
 #include "pad_defaults.h"

@@ -1,4 +1,4 @@
-// Widescreen for the Vita's 960x544 (docs/widescreen.md). The 640x480 canvas keeps the 4:3 scale, centred; HUD
+// Widescreen for the Vita's 960x544. The 640x480 canvas keeps the 4:3 scale, centred; HUD
 // units move to the screen edges; the player views get a hor+ projection. widescreen=off keeps the 4:3 game.
 
 #include "widescreen.h"

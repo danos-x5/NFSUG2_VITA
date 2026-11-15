@@ -2,13 +2,15 @@
 
 <div align="center">
 
-<h3 align="center">NeedForSpeedUnderground2</h3>
-
 <p align="center">
-  <b>Need for Speed Underground 2, on the PS Vita</b>
+  <br />
+  A fan project that enables you to play your own PC copy of Need For Speed Underground 2 (Version 1.2) on your PS VITA. This is not the game files for Need For Speed Underground 2. You must provide your own legally obtained copy of the game. This project provides a compatibility layer along with performance optimisations to allow the PC version of the game to run on a PS VITA system. This project does not condone piracy.
   <br />
   <br />
-  A fan port of the PC version of Need for Speed Underground 2 (2004, version 1.2)
+  This is not a reverse engineer of the game. All aspects of the game are functionally identical.The game's own code is translated to C++ ahead of time from your copy of `SPEED2.EXE`, and a compatibility layer gives it the Windows and Direct3D 9 services it expects. 
+  <br />
+  <br />
+  As mentioned, code was only modified to be more performant or for compatibility due to the PS VITA system having major hardware differences to a Windows computer. These changes have been proven not to change the functionality of the game in any way. Nonetheless, it is very possible that these changes have brought about unexpected bugs/crashes that do not exist in the PC version, and this is something that will constantly be addressed with updates.
   <br />
   <br />
   <a href="#install">Install</a>
@@ -20,15 +22,8 @@
   <a href="../../issues">Report Bug</a>
 </p>
 
-[![platform][platform-shield]][platform-url]&nbsp;[![resolution][resolution-shield]][resolution-url]&nbsp;[![renderer][renderer-shield]][renderer-url]&nbsp;[![license][license-shield]][license-url]
-
-</div>
-
-> **Playtest.** The game is playable from the first menu to the career, and is being tested before a release.
+> **Playtest.** The game is playable in all aspects. The entire career mode is working, and the framerate is good in most scenes.
 > Expect rough edges; [Known issues](#known-issues) lists the ones we know.
-
-The game's own code is translated to C++ ahead of time from your copy of `SPEED2.EXE`, and a compatibility layer
-gives it the Windows and Direct3D 9 services it expects. No game code or data is in this repository.
 
 ## Requirements
 
@@ -36,12 +31,15 @@ gives it the Windows and Direct3D 9 services it expects. No game code or data is
   about 1.7 GB, or about 2 GB with the converted movies.
 - `SPEED2.EXE` should be the original 1.2 executable, with SHA-256
   `f9dd86c054878ce6276beb07c1fd61874f7a1e4bf1f241b084c65b73e24168a7`. See [Mods](#mods) for anything else.
+- Only the **US release** of version 1.2 has been tested. The EU release will be tested soon.
 - PS Vita with HENkaku / Ensō and [VitaShell](https://github.com/TheOfficialFloW/VitaShell)
 - About 2.5 GB free on the memory card
 - [CapUnlocker](https://github.com/GrapheneCt/CapUnlocker) is recommended: it lets the port use the Vita's fourth
   CPU core.
+- [PSVshell](https://github.com/Electry/PSVshell) is optional but recommended in this playtest state: overclocking
+  the CPU to 500 MHz with it increases performance.
 
-The port sets the Vita's CPU and GPU clocks itself, so no overclocking plugin is needed.
+The port sets the Vita's CPU and GPU clocks itself, so the game runs without an overclocking plugin.
 
 ## Install
 
@@ -130,7 +128,7 @@ Text fields, such as a profile name, open the Vita keyboard. To quit, use the PS
 
 ## Settings
 
-With nothing changed the game runs locked to 30 frames a second, in widescreen, with the touch screen on.
+With nothing changed the game runs locked to 30 frames a second, in widescreen, with the touch screen on as a replacement for a mouse.
 
 The first time the game starts it writes a settings file, `ux0:data/NeedForSpeedUnderground2/NeedForSpeedUnderground2.cfg`.
 Every setting in it is listed at its default behind a `#`. To change one, remove the `#` at the start of its line,
@@ -166,15 +164,15 @@ game's asset files. They may cause crashes or major performance problems.
 The port checks `SPEED2.EXE` when it starts. A modified executable of the original size starts with a warning in
 `NeedForSpeedUnderground2.log`; one of another size does not start.
 
-## Known issues
+## Known issues / caveats
 
 - The game aims for 30 fps and drops below it in busy moments: race starts, heavy smoke and dense traffic. Graphics
   settings above Medium make this much worse.
-- After a long drive, a road or wall can show the wrong texture for a while.
+- At lower settings the framerate is very stable and can even hit 60fps during gameplay if the framerate is set to unlocked mode.
 - On-screen button prompts show PC key names, such as "Enter", not Vita buttons.
 - `gfx_preset=max` is well below 30 fps.
 - No online or LAN play.
-- The Vita3K emulator runs the port, but its speed says nothing about a real Vita.
+- Sound bug where sometimes the music continues playing after entering the pause menu
 
 ## Build
 
@@ -220,15 +218,14 @@ ninja -C build-vita                                    # -> build-vita/NFSU2VITA
 | `src/ug2/` | entry point, native replacements of game functions |
 | `shaders/` | Cg shaders and compiled binaries |
 | `tools/` | recompiler and build scripts |
-| `docs/` | notes on the effects and the widescreen work |
 
 ## Credits
 
 - [UG1VITA](https://github.com/NDRWhun/UG1VITA): the Need for Speed Underground port this project grew out of
 - [GrapheneCt](https://github.com/GrapheneCt): CapUnlocker
+- [Electry](https://github.com/Electry): PSVshell
 - [ThirteenAG](https://github.com/ThirteenAG): the WidescreenFixesPack, read as a guide to what a wider picture
   needs fixed; none of its code is used
-- EA Black Box: *Need for Speed Underground 2*
 
 ## License
 

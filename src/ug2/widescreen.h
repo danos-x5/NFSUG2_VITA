@@ -1,7 +1,7 @@
 #ifndef UG2_WIDESCREEN_H_
 #define UG2_WIDESCREEN_H_
 
-// Widescreen (docs/widescreen.md): display-size back buffer, centred 2D canvas, HUD anchoring, hor+ projection.
+// Widescreen: display-size back buffer, centred 2D canvas, HUD anchoring, hor+ projection.
 
 #include <cstdint>
 

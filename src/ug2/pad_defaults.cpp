@@ -1,5 +1,5 @@
 // UG2 default bindings for the EMS PS2 adapter (src/lib/controls.cpp reports it as on Windows). The game copies
-// them into a new input slot; a profile's saved race map replaces them. Table: docs/pad-binding.md.
+// them into a new input slot; a profile's saved race map replaces them.
 
 #include "pad_defaults.h"
 

@@ -4,7 +4,7 @@
 #include <lib/winapp.h>
 #include <cstdint>
 
-// Text entry: watches the game's line editor and hands its field to the on-screen keyboard (development branch: docs/text-entry.md).
+// Text entry: watches the game's line editor and hands its field to the on-screen keyboard.
 
 namespace ug2 { namespace textentry {
 

@@ -3,7 +3,7 @@
 
 #include <lib/winapp.h>
 
-// Pad bindings: the game decides (pad_layout=vita, game) or a forced port layout (development branch: docs/pad-binding.md).
+// Pad bindings: the game decides (pad_layout=vita, game) or a forced port layout.
 
 namespace ug2 { namespace padbind {
 

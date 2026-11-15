@@ -201,7 +201,10 @@ python3 tools/recompiler/generate.py --game ug2 --binaries "<game folder>" --out
 # 2. Effect tables from the same executable
 python3 -I tools/fx/fxtable.py --exe "<game folder>/SPEED2.EXE" --out include/winapi/d3d9_fxtables.h
 
-# 3. The VPK
+# 3. Optional: icon and LiveArea images with the game's logo, from your game files
+python3 -I tools/vita/livearea_art.py "<game folder>"
+
+# 4. The VPK
 cmake -S . -B build-vita -G Ninja -DCMAKE_BUILD_TYPE=Release -DNFSU_COMPILER=clang -DNFSU_GAME_OPT=-O2
 ninja -C build-vita                                    # -> build-vita/NFSU2VITA.vpk
 ```
@@ -209,6 +212,8 @@ ninja -C build-vita                                    # -> build-vita/NFSU2VITA
 - The generator is made for the 1.2 executable named under [Requirements](#requirements). With any other it prints a
   warning and asks before continuing (`--accept-sha256 <hash>` skips the question); see [Mods](#mods).
 - The clang build uses the profile in `pgo/` by default; `pgo/README.md` explains how it was recorded.
+- The repository's icon and LiveArea images are plain text. Step 3 writes ones with the game's logo to `sce_sys/game/`,
+  which the build uses when it is there; run it before `cmake`.
 - Shaders ship prebuilt in `shaders/gxp/`.
 - `-DNFSU_COMPILER=gcc` builds with VitaSDK's own compiler instead; it is slower on the console.
 

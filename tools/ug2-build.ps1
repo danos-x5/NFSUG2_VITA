@@ -102,6 +102,10 @@ if ($gameDir) {
         $fxArguments = @('-I', (Join-Path $PSScriptRoot 'fx/fxtable.py'), '--exe', (Join-Path $gameDir $exeName), '--out', $fxTables)
         if ((Invoke-Python @fxArguments) -ne 0) { throw 'effect table generation failed' }
     }
+    if (-not (Test-Path (Join-Path $repo 'sce_sys/game/icon0.png'))) {
+        $artArguments = @('-I', (Join-Path $PSScriptRoot 'vita/livearea_art.py'), $gameDir)
+        if ((Invoke-Python @artArguments) -ne 0) { Write-Host 'Using the plain default icon and LiveArea images.' }
+    }
 } elseif (-not $haveCode) {
     throw "The game folder was not found: run tools/ug2-build.ps1 -Game '<the game folder with $exeName>'."
 } else {

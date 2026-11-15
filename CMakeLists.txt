@@ -217,11 +217,19 @@ configure_file(
   ${CMAKE_BINARY_DIR}/generated/livearea/template.xml
   @ONLY)
 
+# Images made from the user's game files (tools/vita/livearea_art.py) replace the plain defaults.
+set(NFSU_ART_DIR "${CMAKE_SOURCE_DIR}/sce_sys")
+if(EXISTS "${NFSU_ART_DIR}/game/icon0.png" AND EXISTS "${NFSU_ART_DIR}/game/livearea/contents/bg.png"
+   AND EXISTS "${NFSU_ART_DIR}/game/livearea/contents/startup.png")
+  set(NFSU_ART_DIR "${NFSU_ART_DIR}/game")
+endif()
+message(STATUS "Icon and LiveArea images: ${NFSU_ART_DIR}")
+
 vita_create_vpk(NFSU2VITA.vpk ${VITA_TITLEID} NFSU2VITA.self
   VERSION ${VITA_VERSION}
   NAME "${VITA_APP_NAME}"
-  FILE ${CMAKE_SOURCE_DIR}/sce_sys/icon0.png sce_sys/icon0.png
-  FILE ${CMAKE_SOURCE_DIR}/sce_sys/livearea/contents/bg.png sce_sys/livearea/contents/bg.png
-  FILE ${CMAKE_SOURCE_DIR}/sce_sys/livearea/contents/startup.png sce_sys/livearea/contents/startup.png
+  FILE ${NFSU_ART_DIR}/icon0.png sce_sys/icon0.png
+  FILE ${NFSU_ART_DIR}/livearea/contents/bg.png sce_sys/livearea/contents/bg.png
+  FILE ${NFSU_ART_DIR}/livearea/contents/startup.png sce_sys/livearea/contents/startup.png
   FILE ${CMAKE_BINARY_DIR}/generated/livearea/template.xml sce_sys/livearea/contents/template.xml
 )

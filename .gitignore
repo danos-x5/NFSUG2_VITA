@@ -11,6 +11,9 @@ param.sfo
 # Generated recompilation (tools/ug2-generate.ps1): derived from the game executable
 /src/ug2/generated/
 
+# Icon and LiveArea images made from the user's game files (tools/vita/livearea_art.py)
+/sce_sys/game/
+
 # Original game binaries and data are never tracked
 /binaries/
 /vita-data/

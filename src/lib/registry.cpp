@@ -178,6 +178,24 @@ const Setting s_settings[] = {
     { "g_VSyncOn", 0 },
 };
 
+// gfx_preset=vita without gfx_level: the defaults a new install starts with.
+const Setting s_vitaSettings[] = {
+    { "g_CarEnvironmentMapEnable", 2 },
+    { "g_CarEnvironmentMapUpdateData", 1 },
+    { "g_CarHeadlightEnable", 1 },
+    { "g_CrowdEnable", 1 },
+    { "g_RoadReflectionEnable", 2 },
+    { "g_FogEnable", 1 },
+    { "g_MotionBlurEnable", 1 },
+    { "g_LightStreaksEnable", 1 },
+    { "g_LightGlowEnable", 1 },
+    { "g_ParticleSystemEnable", 1 },
+    { "g_CarLodLevel", 1 },
+    { "g_TintingEnable", 1 },
+    { "g_RainEnable", 1 },
+    { "g_PerformanceLevel", 2 },
+};
+
 // gfx_preset=max: the highest values of preset 0x5BE870 and caps 0x5BE200; clamp 0x5BE690 may lower them.
 const Setting s_maxSettings[] = {
     { "g_CarEnvironmentMapEnable", 3 },
@@ -258,6 +276,10 @@ x86::reg32 settingValue(const Setting& s, bool max, int level, const char* overr
         for (const Setting& m : s_maxSettings)
             if (strcmp(m.name, s.name) == 0)
                 return m.value;
+    if (!level)
+        for (const Setting& v : s_vitaSettings)
+            if (strcmp(v.name, s.name) == 0)
+                return v.value;
     return value;
 }
 

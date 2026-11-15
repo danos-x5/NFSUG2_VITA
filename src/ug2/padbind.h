@@ -3,11 +3,11 @@
 
 #include <lib/winapp.h>
 
-// Pad bindings: the game decides (pad_layout=vita, game) or a forced port layout.
+// Pad bindings: the port's defaults, then the game's own Controls screen.
 
 namespace ug2 { namespace padbind {
 
-// Before guest code runs: applies pad_layout and hooks the message pump.
+// Before guest code runs: installs the defaults, hooks the message pump.
 void configure(win32::WinApplication& app);
 
 }}

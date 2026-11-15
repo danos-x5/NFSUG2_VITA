@@ -88,8 +88,8 @@ and an `.mp4` opened on a PC is silent.
 
 ## Controls
 
-The Vita appears to the game as a PlayStation 2 controller. The racing buttons can be changed in the game's own
-Controls screen (Cross is shown as Button 3) and are saved with your profile.
+All controls are configurable in the game's Options menu. The Vita appears to the game as a PlayStation 2
+controller (Cross is shown as Button 3), and the tables below are the defaults.
 
 ### Menus
 
@@ -145,7 +145,6 @@ Delete the file to get a fresh copy on the next start.
 | `frame_rate` | `30` (default), `0` | Locked to 30 frames a second for steady pacing, or unlocked |
 | `widescreen` | `on` (default), `off` | Full 16:9 picture with the HUD at the screen edges, or the original 4:3 one with black bars |
 | `gfx_preset` | `vita` (default), `max` | Graphics the port is tuned for, or everything on (much slower) |
-| `pad_layout` | `vita` (default), `custom`, `game`, `classic` | Button layout: the port's default, a fixed layout that ignores the game's Controls screen, the game's own defaults, or a layout with the camera and look back on the face buttons |
 | `rear_touch` | `on` (default), `off` | Rear touch pad for shifting and the camera |
 | `front_touch` | `on` (default), `off` | Touching the screen works as a mouse click in the menus; no cursor is drawn |
 | `world_lod_pixels` | `0` (default, off), a width in pixels | Scenery narrower than this on screen uses its simpler model. `128` gives more speed; higher values show more pop-in |

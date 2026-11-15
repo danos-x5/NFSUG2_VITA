@@ -1,16 +1,18 @@
 <a id="readme-top"></a>
 
-<div align="center">
+<div align="left">
 
 <p align="center">
   <br />
   A fan project that enables you to play your own PC copy of Need For Speed Underground 2 (Version 1.2) on your PS VITA. This is not the game files for Need For Speed Underground 2. You must provide your own legally obtained copy of the game. This project provides a compatibility layer along with performance optimisations to allow the PC version of the game to run on a PS VITA system. This project does not condone piracy.
   <br />
   <br />
-  This is not a reverse engineer of the game. All aspects of the game are functionally identical.The game's own code is translated to C++ ahead of time from your copy of `SPEED2.EXE`, and a compatibility layer gives it the Windows and Direct3D 9 services it expects. 
+This is not a reverse-engineering of the game. The game's own code is translated to C++ ahead of time from your copy of SPEED2.EXE, and the gameplay itself (physics, AI, career, saves) is left as it is.
+
+Changes fall into two groups. Compatibility changes replace what the Vita does not have: Windows, Direct3D 9, mouse and keyboard etc. Performance changes make the game run faster on the Vita's hardware, and some of them deliberately change how things are drawn, for example simpler scenery models at a distance. Anything that visibly changes the picture is a setting that can be turned on/off in config.
   <br />
   <br />
-  As mentioned, code was only modified to be more performant or for compatibility due to the PS VITA system having major hardware differences to a Windows computer. These changes have been proven not to change the functionality of the game in any way. Nonetheless, it is very possible that these changes have brought about unexpected bugs/crashes that do not exist in the PC version, and this is something that will constantly be addressed with updates.
+ It is very possible that some of these changes have brought about unexpected bugs/crashes that do not exist in the PC version, and this is something that will constantly be addressed with updates.
   <br />
   <br />
   <a href="#install">Install</a>
@@ -91,6 +93,8 @@ and an `.mp4` opened on a PC is silent.
 All controls are configurable in the game's Options menu. The Vita appears to the game as a PlayStation 2
 controller (Cross is shown as Button 3), and the tables below are the defaults.
 
+![Rear touch pad](images/rear-touch.svg)
+
 ### Menus
 
 | Button | Action |
@@ -144,8 +148,8 @@ Delete the file to get a fresh copy on the next start.
 |---------|--------|--------------|
 | `frame_rate` | `30` (default), `0` | Locked to 30 frames a second for steady pacing, or unlocked |
 | `widescreen` | `on` (default), `off` | Full 16:9 picture with the HUD at the screen edges, or the original 4:3 one with black bars |
-| `gfx_preset` | `vita` (default), `max` | Graphics the port is tuned for, or everything on (much slower) |
-| `rear_touch` | `on` (default), `off` | Rear touch pad for shifting and the camera |
+| `gfx_preset` | `vita` (default), `max` | Graphics the port is tuned for, or everything on (much slower). Can be changed in game Options -> Display|
+| `rear_touch` | `on` (default), `off` | Rear touch pad L2, R2, R3, L3 |
 | `front_touch` | `on` (default), `off` | Touching the screen works as a mouse click in the menus; no cursor is drawn |
 | `world_lod_pixels` | `0` (default, off), a width in pixels | Scenery narrower than this on screen uses its simpler model. `128` gives more speed; higher values show more pop-in |
 | `world_min_pixels` | `0` (default, off) to `64` | Scenery smaller than this on screen is not drawn. More speed, more pop-in |
@@ -157,7 +161,7 @@ resolution stays at 960x544. Above the Medium detail setting the Vita will defin
 
 ## Mods
 
-All mods are untested at this stage. The only kinds that could work are PC mods that change `SPEED2.EXE` or the
+All mods are untested at this stage. The only kinds that could work are PC mods that change `SPEED2.EXE` and/or the
 game's asset files. They may cause crashes or major performance problems.
 
 The port checks `SPEED2.EXE` when it starts. A modified executable of the original size starts with a warning in
@@ -166,12 +170,11 @@ The port checks `SPEED2.EXE` when it starts. A modified executable of the origin
 ## Known issues / caveats
 
 - The game aims for 30 fps and drops below it in busy moments: race starts, heavy smoke and dense traffic. Graphics
-  settings above Medium make this much worse.
+  settings above the vita preset make this much worse.
 - At lower settings the framerate is very stable and can even hit 60fps during gameplay if the framerate is set to unlocked mode.
 - On-screen button prompts show PC key names, such as "Enter", not Vita buttons.
-- `gfx_preset=max` is well below 30 fps.
 - No online or LAN play.
-- Sound bug where sometimes the music continues playing after entering the pause menu
+- Sound bug where sometimes the music continues playing after entering the pause menu or changing scenes.
 
 ## Build
 
@@ -232,6 +235,10 @@ MIT for the port's own code ([LICENSE](LICENSE)); third-party parts: [THIRD_PART
 
 Unofficial, non-commercial fan port, not affiliated with or endorsed by Electronic Arts. *Need for Speed* is a
 trademark of Electronic Arts. You must own the game.
+
+## Contributions
+
+Pull requests are welcome. Changes to engine behaviour are accepted when their purpose is performance: for example cheaper particles or more aggressive level of detail which only affect visual fidelity. They should be behind a setting, say what they change visually, and come with a before and after measurement on a real Vita. Changes to gameplay (handling, AI, career) are out of scope.
 
 <!-- BADGES -->
 

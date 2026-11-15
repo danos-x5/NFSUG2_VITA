@@ -1,0 +1,282 @@
+#include <platform/jobs.h>
+#include <platform/cores.h>
+#include <platform/log.h>
+#include <platform/perf.h>
+#include <platform/sync.h>
+#ifdef __vita__
+#include <psp2/kernel/processmgr.h>
+#else
+#include <platform/time.h>
+#endif
+#include <algorithm>
+#include <atomic>
+#include <cstdint>
+#include <deque>
+#include <utility>
+
+namespace pf { namespace jobs
+{
+
+namespace
+{
+
+// 76: below the audio output and render threads (64) and the timer and guest threads at
+// THREAD_PRIORITY_TIME_CRITICAL (72), above the other guest threads (80 to 124).
+const int WorkerPriority = Thread::PriorityHigh + 12;
+// Posted tasks: below the GXM command list workers and THREAD_PRIORITY_HIGHEST guest threads (80).
+const int TaskPriority = Thread::PriorityHigh + 17;
+const uint32_t WorkerStack = 64 * 1024;
+const int MaxWorkers = 2;
+// The caller spins this long for workers still in their last batch before it sleeps.
+const uint32_t JoinSpinUs = 50;
+// Spin iterations between two clock reads of the join.
+const uint32_t JoinClockMask = 15;
+
+struct Phase
+{
+    Batch batch;
+    void* context;
+    int count;
+    int batchSize;
+    uint32_t fpscr;
+    std::atomic<int> next;      // next batch index to claim
+    std::atomic<int> batches;   // batches run
+};
+
+Phase s_phase;
+// The open phase; null between phases and while the caller closes one.
+std::atomic<Phase*> s_current{nullptr};
+// Workers between waking and leaving a phase.
+std::atomic<int> s_busy{0};
+// 1 while the caller sleeps on s_done; the worker that ends the last batch takes it and posts.
+std::atomic<int> s_waiter{0};
+Semaphore* s_wake = nullptr;
+Semaphore* s_done = nullptr;
+// The core 3 worker with core3_tasks=jobs: posted tasks only, woken by s_taskWake.
+Semaphore* s_taskWake = nullptr;
+Thread* s_threads[MaxWorkers] = {};
+int s_workers = 0;      // workers that run phases
+bool s_started = false;
+LwMutex* s_taskLock = nullptr;
+std::deque<std::pair<Task, void*>> s_tasks;    // guarded by s_taskLock
+
+#ifdef __vita__
+inline uint32_t readFpscr()
+{
+    uint32_t value;
+    __asm__ volatile("vmrs %0, fpscr" : "=r"(value));
+    return value;
+}
+
+inline void writeFpscr(uint32_t value)
+{
+    __asm__ volatile("vmsr fpscr, %0" : : "r"(value) : "memory");
+}
+
+inline uint32_t clockLowUs()
+{
+    return sceKernelGetProcessTimeLow();
+}
+#else
+// AArch64 FPCR: the same rounding mode, flush-to-zero and default NaN bits as the VFP FPSCR.
+inline uint32_t readFpscr()
+{
+    uint64_t value;
+    __asm__ volatile("mrs %0, fpcr" : "=r"(value));
+    return uint32_t(value);
+}
+
+inline void writeFpscr(uint32_t value)
+{
+    __asm__ volatile("msr fpcr, %0" : : "r"(uint64_t(value)) : "memory");
+}
+
+inline uint32_t clockLowUs()
+{
+    return uint32_t(processTimeUs());
+}
+#endif
+
+void claim(Phase& phase, int thread)
+{
+    for (;;)
+    {
+        const int index = phase.next.fetch_add(1, std::memory_order_relaxed);
+        const int begin = index * phase.batchSize;
+        if (begin >= phase.count)
+            return;
+        phase.batch(phase.context, begin, std::min(phase.count, begin + phase.batchSize), thread);
+        phase.batches.fetch_add(1, std::memory_order_relaxed);
+    }
+}
+
+// Runs posted tasks until the queue is empty, at TaskPriority.
+void runTasks()
+{
+    bool lowered = false;
+    for (;;)
+    {
+        std::pair<Task, void*> task;
+        {
+            LwLockGuard guard(*s_taskLock);
+            if (s_tasks.empty())
+                break;
+            task = s_tasks.front();
+            s_tasks.pop_front();
+        }
+        if (!lowered)
+        {
+            Thread::setCurrentPriority(TaskPriority);
+            lowered = true;
+        }
+        task.first(task.second);
+    }
+    if (lowered)
+        Thread::setCurrentPriority(WorkerPriority);
+}
+
+int taskWorkerEntry(void*)
+{
+    if (perf::enabled())
+        perf::trackThread("jobs_tasks_core3");
+    for (;;)
+    {
+        s_taskWake->wait();
+        runTasks();
+    }
+    return 0;
+}
+
+int workerEntry(void* argument)
+{
+    const int thread = int(reinterpret_cast<intptr_t>(argument));
+    static const char* const tracked[] = { "jobs_core2", "jobs_w2", "jobs_w3" };
+    if (perf::enabled())
+        perf::trackThread(tracked[std::min(std::max(thread - 1, 0), 2)]);
+    for (;;)
+    {
+        s_wake->wait();
+        // Counted before the phase is read.
+        s_busy.fetch_add(1, std::memory_order_seq_cst);
+        if (Phase* phase = s_current.load(std::memory_order_seq_cst))
+        {
+            if (readFpscr() != phase->fpscr)
+                writeFpscr(phase->fpscr);
+            claim(*phase, thread);
+        }
+        if (s_busy.fetch_sub(1, std::memory_order_seq_cst) == 1 && s_waiter.exchange(0) == 1)
+            s_done->post();
+        runTasks();
+    }
+    return 0;
+}
+
+void start()
+{
+    s_started = true;
+    const int cores[MaxWorkers] = { 2, 3 };
+#ifdef __vita__
+    const int count = cores::core3Waited() ? 2 : 1;
+#else
+    const int count = cores::hasCore3() ? 1 : MaxWorkers;
+#endif
+    s_wake = new Semaphore("jobs_wake", 0);
+    s_taskLock = new LwMutex("jobs_tasks");
+    s_done = new Semaphore("jobs_done", 0);
+    static const char* const names[MaxWorkers] = { "jobs_core2", "jobs_core3" };
+    for (int i = 0; i < count; ++i)
+    {
+        s_threads[i] = new Thread(names[i], &workerEntry, reinterpret_cast<void*>(intptr_t(i + 1)), WorkerPriority,
+                                  WorkerStack, Thread::Cpu0 << cores[i]);
+        s_threads[i]->start();
+    }
+    s_workers = count;
+    if (cores::hasCore3() && !cores::core3Waited())
+    {
+        s_taskWake = new Semaphore("jobs_task_wake", 0);
+        s_threads[count] = new Thread("jobs_tasks_core3", &taskWorkerEntry, nullptr, WorkerPriority, WorkerStack,
+                                      Thread::Cpu3);
+        s_threads[count]->start();
+        logInfo("jobs: phase worker on core 2, posted tasks on cores 3 and 2");
+        return;
+    }
+#ifdef __vita__
+    logInfo("jobs: %d worker(s) on core%s", count, count == 2 ? "s 2 and 3" : " 2");
+#else
+    logInfo("jobs: %d host worker threads", count);
+#endif
+}
+
+void join()
+{
+    s_current.store(nullptr, std::memory_order_seq_cst);
+    const uint32_t start = clockLowUs();
+    for (uint32_t spin = 1; s_busy.load(std::memory_order_acquire) != 0; ++spin)
+    {
+        if ((spin & JoinClockMask) != 0 || clockLowUs() - start < JoinSpinUs)
+            continue;
+        s_waiter.store(1, std::memory_order_seq_cst);
+        // Waits for the post unless no worker is busy and the flag is taken back here.
+        if (s_busy.load(std::memory_order_seq_cst) != 0 || s_waiter.exchange(0) == 0)
+            s_done->wait();
+        break;
+    }
+    std::atomic_thread_fence(std::memory_order_acquire);
+}
+
+}
+
+int threads()
+{
+    if (!s_started)
+        start();
+    return 1 + s_workers;
+}
+
+Stats run(int count, int batchSize, Batch batch, void* context)
+{
+    if (!s_started)
+        start();
+    batchSize = std::max(1, batchSize);
+    if (count <= 0)
+        return Stats{0, false};
+    if (s_workers == 0 || count < 2 * batchSize)
+    {
+        batch(context, 0, count, 0);
+        return Stats{1, false};
+    }
+    Phase& phase = s_phase;
+    phase.batch = batch;
+    phase.context = context;
+    phase.count = count;
+    phase.batchSize = batchSize;
+    phase.fpscr = readFpscr();
+    phase.next.store(0, std::memory_order_relaxed);
+    phase.batches.store(0, std::memory_order_relaxed);
+    s_current.store(&phase, std::memory_order_seq_cst);
+    s_wake->post(s_workers);
+    claim(phase, 0);
+    join();
+    return Stats{phase.batches.load(std::memory_order_relaxed), true};
+}
+
+void post(Task task, void* context)
+{
+    if (!s_started)
+        start();
+    if (s_workers == 0)
+    {
+        task(context);
+        return;
+    }
+    {
+        LwLockGuard guard(*s_taskLock);
+        s_tasks.push_back(std::make_pair(task, context));
+    }
+    if (s_taskWake)
+        s_taskWake->post();
+    else
+        s_wake->post();
+}
+
+}}

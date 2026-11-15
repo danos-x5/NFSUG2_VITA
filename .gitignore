@@ -1,0 +1,70 @@
+# Build output
+/build*/
+*.velf
+*.self
+*.vpk
+*.elf
+*.gxp
+!/shaders/gxp/*.gxp
+param.sfo
+
+# Generated recompilation (tools/ug2-generate.ps1): derived from the game executable
+/src/ug2/generated/
+
+# Original game binaries and data are never tracked
+/binaries/
+/vita-data/
+*.exe
+*.dll
+*.EXE
+*.DLL
+*.dat
+*.DAT
+*.bun
+*.BUN
+*.bin
+*.BIN
+*.mad
+*.MAD
+*.fng
+*.FNG
+*.lzc
+*.LZC
+*.efx
+*.EFX
+*.ini
+*.INI
+
+# Logs and profiles
+*.log
+*.profraw
+*.profdata
+*.gcda
+
+# Local environment
+tools/ug2-env.local.ps1
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+__pycache__/
+
+# Agent worktrees
+.claude/
+
+# Game folder remembered by tools/ug2-build.ps1
+/build-game-dir.txt
+
+# Python packages fetched by tools/recompiler/bootstrap.py
+/.pydeps/
+
+# VitaSDK and LLVM fetched by tools/deps.py
+/.deps/
+
+# Generated from the game's effects by tools/fx/fxtable.py
+/include/winapi/d3d9_fxtables.h
+
+# Host build runtime data
+/ug2host-data/

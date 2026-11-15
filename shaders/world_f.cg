@@ -1,0 +1,28 @@
+// UG2 world effects: rgb = texture * colour * 2, alpha = texture * colour, then vertex fog. PROJ divides the
+// texture coordinates by w first.
+
+float4 main(
+    float4 vColor : COLOR0,
+#ifdef PROJ
+    float4 vTex0 : TEXCOORD0,
+#else
+    float2 vTex0 : TEXCOORD0,
+#endif
+    float vFog : TEXCOORD1,
+    uniform sampler2D uTex0,
+    uniform float4 uAlphaTest,
+    uniform float4 uFogColor) : COLOR
+{
+#ifdef PROJ
+    float4 c = tex2Dproj(uTex0, vTex0.xyw) * vColor;
+#else
+    float4 c = tex2D(uTex0, vTex0) * vColor;
+#endif
+    c.rgb = saturate(c.rgb * 2.0);
+#ifdef ATEST
+    if (uAlphaTest.x * saturate(c.a) < uAlphaTest.y)
+        discard;
+#endif
+    c.rgb = lerp(uFogColor.rgb, c.rgb, vFog);
+    return c;
+}

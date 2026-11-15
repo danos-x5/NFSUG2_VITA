@@ -1,0 +1,584 @@
+// Recorded frames: the game thread appends state changes and draws to the frame's stream (d3d9_device.cpp,
+// d3dx9.cpp); the render thread replays them into a mirror of the device and effect state and resolves each draw
+// (programs, fixed function, alpha test, blend factor, constants) before the frame is drawn.
+
+#include <winapi/d3d9_internal.h>
+#include <platform/cached.h>
+#include <platform/config.h>
+#include <platform/log.h>
+#include <platform/perf.h>
+#include <algorithm>
+#include <atomic>
+#include <cstdio>
+#include <cstdlib>
+
+namespace win32 { namespace d3d9
+{
+
+static_assert(sizeof(DrawRecord) % 4 == 0, "DrawRecord is whole words");
+static_assert(sizeof(FixedState) % 4 == 0, "FixedState is whole words");
+
+namespace
+{
+
+enum : DWORD
+{
+    D3DRS_ZENABLE = 7, D3DRS_ZWRITEENABLE = 14, D3DRS_ALPHATESTENABLE = 15, D3DRS_SRCBLEND = 19,
+    D3DRS_DESTBLEND = 20, D3DRS_CULLMODE = 22, D3DRS_ZFUNC = 23, D3DRS_ALPHAREF = 24, D3DRS_ALPHAFUNC = 25,
+    D3DRS_ALPHABLENDENABLE = 27, D3DRS_FOGENABLE = 28, D3DRS_TEXTUREFACTOR = 60, D3DRS_LIGHTING = 137,
+    D3DRS_COLORWRITEENABLE = 168, D3DRS_BLENDOP = 171, D3DRS_BLENDFACTOR = 193
+};
+
+const float s_identity[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+
+// The recording of frame n is s_streams[n % StreamCount]; s_resolved: the last frame resolved.
+const uint32_t StreamCount = 4;
+Stream s_streams[StreamCount];
+std::atomic<uint32_t> s_resolved{0};
+
+void color(DWORD argb, float out[4])
+{
+    out[0] = float((argb >> 16) & 255) / 255.0f;
+    out[1] = float((argb >> 8) & 255) / 255.0f;
+    out[2] = float(argb & 255) / 255.0f;
+    out[3] = float(argb >> 24) / 255.0f;
+}
+
+// What the constants of a draw depend on; equal keys reuse the previous constants.
+struct ConstantsKey
+{
+    uint32_t    source;         // 0 fixed function, else the effect's block and pass
+    uint32_t    version;
+    DWORD       alphaFunc, alphaRef;
+    DWORD       fog, fogColor;  // effect draws: the pass's (or device's) FOGENABLE and FOGCOLOR
+    float       blendFactor[4];
+    uint8_t     vertexProgram, fragmentProgram, texComponents, alphaTest;
+};
+
+static_assert(sizeof(ConstantsKey) % 4 == 0, "ConstantsKey is whole words");
+
+// What the alpha test elision found for an alpha-tested draw.
+enum AlphaResult : uint8_t
+{
+    AlphaElided,            // discards nothing: drawn without the test
+    AlphaProgram,           // a program whose alpha is not bounded here (fixed function, worldbone, filter)
+    AlphaFunction,          // LESS, LESSEQUAL or NEVER
+    AlphaTexture,           // no texture, or its smallest alpha is 0 or unknown
+    AlphaVertex,            // vertex alpha 0 or unknown
+    AlphaCarConstants,      // car pass without a lower bound of its diffuse alpha
+    AlphaThreshold,         // the smallest alpha can fail the test
+    AlphaResultCount
+};
+
+const char* const s_alphaNames[AlphaResultCount] = {
+    "elided", "program", "function", "texture", "vertex", "car constants", "threshold"
+};
+
+// Render thread only.
+class Resolver
+{
+public:
+    void resolve(render::Frame& frame);
+
+private:
+    bool fillState(render::Frame& frame, const DrawRecord& record, render::DrawCall& draw);
+    AlphaResult alphaTestResult(const DrawRecord& record, const render::DrawCall& draw, const float test[2],
+                                const float* own, const float* shared, const EffectBinding* binding) const;
+    const float* block(uint16_t id) const
+    {
+        return id < m_blocks.size() && !m_blocks[id].empty() ? m_blocks[id].data() : nullptr;
+    }
+
+    FixedState                      m_state = {};
+    std::vector<std::vector<float>> m_blocks;       // effect value blocks by id
+    uint32_t                        m_fixedVersion = 1, m_effectVersion = 1;
+    uint32_t                        m_bindingVersion = 1;       // device states and effect values passes read
+    const render::TextureStorage*   m_lastTexture = nullptr;    // stage 0 of the last fixed-function draw
+    uint32_t                        m_lastEffect = 0;
+    bool                            m_keyValid = false;
+    ConstantsKey                    m_key = {};
+    uint32_t                        m_vertexConstants = render::NoConstants;
+    uint32_t                        m_fragmentConstants = render::NoConstants;
+    uint32_t                        m_alphaFrames = 0;
+    uint32_t                        m_alphaCounts[AlphaResultCount] = {};   // timing_log: alpha-tested draws
+};
+
+Resolver s_resolver;
+
+const uint32_t FrameVertexScan = 4096;      // most vertices of a frame-arena draw scanned for their alpha
+const uint8_t BufferScans = 4;              // scans of one vertex buffer before its alpha counts as unknown
+
+// Smallest vertex alpha a draw reads (the alpha byte of its colour element), 0 when unknown. Vertex buffers: the
+// smallest over the whole buffer at the element's position, kept until the buffer is written in place again.
+uint8_t vertexAlpha(const DrawRecord& record, const render::DrawCall& draw)
+{
+    const render::VertexLayout& l = render::layout(record.layout);
+    const render::VertexElement* color = nullptr;
+    for (uint32_t i = 0; i < l.count; ++i)
+    {
+        if (l.elements[i].usage == render::UsageColor
+            && (l.elements[i].type == render::TypeColor || l.elements[i].type == render::TypeUByte4N))
+            color = &l.elements[i];
+    }
+    if (!color || !l.stride || !draw.vertices)
+        return 0;
+    const uint32_t stride = l.stride;
+    render::BufferStorage* b = const_cast<render::BufferStorage*>(record.vertexStorage);
+    if (!b)
+    {
+        if (draw.vertexCount > FrameVertexScan)
+            return 0;
+        const uint8_t* p = static_cast<const uint8_t*>(draw.vertices) + color->offset + 3;
+        uint8_t lowest = 255;
+        for (uint32_t i = 0; i < draw.vertexCount && lowest; ++i)
+            lowest = p[size_t(i) * stride] < lowest ? p[size_t(i) * stride] : lowest;
+        return lowest;
+    }
+    const ptrdiff_t start = static_cast<const uint8_t*>(draw.vertices) - static_cast<const uint8_t*>(b->data);
+    if (start < 0 || uint32_t(start) >= b->size)
+        return 0;
+    const uint32_t offset = uint32_t(start + color->offset + 3) % stride;
+    const uint32_t writes = b->writes.load(std::memory_order_acquire);
+    if (b->alphaWrites == writes && b->alphaStride == stride && b->alphaOffset == offset)
+        return b->alpha;
+    if (b->alphaScans >= BufferScans)
+        return 0;
+    ++b->alphaScans;
+    const uint8_t* data = static_cast<const uint8_t*>(b->data);
+    uint8_t lowest = 255;
+    for (uint32_t i = offset; i < b->size && lowest; i += stride)
+        lowest = data[i] < lowest ? data[i] : lowest;
+    b->alphaWrites = writes;
+    b->alphaStride = uint16_t(stride);
+    b->alphaOffset = uint16_t(offset);
+    b->alpha = lowest;
+    return lowest;
+}
+
+// Whether the alpha test of a draw (discard when test[0] * saturate(alpha) < test[1]) discards no fragment.
+AlphaResult Resolver::alphaTestResult(const DrawRecord& record, const render::DrawCall& draw, const float test[2],
+                                      const float* own, const float* shared, const EffectBinding* binding) const
+{
+    const render::DrawState& state = draw.state;
+    switch (state.fragmentProgram)
+    {
+    case render::FpWorldReflect:
+    case render::FpWorldHeadlightReflect:
+    case render::FpWorldReflectFog:
+    case render::FpWorldHeadlightReflectFog:
+        // Alpha 1: the programs discard when test[0] < test[1].
+        return test[0] < test[1] ? AlphaThreshold : AlphaElided;
+    case render::FpWorld:
+    case render::FpWorldProjected:
+    case render::FpWorldHeadlight:
+    case render::FpWorldHeadlightFog:
+        // Alpha = texel alpha * vertex alpha (* 2 for headlight), from programs that pass the vertex colour through.
+        if (state.vertexProgram != render::VpWorld && state.vertexProgram != render::VpWorldProjected
+            && state.vertexProgram != render::VpWorldHeadlight && state.vertexProgram != render::VpWorldHeadlightFog)
+            return AlphaProgram;
+        break;
+    case render::FpCar:
+        // Alpha = texel alpha * diffuse alpha * 2.
+        if (state.vertexProgram != render::VpCar)
+            return AlphaProgram;
+        break;
+    default:
+        return AlphaProgram;
+    }
+    if (test[0] <= 0.0f)
+        return AlphaFunction;
+    if (!state.textures[0])
+        return AlphaTexture;
+    const uint8_t texel = render::minAlpha(*state.textures[0]);
+    if (!texel)
+        return AlphaTexture;
+    float factor;
+    if (state.fragmentProgram == render::FpCar)
+    {
+        float diffuse;
+        if (!own || !binding || !effectVertexAlpha(record, own, shared, *binding, &diffuse))
+            return AlphaCarConstants;
+        // Rounded down to a multiple of 1/255.
+        factor = float(int(diffuse * 255.0f)) / 255.0f;
+    }
+    else
+    {
+        const uint8_t vertex = vertexAlpha(record, draw);
+        if (!vertex)
+            return AlphaVertex;
+        factor = float(vertex) / 255.0f;
+    }
+    // UG2's world_f does not double alpha; car_f and worldheadlight_f do.
+    const float scale = state.fragmentProgram == render::FpWorld || state.fragmentProgram == render::FpWorldProjected
+                        || state.fragmentProgram == render::FpWorldHeadlightFog ? 1.0f : 2.0f;
+    // Two steps below the lowest product for filtering and interpolation rounding.
+    const float lowest = float(texel) / 255.0f * factor * scale - 2.0f / 255.0f;
+    return test[0] * std::min(lowest, 1.0f) >= test[1] ? AlphaElided : AlphaThreshold;
+}
+
+bool Resolver::fillState(render::Frame& f, const DrawRecord& record, render::DrawCall& draw)
+{
+    render::DrawState& state = draw.state;
+    memset(&state, 0, sizeof(state));
+    const DWORD* rs = m_state.renderStates;
+    const bool positionT = record.positionT != 0;
+    state.layout = record.layout;
+    state.primitive = record.primitive;
+
+    uint32_t source = 0;
+    uint32_t version = m_fixedVersion;
+    FixedResult fixed = {};
+    const EffectDraw& effect = record.effect;
+    const float* own = nullptr;
+    const float* shared = nullptr;
+    const EffectBinding* b = nullptr;
+    DWORD fixedStates[PassStateCount];
+    const DWORD* states = fixedStates;
+
+    if (effect.kind != NoEffect)
+    {
+        own = block(effect.own);
+        shared = block(effect.shared);
+        if (!own)
+        {
+            D3D_LOG_ONCE("d3d9: effect draw without parameter values dropped");
+            draw.count = 0;
+            return true;
+        }
+        b = &effectBinding(record, m_state, own, shared, m_bindingVersion);
+        if (b->skip)
+        {
+            draw.count = 0;
+            return true;
+        }
+    }
+    const bool programs = b && !b->fixed;
+    if (programs)
+    {
+        states = b->states;
+        state.vertexProgram = b->vertexProgram;
+        state.fragmentProgram = b->fragmentProgram;
+        for (uint32_t i = 0; i < b->samplerCount && i < render::MaxSamplers; ++i)
+        {
+            const render::TextureStorage* t = record.textures[i];
+            if ((b->cubeSlots >> i) & 1)
+            {
+                if (t && !t->desc.cube)
+                    D3D_LOG_ONCE("d3d9: %s: a 2D texture on cube sampler %u drawn as black", effectName(effect), i);
+                if (!t || !t->desc.cube)
+                    t = effectBlackCube();
+            }
+            else if (t && t->desc.cube)
+            {
+                D3D_LOG_ONCE("d3d9: %s: a cube texture on 2D sampler %u ignored", effectName(effect), i);
+                t = nullptr;
+            }
+            state.textures[i] = t;
+            state.samplers[i] = b->samplers[i];
+        }
+        source = 1u + effect.own + (uint32_t(effect.pass) << 16);
+        if (source != m_lastEffect)
+            ++m_effectVersion;
+        m_lastEffect = source;
+        version = m_effectVersion;
+    }
+    else
+    {
+        if (b)
+            states = b->states;
+        for (uint32_t s = 0; s < PassStateCount && !b; ++s)
+            fixedStates[s] = rs[g_passRenderState[s]];
+        if (states[PassLighting] && !positionT)
+            D3D_LOG_ONCE("d3d9: fixed-function lighting is not emulated (vertex colours used)");
+        if (states[PassFog])
+            D3D_LOG_ONCE("d3d9: fixed-function fog is not emulated");
+        const DWORD* tss = m_state.stageStates[0];
+        const render::TextureStorage* texture = record.textures[0];
+        if (texture != m_lastTexture)
+            version = ++m_fixedVersion;
+        m_lastTexture = texture;
+        if (texture && texture->desc.cube)
+        {
+            D3D_LOG_ONCE("d3d9: cube texture on fixed-function stage 0 ignored");
+            texture = nullptr;
+        }
+        if (m_state.stageStates[1][D3DTSS_COLOROP] != D3DTOP_DISABLE)
+            D3D_LOG_ONCE("d3d9: fixed-function stages after 0 are not emulated");
+        FixedStage stage = { tss[D3DTSS_COLOROP], tss[D3DTSS_COLORARG1], tss[D3DTSS_COLORARG2], tss[D3DTSS_ALPHAOP],
+                             tss[D3DTSS_ALPHAARG1], tss[D3DTSS_ALPHAARG2], tss[D3DTSS_TEXTURETRANSFORMFLAGS],
+                             texture != nullptr };
+        fixed = resolveFixed(stage);
+        state.vertexProgram = positionT ? render::VpFixedScreen : render::VpFixed;
+        state.fragmentProgram = fixed.fragmentProgram;
+        if (fixed.fragmentProgram != render::FpFixedColor)
+        {
+            state.textures[0] = texture;
+            state.samplers[0] = samplerOf(m_state.samplerStates[0]);
+        }
+    }
+    state.colorMask = uint8_t(states[PassColorWrite] & 0xf);
+    state.depthEnable = states[PassZEnable] ? 1 : 0;
+    state.depthWrite = states[PassZWrite] ? 1 : 0;
+    state.depthFunc = uint8_t(states[PassZFunc]);
+    state.cullMode = uint8_t(states[PassCull]);
+    state.blendEnable = states[PassBlend] ? 1 : 0;
+    state.srcBlend = uint8_t(states[PassSrcBlend]);
+    state.dstBlend = uint8_t(states[PassDestBlend]);
+    if (state.blendEnable && rs[D3DRS_BLENDOP] >= 2 && rs[D3DRS_BLENDOP] <= 5)
+        state.blendOp = uint8_t(rs[D3DRS_BLENDOP]);
+    const bool alphaEnabled = states[PassAlphaTest] != 0;
+    const DWORD alphaRef = states[PassAlphaRef];
+    if (state.blendEnable && (state.srcBlend == 7 || state.srcBlend == 8 || state.dstBlend == 7 || state.dstBlend == 8))
+        D3D_LOG_ONCE("d3d9: a draw blends with destination alpha (%u, %u)",
+                     unsigned(state.srcBlend), unsigned(state.dstBlend));
+
+    float test[2] = { 0.0f, 0.0f };
+    state.alphaTest = alphaEnabled && alphaTest(rs[D3DRS_ALPHAFUNC], alphaRef, test) ? 1 : 0;
+    // A test that discards nothing: the program without it (the draw becomes opaque to the GPU).
+    const bool s_elide = pf::cachedStatic([] { return pf::Config::getBool("skip_unused_alpha_test", true); });
+    if (state.alphaTest && (s_elide || pf::perf::enabled()))
+    {
+        const AlphaResult result = alphaTestResult(record, draw, test, own, shared, b);
+        ++m_alphaCounts[result];
+        if (s_elide && result == AlphaElided)
+            state.alphaTest = 0;
+    }
+
+    const render::FragmentProgramInfo& fragment =
+        render::fragmentProgram(render::FragmentProgram(state.fragmentProgram));
+    BlendFactorDraw factor = {};
+    if (state.blendEnable)
+    {
+        factor = resolveBlendFactor(state.srcBlend, state.dstBlend, rs[D3DRS_BLENDOP], rs[D3DRS_BLENDFACTOR],
+                                    fragment.blendFactor && !state.alphaTest, (state.colorMask & 8) != 0);
+        state.srcBlend = uint8_t(factor.src);
+        state.dstBlend = uint8_t(factor.dst);
+        state.factorOutput = factor.output;
+    }
+
+    ConstantsKey key;
+    memset(&key, 0, sizeof(key));
+    key.source = source;
+    key.version = version;
+    key.alphaFunc = rs[D3DRS_ALPHAFUNC];
+    key.alphaRef = alphaRef;
+    if (effect.kind != NoEffect)
+    {
+        key.fog = states[PassFog];
+        key.fogColor = states[PassFogColor];
+    }
+    memcpy(key.blendFactor, factor.factor, sizeof(key.blendFactor));
+    key.vertexProgram = state.vertexProgram;
+    key.fragmentProgram = state.fragmentProgram;
+    key.texComponents = uint8_t(record.texComponents | (positionT ? 0x80 : 0));
+    key.alphaTest = state.alphaTest;
+    if (m_keyValid && sameWords(&key, &m_key, sizeof(key) / 4))
+    {
+        draw.vertexConstants = m_vertexConstants;
+        draw.fragmentConstants = m_fragmentConstants;
+        return true;
+    }
+
+    const uint32_t vertexFloats = render::vertexProgram(render::VertexProgram(state.vertexProgram)).constantFloats;
+    const uint32_t fragmentFloats = fragment.constantFloats;
+    float* vc = nullptr;
+    float* fc = nullptr;
+    draw.vertexConstants = draw.fragmentConstants = render::NoConstants;
+    if (vertexFloats && !(vc = render::allocateConstants(f, vertexFloats, &draw.vertexConstants)))
+        return false;
+    if (fragmentFloats && !(fc = render::allocateConstants(f, fragmentFloats, &draw.fragmentConstants)))
+        return false;
+
+    if (programs)
+    {
+        if (vc)
+            effectVertexConstants(record, m_state, own, shared, *b, vc);
+        if (fc)
+            effectFragmentConstants(record, own, shared, *b, fc);
+    }
+    else
+    {
+        render::FixedVertexConstants& v = *reinterpret_cast<render::FixedVertexConstants*>(vc);
+        float wv[16];
+        multiply(m_state.transforms[TransformWorld].m, m_state.transforms[TransformView].m, wv);
+        multiply(wv, m_state.transforms[TransformProjection].m, v.wvp);
+        // Window coordinates of the viewport to clip space.
+        const D3DVIEWPORT9& vp = m_state.viewport;
+        const float w = float(vp.Width ? vp.Width : 1), h = float(vp.Height ? vp.Height : 1);
+        v.screen[0] = 2.0f / w;
+        v.screen[1] = -2.0f / h;
+        v.screen[2] = -1.0f - 2.0f * float(vp.X) / w;
+        v.screen[3] = 1.0f + 2.0f * float(vp.Y) / h;
+        const DWORD flags = m_state.stageStates[0][D3DTSS_TEXTURETRANSFORMFLAGS];
+        memcpy(v.texMatrix, (flags & 0xff) ? m_state.transforms[TransformTexture0].m : s_identity, sizeof(v.texMatrix));
+        if ((flags & D3DTTFF_PROJECTED) && (flags & 0xff) == D3DTTFF_COUNT4)
+        {
+            // Divided by the fourth coordinate: move it to the third, which the program divides by.
+            for (int row = 0; row < 4; ++row)
+                v.texMatrix[row * 4 + 2] = v.texMatrix[row * 4 + 3];
+        }
+        texturePad(record.texComponents, v.texPad);
+        memcpy(v.diffuseMask, fixed.diffuseMask, sizeof(v.diffuseMask));
+        memcpy(v.factorMask, fixed.factorMask, sizeof(v.factorMask));
+        color(rs[D3DRS_TEXTUREFACTOR], v.factor);
+        render::FixedFragmentConstants& p = *reinterpret_cast<render::FixedFragmentConstants*>(fc);
+        memset(&p, 0, sizeof(p));
+        memcpy(p.textureMask, fixed.textureMask, sizeof(p.textureMask));
+        memcpy(p.scale, fixed.scale, sizeof(p.scale));
+        memcpy(p.addMask, fixed.addMask, sizeof(p.addMask));
+    }
+    if (fc && fragmentFloats >= 2)
+    {
+        fc[0] = test[0];
+        fc[1] = test[1];
+    }
+    if (fc && state.factorOutput)
+        memcpy(fc + fragment.blendFactor, factor.factor, sizeof(factor.factor));
+    m_key = key;
+    m_keyValid = true;
+    m_vertexConstants = draw.vertexConstants;
+    m_fragmentConstants = draw.fragmentConstants;
+    return true;
+}
+
+void Resolver::resolve(render::Frame& f)
+{
+    m_keyValid = false;
+    bool full = false;
+    const uint32_t* w = f.commands;
+    const uint32_t* end = w + f.commandCount;
+    while (w < end)
+    {
+        const uint32_t header = *w++;
+        const uint32_t a = (header >> 8) & 0xff, b = header >> 16;
+        switch (Command(header & 0xff))
+        {
+        case CmdRenderState:
+            m_state.renderStates[header >> 8 & 0xff] = *w++;
+            ++m_fixedVersion;
+            ++m_bindingVersion;
+            break;
+        case CmdStageState:
+            m_state.stageStates[a & 7][b < 33 ? b : 0] = *w++;
+            ++m_fixedVersion;
+            ++m_bindingVersion;
+            break;
+        case CmdSamplerState:
+            m_state.samplerStates[a & 15][b < 14 ? b : 0] = *w++;
+            ++m_fixedVersion;
+            ++m_bindingVersion;
+            break;
+        case CmdTransform:
+            memcpy(&m_state.transforms[a < TransformCount ? a : 0], w, sizeof(D3DMATRIX));
+            w += 16;
+            ++m_fixedVersion;
+            break;
+        case CmdViewport:
+            memcpy(&m_state.viewport, w, sizeof(D3DVIEWPORT9));
+            w += sizeof(D3DVIEWPORT9) / 4;
+            ++m_fixedVersion;
+            break;
+        case CmdFixedState:
+            memcpy(&m_state, w, sizeof(FixedState));
+            w += sizeof(FixedState) / 4;
+            ++m_fixedVersion;
+            ++m_bindingVersion;
+            break;
+        case CmdValues:
+        {
+            const uint32_t id = header >> 8, offset = w[0] & 0xffff, count = w[0] >> 16;
+            if (id >= m_blocks.size())
+                m_blocks.resize(id + 1);
+            std::vector<float>& values = m_blocks[id];
+            if (values.empty())
+                values.assign(effectBlockFloats(), 0.0f);
+            if (offset + count <= values.size())
+                memcpy(values.data() + offset, w + 1, count * 4);
+            w += 1 + count;
+            ++m_effectVersion;
+            if (effectBindingReads(offset, count))
+                ++m_bindingVersion;
+            break;
+        }
+        case CmdProduct:
+        {
+            const uint32_t id = header >> 8, offset = w[0] & 0xffff, count = w[0] >> 16;
+            if (id >= m_blocks.size())
+                m_blocks.resize(id + 1);
+            std::vector<float>& values = m_blocks[id];
+            if (values.empty())
+                values.assign(effectBlockFloats(), 0.0f);
+            if (offset + 16 <= values.size())
+                matrixProduct(reinterpret_cast<const float*>(w + 2), count, w[1], values.data() + offset);
+            w += 2 + 16 * count;
+            ++m_effectVersion;
+            if (effectBindingReads(offset, 16))
+                ++m_bindingVersion;
+            break;
+        }
+        case CmdDraw:
+        {
+            DrawRecord r;
+            memcpy(&r, w, sizeof(r));
+            w += sizeof(r) / 4;
+            render::DrawCall& d = f.draws[r.draw];
+            if (!full && !fillState(f, r, d))
+            {
+                pf::logError("d3d9: frame %u: constant arena full, draws dropped", f.index);
+                full = true;
+            }
+            if (full)
+            {
+                memset(&d.state, 0, sizeof(d.state));
+                d.count = 0;
+            }
+            break;
+        }
+        default:
+            pf::fatal("d3d9: frame %u: bad command 0x%08x", f.index, header);
+        }
+    }
+    if (pf::perf::enabled() && ++m_alphaFrames == 300)
+    {
+        char line[256];
+        int length = snprintf(line, sizeof(line), "perf: alpha-tested draws per frame:");
+        for (uint32_t i = 0; i < AlphaResultCount && length > 0 && length < int(sizeof(line)); ++i)
+            length += snprintf(line + length, sizeof(line) - length, " %s %.1f", s_alphaNames[i],
+                               double(m_alphaCounts[i]) / m_alphaFrames);
+        pf::logInfo("%s", line);
+        m_alphaFrames = 0;
+        memset(m_alphaCounts, 0, sizeof(m_alphaCounts));
+    }
+    effectFrameStats();
+    s_resolved.store(f.index, std::memory_order_release);
+}
+
+}
+
+void Stream::grow(uint32_t words)
+{
+    uint32_t capacity = this->capacity ? this->capacity : 64 * 1024;
+    while (capacity < size + words)
+        capacity *= 2;
+    uint32_t* grown = static_cast<uint32_t*>(realloc(data, capacity * 4));
+    if (!grown)
+        pf::fatal("d3d9: out of memory for a %u KB frame recording", capacity / 256);
+    data = grown;
+    this->capacity = capacity;
+}
+
+Stream& frameStream(uint32_t frameIndex)
+{
+    if (frameIndex > StreamCount && s_resolved.load(std::memory_order_acquire) < frameIndex - StreamCount)
+        pf::fatal("d3d9: frame %u begun before frame %u was resolved", frameIndex, frameIndex - StreamCount);
+    Stream& s = s_streams[frameIndex % StreamCount];
+    s.size = 0;
+    return s;
+}
+
+void resolveFrame(render::Frame& frame)
+{
+    s_resolver.resolve(frame);
+}
+
+}}

@@ -1,0 +1,194 @@
+// Native replacement of sub_5bcc30: per-mesh texture bind, alpha and blend state, texture scroll upload (cdecl: texture info).
+
+#include <native/common.h>
+#include <native/shadow.h>
+#include <platform/cached.h>
+#include <platform/config.h>
+#include <winapi/d3d9_native.h>
+
+#include <type_traits>
+
+#if defined(__ARM_NEON) && !defined(NFSU_FPU_DOUBLE)
+#include <arm_neon.h>
+#endif
+
+namespace ug2
+{
+
+void sub_5bcc30_guest(win32::WinApplication* app, x86::CPU& cpu);
+
+namespace native
+{
+
+namespace
+{
+
+// Low truncInteger64 word; in-range floats skip the double conversion.
+x86::sreg32 low32(Real value)
+{
+    if constexpr (std::is_same<Real, float>::value)
+    {
+        if (__builtin_expect((bits(value) & 0x7fffffffu) < 0x4f000000u, 1))
+            return x86::sreg32(value);
+    }
+    return x86::sreg32(x86::truncInteger64(value));
+}
+
+// TextureInfo::GetScroll (sub_48b450); the result stays a Real.
+Real scroll(float time, float speed, x86::sreg32 type, float step)
+{
+    if (type == 0)
+        return ld(0x7d7d3c);
+    Real x = Real(time);
+    if (type == 2)
+    {
+        x /= Real(step);
+        x = Real(low32(x));
+    }
+    x *= Real(speed);
+    return x - Real(low32(x));
+}
+
+alignas(16) const x86::reg32 identity[16] = {0x3f800000u, 0, 0, 0, 0, 0x3f800000u, 0, 0,
+                                             0, 0, 0x3f800000u, 0, 0, 0, 0, 0x3f800000u};
+
+// The cache missed: tex or the current group changed.
+[[gnu::noinline]] void miss(win32::WinApplication* app, x86::CPU& cpu, x86::reg32 tex, x86::reg32 group)
+{
+    namespace br = win32::d3d9::bridge;
+    // Read before the stores below: tex may point at them.
+    const x86::reg32 plat = rc::ld32(tex);
+    rc::st32(0x872f10, rc::ld32(0x872f10) + 1);
+    rc::st32(0x870940, tex);
+    rc::st32(0x870944, group);
+    const x86::reg32 texture = rc::ld32(plat + 0x18);
+    // group == 0 binds through the device, then faults reading [4] in the original; not reproduced.
+    if (texture == 0 || group == 0)
+    {
+        cpu.esp += 4;
+        return;
+    }
+    const x86::reg32 effect = rc::ld32(group + 0x20);
+    const x86::reg32 desc = rc::ld32(group + 0x1c);
+    const x86::reg32 device = rc::ld32(0x870974);
+    br::CallGroup calls(app, cpu);
+    calls.setEffectTexture(effect, rc::ld32(desc + 0x13c), texture);
+
+    const bool alphaTest = rc::ld8(tex + 0x55) == 1;
+    rc::st32(0x86ead8, alphaTest ? 1 : 0);
+    rc::st32(0x86eadc, alphaTest ? 0x5f : 0);
+    const x86::sreg8 mode = x86::sreg8(rc::ld8(tex + 0x56));
+    x86::reg32 source = 5, destination = 6;
+    if (mode == 2 || mode == 6)
+        destination = 2;
+    if (mode == 5 || mode == 6)
+        source = 7;
+    if (mode == 5)
+        destination = 8;
+    rc::st32(0x86eae0, mode != 0 ? 1 : 0);
+    rc::st32(0x86eae4, source);
+    rc::st32(0x86eae8, destination);
+
+    const bool opaque = mode == 0;
+    if (rc::ld32(group + 4) == 5)
+        calls.setRenderState(device, 0x16, opaque ? 1 : 2);
+    calls.setRenderState(device, 0xe, opaque ? 1 : 0);
+    calls.queue();
+    br::effectSetIntArray(app, cpu, effect, rc::ld32(desc + 0x74),
+                          reinterpret_cast<const x86::sreg32*>(::native::host(0x86ead8)), 5);
+
+    const x86::reg32 uploads = rc::ld32(desc + 0x8bc);
+    if (uploads != 0)
+    {
+        float v0 = 0.0f, v1 = 0.0f;
+        if (rc::ld32(0x870ce8) != 0)
+        {
+            const float time = float(Real(x86::sreg32(rc::ld32(0x86518c))) * ld(0x784268));
+            const x86::reg32 kind = rc::ld8(tex + 0x52);
+            if (kind == 3)
+            {
+                v0 = float(Real(x86::sreg16(rc::ld16(tex + 0x5e))) * ld(0x7a3664));
+                v1 = float(Real(x86::sreg16(rc::ld16(tex + 0x60))) * ld(0x7a3664));
+            }
+            else
+            {
+                const Real divisor0 = ld(0x870924), divisor1 = ld(0x870928);
+                if (divisor0 == 0.0 && divisor1 == 0.0)
+                {
+                    const x86::sreg32 type = x86::sreg8(kind);
+                    const float stride = float(Real(x86::sreg16(rc::ld16(tex + 0x58))) * ld(0x7a0700));
+                    const float speed0 = float(Real(x86::sreg16(rc::ld16(tex + 0x5a))) * ld(0x78d964));
+                    v0 = float(scroll(time, speed0, type, stride));
+                    const float speed1 = float(Real(x86::sreg16(rc::ld16(tex + 0x5c))) * ld(0x78d964));
+                    v1 = float(scroll(time, speed1, type, stride));
+                }
+                else
+                {
+                    const float speed0 = float(divisor0 / Real(x86::sreg16(rc::ld16(tex + 0x44))));
+                    const float speed1 = float(divisor1 / Real(x86::sreg16(rc::ld16(tex + 0x46))));
+                    const x86::sreg32 type = x86::sreg32(rc::ld32(0x800504));
+                    const float stride = rc::ldf32(0x800508);
+                    v0 = float(scroll(time, speed0, type, stride));
+                    v1 = float(scroll(time, speed1, type, stride));
+                }
+            }
+        }
+        rc::st32(0x870948, 1);
+        x86::reg32 matrix[16];
+        x86::reg32 v[4];
+#if defined(__ARM_NEON) && !defined(NFSU_FPU_DOUBLE)
+        const uint32x2_t scrolls = vset_lane_u32(bits(v1), vdup_n_u32(bits(v0)), 1);
+        vst1q_u32(matrix, vld1q_u32(identity));
+        vst1q_u32(matrix + 4, vld1q_u32(identity + 4));
+        vst1q_u32(matrix + 8, vcombine_u32(scrolls, vld1_u32(identity + 10)));
+        vst1q_u32(matrix + 12, vld1q_u32(identity + 12));
+        vst1q_u32(v, vcombine_u32(scrolls, vdup_n_u32(0)));
+#else
+        memcpy(matrix, identity, sizeof(matrix));
+        matrix[8] = v[0] = bits(v0);
+        matrix[9] = v[1] = bits(v1);
+        v[2] = v[3] = 0;
+#endif
+        calls.setMatrix(effect, rc::ld32(desc + 0x8e4), reinterpret_cast<const float*>(matrix));
+        calls.setVector(effect, uploads, reinterpret_cast<const float*>(v));
+    }
+    if (rc::ld8(tex + 0x52) == 0)
+        rc::st32(0x870948, 0);
+    cpu.esp += 4;
+}
+
+void body(win32::WinApplication* app, x86::CPU& cpu)
+{
+    if (!pf::cachedStatic([] { return pf::Config::getBool("texture_step_native", true); }))
+    {
+        sub_5bcc30_guest(app, cpu);
+        return;
+    }
+    const x86::reg32 tex = argument(cpu, 0);
+    const x86::reg32 group = rc::ld32(0x870910);
+    if (rc::ld32(0x870940) == tex && rc::ld32(0x870944) == group)
+    {
+        cpu.esp += 4;
+        return;
+    }
+    miss(app, cpu, tex, group);
+}
+
+void declare(x86::CPU&, shadow::Spans& spans)
+{
+    spans.push_back({0x872f10, 4, false});
+    spans.push_back({0x870940, 12, false});
+    spans.push_back({0x86ead8, 20, false});
+}
+
+// eax, ecx, edx are dead after all seven call sites.
+const shadow::Spec spec = {"sub_5bcc30", shadow::Ebx | shadow::Esp | shadow::Ebp | shadow::Esi | shadow::Edi, 0, false, true};
+
+}
+
+void sub_5bcc30(win32::WinApplication* app, x86::CPU& cpu)
+{
+    shadow::call(spec, app, cpu, body, sub_5bcc30_guest, declare);
+}
+
+}}

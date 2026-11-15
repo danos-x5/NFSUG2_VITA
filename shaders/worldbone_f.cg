@@ -1,0 +1,19 @@
+// worldbone effect: rgb = texture * colour * 2; alpha = the focal depth (UG2's ps reads it from the second
+// colour).
+
+float4 main(
+    float4 vColor : COLOR0,
+    float2 vTex0 : TEXCOORD0,
+    float vDepth : TEXCOORD1,
+    uniform sampler2D uTex0,
+    uniform float4 uAlphaTest) : COLOR
+{
+    float4 c;
+    c.rgb = saturate(tex2D(uTex0, vTex0).rgb * vColor.rgb * 2.0);
+    c.a = vDepth;
+#ifdef ATEST
+    if (uAlphaTest.x * c.a < uAlphaTest.y)
+        discard;
+#endif
+    return c;
+}

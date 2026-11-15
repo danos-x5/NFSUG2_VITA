@@ -1,0 +1,34 @@
+// UG2 world effects: texture offset, vertex colour, vertex fog factor. PROJ passes four texture coordinates (stage 0
+// PROJECTED).
+
+void main(
+    float3 aPosition,
+    float4 aColor,
+#ifdef PROJ
+    float4 aTex0,
+#else
+    float2 aTex0,
+#endif
+    uniform float4 uWvp[4],
+    uniform float4 uTextureOffset,
+    uniform float4 uViewZ,
+    uniform float4 uFogValue,
+    float4 out vPosition : POSITION,
+    float4 out vColor : COLOR0,
+#ifdef PROJ
+    float4 out vTex0 : TEXCOORD0,
+#else
+    float2 out vTex0 : TEXCOORD0,
+#endif
+    float out vFog : TEXCOORD1)
+{
+    vPosition = aPosition.x * uWvp[0] + aPosition.y * uWvp[1] + aPosition.z * uWvp[2] + uWvp[3];
+    vColor = aColor.zyxw;
+#ifdef PROJ
+    vTex0 = aTex0 + uTextureOffset;
+#else
+    vTex0 = aTex0 + uTextureOffset.xy;
+#endif
+    float z = aPosition.x * uViewZ.x + aPosition.y * uViewZ.y + aPosition.z * uViewZ.z + uViewZ.w;
+    vFog = saturate(max((uFogValue.x - z) * uFogValue.y, uFogValue.z));
+}

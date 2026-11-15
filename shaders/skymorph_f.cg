@@ -1,0 +1,21 @@
+// UG2 sky morph: SkyMorphTexture (uTex1) to the diffuse map (uTex0) by uMorph.x, times colour * 2 (alpha too), then
+// vertex fog.
+
+float4 main(
+    float4 vColor : COLOR0,
+    float2 vTex0 : TEXCOORD0,
+    float vFog : TEXCOORD1,
+    uniform sampler2D uTex0,
+    uniform sampler2D uTex1,
+    uniform float4 uAlphaTest,
+    uniform float4 uFogColor,
+    uniform float4 uMorph) : COLOR
+{
+    float4 c = saturate(lerp(float4(tex2D(uTex1, vTex0)), float4(tex2D(uTex0, vTex0)), uMorph.x) * vColor * 2.0);
+#ifdef ATEST
+    if (uAlphaTest.x * c.a < uAlphaTest.y)
+        discard;
+#endif
+    c.rgb = lerp(uFogColor.rgb, c.rgb, vFog);
+    return c;
+}

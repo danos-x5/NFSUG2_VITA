@@ -1,0 +1,36 @@
+// worldheadlight effect: world plus the headlight texture projected by uHeadlightWvp and its depth lookup. FOG:
+// UG2's, which adds the vertex fog factor.
+
+void main(
+    float3 aPosition,
+    float4 aColor,
+    float2 aTex0,
+    uniform float4 uWvp[4],
+    uniform float4 uHeadlightWvp[4],
+    uniform float4 uTextureOffset,
+#ifdef FOG
+    uniform float4 uViewZ,
+    uniform float4 uFogValue,
+#endif
+    float4 out vPosition : POSITION,
+    float4 out vColor : COLOR0,
+    float2 out vTex0 : TEXCOORD0,
+#ifdef FOG
+    float4 out vTex1 : TEXCOORD1,
+    float out vFog : TEXCOORD2)
+#else
+    float4 out vTex1 : TEXCOORD1)
+#endif
+{
+    vPosition = aPosition.x * uWvp[0] + aPosition.y * uWvp[1] + aPosition.z * uWvp[2] + uWvp[3];
+    float4 tp = aPosition.x * uHeadlightWvp[0] + aPosition.y * uHeadlightWvp[1] + aPosition.z * uHeadlightWvp[2]
+              + uHeadlightWvp[3];
+    vColor = aColor.zyxw;
+    vTex0 = aTex0 + uTextureOffset.xy;
+    // xyw: projected headlight coordinates; w: depth fade coordinate.
+    vTex1 = float4(tp.xyw, tp.w * 0.005 + 0.5);
+#ifdef FOG
+    float z = aPosition.x * uViewZ.x + aPosition.y * uViewZ.y + aPosition.z * uViewZ.z + uViewZ.w;
+    vFog = saturate(max((uFogValue.x - z) * uFogValue.y, uFogValue.z));
+#endif
+}

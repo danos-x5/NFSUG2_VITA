@@ -1,0 +1,530 @@
+#include <lib/controls.h>
+#include <platform/cached.h>
+#include <platform/config.h>
+#include <platform/log.h>
+#ifdef __vita__
+#include <psp2/ctrl.h>
+#include <psp2/touch.h>
+#else
+#include <mutex>
+#endif
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <iterator>
+
+namespace win32 { namespace controls
+{
+
+// The Vita pad is presented as the EMS USB2 PlayStation 2 adapter (VID 0B43, PID 0003): the game has a built-in
+// binding table for that product, so no binding file is needed.
+const char* const JoystickName       = "Vita Gamepad";
+const x86::reg32  JoystickDeviceType = 0x0204;      // DIDEVTYPE_JOYSTICK, DIDEVTYPEJOYSTICK_GAMEPAD
+const GUID        JoystickProduct    = { 0x00030B43, 0x0000, 0x0000, { 0, 0, 'P', 'I', 'D', 'V', 'I', 'D' } };
+
+// ---- Layout ----
+
+// Joystick buttons by DirectInput index, as the EMS driver reports them on Windows: 0 Triangle, 1 Circle, 2 Cross,
+// 3 Square, 4 L2, 5 R2, 6 L1, 7 R1, 8 Select, 9 Start, 10 L3, 11 R3, 12-15 d-pad up, right, down, left (no hat).
+// Select is a tap (button 8): see the Mapper.
+struct ButtonMapping
+{
+    Input input;
+    int   button;
+};
+
+static const ButtonMapping s_buttons[] =
+{
+    { Triangle,  0 },
+    { Circle,    1 },
+    { Cross,     2 },
+    { Square,    3 },
+    { RearL2,    4 },
+    { RearR2,    5 },
+    { L,         6 },
+    { R,         7 },
+    { Start,     9 },
+    { RearL3,    10 },
+    { RearR3,    11 },
+    { DpadUp,    12 },
+    { DpadRight, 13 },
+    { DpadDown,  14 },
+    { DpadLeft,  15 },
+};
+
+// Button that a short press of Select (no chord) reports: respot.
+static const int s_selectTapButton = 8;
+static const int s_buttonCount = 16;
+
+// Keys held while an input is held in a text field: the d-pad moves its cursor (WM_KEYDOWN Left / Right).
+struct KeyMapping
+{
+    Input    input;
+    uint32_t keys;
+};
+
+static constexpr uint32_t keys(Key key) { return uint32_t(1) << key; }
+
+static const KeyMapping s_keys[] =
+{
+    { DpadLeft,  keys(KeyLeft)   },
+    { DpadRight, keys(KeyRight)  },
+};
+
+// Select + input. An input pressed while Select is held uses this table until it is released.
+struct Chord
+{
+    Input    input;
+    uint32_t keys;
+    int      button;    // -1 for none
+    bool     ime;       // opens the on-screen keyboard
+};
+
+static const Chord s_chords[] =
+{
+    { Triangle,  0, -1, true  },    // text entry
+};
+
+// How long a Select tap holds its button, enough for one game frame at 10 fps.
+static const uint64_t s_tapUs = 100000;
+
+// Left and right stick: dead zone and saturation as fractions of full deflection, and the response curve
+// y = linear * x + (1 - linear) * x^3 between them (finer aim near the centre).
+static const float s_stickDeadZone   = 0.08f;
+static const float s_stickSaturation = 0.94f;
+static const float s_stickLinear     = 0.6f;
+
+// ---- Keys ----
+
+// Order of enum Key.
+static const KeyCode s_keyCodes[] =
+{
+    { 0x26, 0x48, true  },  // up
+    { 0x28, 0x50, true  },  // down
+    { 0x25, 0x4B, true  },  // left
+    { 0x27, 0x4D, true  },  // right
+    { 0x1B, 0x01, false },  // escape
+    { 0x0D, 0x1C, false },  // enter
+    { 0x10, 0x2A, false },  // left shift
+    { 0x2E, 0x53, true  },  // delete
+    { 0x70, 0x3B, false },  // F1
+    { 0x71, 0x3C, false },  // F2
+    { 0x72, 0x3D, false },  // F3
+};
+static_assert(std::size(s_keyCodes) == KeyCount, "s_keyCodes must list every Key");
+static_assert(KeyCount <= 32, "keys are a 32-bit set");
+static_assert(InputCount <= 32, "inputs are a 32-bit set");
+
+// Set-1 scancodes of A..Z and 0..9.
+static const x86::reg8 s_letterScancodes[26] =
+{
+    0x1E, 0x30, 0x2E, 0x20, 0x12, 0x21, 0x22, 0x23, 0x17, 0x24, 0x25, 0x26, 0x32,
+    0x31, 0x18, 0x19, 0x10, 0x13, 0x1F, 0x14, 0x16, 0x2F, 0x11, 0x2D, 0x15, 0x2C,
+};
+static const x86::reg8 s_digitScancodes[10] = { 0x0B, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A };
+
+const KeyCode& keyCode(Key key)
+{
+    return s_keyCodes[key];
+}
+
+const KeyCode& shiftKey()
+{
+    return s_keyCodes[KeyLeftShift];
+}
+
+bool characterKey(char c, KeyCode* key, bool* shift)
+{
+    *shift = c >= 'A' && c <= 'Z';
+    if (c >= 'a' && c <= 'z')
+        *key = KeyCode{ x86::reg32('A' + (c - 'a')), s_letterScancodes[c - 'a'], false };
+    else if (*shift)
+        *key = KeyCode{ x86::reg32(c), s_letterScancodes[c - 'A'], false };
+    else if (c >= '0' && c <= '9')
+        *key = KeyCode{ x86::reg32(c), s_digitScancodes[c - '0'], false };
+    else if (c == ' ')
+        *key = KeyCode{ 0x20, 0x39, false };
+    else
+        return false;
+    return true;
+}
+
+// ---- Joystick ----
+
+uint32_t buttonMask(Input input)
+{
+    uint32_t mask = 0;
+    for (const ButtonMapping& mapping : s_buttons)
+    {
+        if (mapping.input == input)
+            mask |= uint32_t(1) << mapping.button;
+    }
+    return mask;
+}
+
+// The adapter's four axes: X, Y (left stick), Z (right stick Y) and Rz (right stick X).
+bool axisPresent(Axis axis)
+{
+    return axis == AxisX || axis == AxisY || axis == AxisZ || axis == AxisRz;
+}
+
+x86::reg32 presentAxisCount()
+{
+    return 4;
+}
+
+x86::reg32 joystickButtonCount()
+{
+    return s_buttonCount;
+}
+
+static const char* s_buttonNames[s_buttonCount] = {};
+static const char* s_axisNames[AxisCount] = {};
+
+void setObjectNames(const char* const* buttons, x86::reg32 buttonCount, const char* const* axes)
+{
+    for (x86::reg32 i = 0; i < x86::reg32(s_buttonCount); ++i)
+        s_buttonNames[i] = buttons && i < buttonCount ? buttons[i] : nullptr;
+    for (int i = 0; i < AxisCount; ++i)
+        s_axisNames[i] = axes ? axes[i] : nullptr;
+}
+
+const char* buttonName(x86::reg32 button)
+{
+    return button < x86::reg32(s_buttonCount) ? s_buttonNames[button] : nullptr;
+}
+
+const char* axisName(Axis axis)
+{
+    return axis >= 0 && axis < AxisCount ? s_axisNames[axis] : nullptr;
+}
+
+// ---- Pad ----
+
+#ifdef __vita__
+struct PadButton
+{
+    uint32_t mask;
+    Input    input;
+};
+
+static const PadButton s_padButtons[] =
+{
+    { SCE_CTRL_CROSS,    Cross     },
+    { SCE_CTRL_CIRCLE,   Circle    },
+    { SCE_CTRL_SQUARE,   Square    },
+    { SCE_CTRL_TRIANGLE, Triangle  },
+    { SCE_CTRL_LTRIGGER, L         },
+    { SCE_CTRL_RTRIGGER, R         },
+    { SCE_CTRL_SELECT,   Select    },
+    { SCE_CTRL_START,    Start     },
+    { SCE_CTRL_UP,       DpadUp    },
+    { SCE_CTRL_DOWN,     DpadDown  },
+    { SCE_CTRL_LEFT,     DpadLeft  },
+    { SCE_CTRL_RIGHT,    DpadRight },
+};
+
+static bool s_touchReady = false;
+static bool s_rearTouch = true;
+static bool s_frontTouch = false;
+static SceTouchPanelInfo s_panels[2];   // front, back
+
+// rear_touch=off and front_touch (off by default) choose the panels read.
+static void initTouch()
+{
+    s_touchReady = true;
+    s_rearTouch = pf::Config::getBool("rear_touch", true);
+    s_frontTouch = frontTouchEnabled();
+    for (int port = 0; port < 2; ++port)
+    {
+        if (!(port ? s_rearTouch : s_frontTouch))
+            continue;
+        sceTouchSetSamplingState(port, SCE_TOUCH_SAMPLING_STATE_START);
+        if (sceTouchGetPanelInfo(port, &s_panels[port]) < 0)
+            s_panels[port] = SceTouchPanelInfo{};
+        if (s_panels[port].maxAaX <= s_panels[port].minAaX || s_panels[port].maxAaY <= s_panels[port].minAaY)
+        {
+            s_panels[port].minAaX = 0;
+            s_panels[port].minAaY = 0;
+            s_panels[port].maxAaX = 1919;
+            s_panels[port].maxAaY = 1087;
+        }
+    }
+}
+
+static float stickValue(unsigned char raw)
+{
+    return (float(raw) - 127.5f) / 127.5f;
+}
+
+PadSample readPad()
+{
+    if (!s_touchReady)
+        initTouch();
+    SceCtrlData pad;
+    memset(&pad, 0, sizeof(pad));
+    sceCtrlPeekBufferPositive(0, &pad, 1);
+
+    PadSample sample;
+    sample.inputs = 0;
+    for (const PadButton& button : s_padButtons)
+    {
+        if (pad.buttons & button.mask)
+            sample.inputs |= bit(button.input);
+    }
+    sample.sticks[0] = stickValue(pad.lx);
+    sample.sticks[1] = stickValue(pad.ly);
+    sample.sticks[2] = stickValue(pad.rx);
+    sample.sticks[3] = stickValue(pad.ry);
+
+    SceTouchData touch;
+    if (s_rearTouch && sceTouchPeek(SCE_TOUCH_PORT_BACK, &touch, 1) >= 0)
+    {
+        const SceTouchPanelInfo& panel = s_panels[SCE_TOUCH_PORT_BACK];
+        const int centreX = (panel.minAaX + panel.maxAaX) / 2, centreY = (panel.minAaY + panel.maxAaY) / 2;
+        static const Input Quadrants[2][2] = { { RearL2, RearR2 }, { RearL3, RearR3 } };
+        for (SceUInt32 i = 0; i < touch.reportNum && i < SCE_TOUCH_MAX_REPORT; ++i)
+            sample.inputs |= bit(Quadrants[touch.report[i].y >= centreY][touch.report[i].x >= centreX]);
+    }
+    if (s_frontTouch && sceTouchPeek(SCE_TOUCH_PORT_FRONT, &touch, 1) >= 0)
+    {
+        const SceTouchPanelInfo& panel = s_panels[SCE_TOUCH_PORT_FRONT];
+        for (SceUInt32 i = 0; i < touch.reportNum && i < SCE_TOUCH_MAX_REPORT && sample.touchCount < PadSample::MaxTouches; ++i)
+        {
+            const float x = float(touch.report[i].x - panel.minAaX) / float(panel.maxAaX - panel.minAaX);
+            const float y = float(touch.report[i].y - panel.minAaY) / float(panel.maxAaY - panel.minAaY);
+            sample.touches[sample.touchCount++] = { std::min(std::max(x, 0.0f), 1.0f), std::min(std::max(y, 0.0f), 1.0f),
+                                                    int(touch.report[i].id) };
+        }
+    }
+    return sample;
+}
+#else
+namespace
+{
+
+std::mutex  s_padMutex;
+PadSource   s_padSource = nullptr;
+void*       s_padContext = nullptr;
+PadSample   s_padState = { 0, { 0.0f, 0.0f, 0.0f, 0.0f } };
+
+}
+
+void setPadSource(PadSource source, void* context)
+{
+    std::lock_guard<std::mutex> guard(s_padMutex);
+    s_padSource = source;
+    s_padContext = context;
+}
+
+void setPadState(const PadSample& sample)
+{
+    std::lock_guard<std::mutex> guard(s_padMutex);
+    s_padState = sample;
+}
+
+PadSample readPad()
+{
+    PadSource source;
+    void* context;
+    PadSample state;
+    {
+        std::lock_guard<std::mutex> guard(s_padMutex);
+        source = s_padSource;
+        context = s_padContext;
+        state = s_padState;
+    }
+    return source ? source(context) : state;
+}
+#endif
+
+bool frontTouchEnabled()
+{
+    return pf::cachedStatic([] { return pf::Config::getBool("front_touch", true); });
+}
+
+// ---- Pad script ----
+
+static const char* const s_inputNames[InputCount] =
+{
+    "cross", "circle", "square", "triangle", "l", "r", "select", "start",
+    "up", "down", "left", "right", "l2", "r2", "l3", "r3",
+};
+
+static bool parseInputs(const char* text, uint32_t* inputs)
+{
+    *inputs = 0;
+    if (strcmp(text, "-") == 0)
+        return true;
+    while (*text)
+    {
+        const char* end = strchr(text, '+');
+        const size_t length = end ? size_t(end - text) : strlen(text);
+        int input = 0;
+        while (input < InputCount && (strlen(s_inputNames[input]) != length ||
+                                      strncmp(s_inputNames[input], text, length) != 0))
+            ++input;
+        if (input == InputCount)
+            return false;
+        *inputs |= bit(Input(input));
+        text += length + (end ? 1 : 0);
+    }
+    return true;
+}
+
+bool PadScript::load(const char* path)
+{
+    m_entries.clear();
+    FILE* file = fopen(path, "r");
+    if (!file)
+    {
+        pf::logError("pad script %s: cannot open", path);
+        return false;
+    }
+    char line[256];
+    int number = 0;
+    bool ok = true;
+    while (ok && fgets(line, sizeof(line), file))
+    {
+        ++number;
+        char* hash = strchr(line, '#');
+        if (hash)
+            *hash = 0;
+        unsigned long long step;
+        char inputs[160];
+        Entry entry = { 0, { 0, { 0.0f, 0.0f, 0.0f, 0.0f } } };
+        float* sticks = entry.sample.sticks;
+        PadSample::Touch& touch = entry.sample.touches[0];
+        const int fields = sscanf(line, "%llu %159s %f %f %f %f %f %f", &step, inputs, &sticks[0], &sticks[1],
+                                  &sticks[2], &sticks[3], &touch.x, &touch.y);
+        touch.id = 0;
+        entry.sample.touchCount = fields >= 8 && touch.x >= 0.0f ? 1 : 0;
+        if (fields <= 0)
+            continue;
+        entry.step = step;
+        ok = fields >= 2 && parseInputs(inputs, &entry.sample.inputs) &&
+             (m_entries.empty() || m_entries.back().step <= entry.step);
+        if (ok)
+            m_entries.push_back(entry);
+        else
+            pf::logError("pad script %s:%d: expected \"<step> <inputs|-> [lx ly rx ry [tx ty]]\" in step order", path,
+                         number);
+    }
+    fclose(file);
+    if (!ok)
+        m_entries.clear();
+    return ok;
+}
+
+PadSample PadScript::sampleAt(uint64_t step) const
+{
+    PadSample sample = { 0, { 0.0f, 0.0f, 0.0f, 0.0f } };
+    for (const Entry& entry : m_entries)
+    {
+        if (entry.step > step)
+            break;
+        sample = entry.sample;
+    }
+    return sample;
+}
+
+// ---- Mapper ----
+
+static const Chord* findChord(Input input)
+{
+    for (const Chord& chord : s_chords)
+    {
+        if (chord.input == input)
+            return &chord;
+    }
+    return nullptr;
+}
+
+Mapper::Mapper()
+    :   m_previous(0)
+    ,   m_chorded(0)
+    ,   m_selectUsed(false)
+    ,   m_selectPulseEndUs(0)
+{
+}
+
+State Mapper::update(const PadSample& pad, uint64_t nowUs)
+{
+    State state;
+    memset(&state, 0, sizeof(state));
+    const uint32_t inputs = pad.inputs;
+    const uint32_t pressed = inputs & ~m_previous;
+    const uint32_t released = m_previous & ~inputs;
+    const bool select = (inputs & bit(Select)) != 0;
+
+    if (pressed & bit(Select))
+        m_selectUsed = false;
+    m_chorded &= inputs;
+    for (int input = 0; input < InputCount; ++input)
+    {
+        if (!(pressed & bit(Input(input))) || input == Select || !select)
+            continue;
+        const Chord* chord = findChord(Input(input));
+        if (!chord)
+            continue;
+        m_chorded |= bit(Input(input));
+        m_selectUsed = true;
+        if (chord->ime)
+            state.openIme = true;
+    }
+    if ((released & bit(Select)) && !m_selectUsed)
+        m_selectPulseEndUs = nowUs + s_tapUs;
+    m_previous = inputs;
+
+    const uint32_t normal = inputs & ~m_chorded;
+    for (const ButtonMapping& mapping : s_buttons)
+    {
+        if (normal & bit(mapping.input))
+            state.buttons |= uint32_t(1) << mapping.button;
+    }
+    for (const KeyMapping& mapping : s_keys)
+    {
+        if (normal & bit(mapping.input))
+            state.keys |= mapping.keys;
+    }
+    for (const Chord& chord : s_chords)
+    {
+        if (!(m_chorded & bit(chord.input)))
+            continue;
+        state.keys |= chord.keys;
+        if (chord.button >= 0)
+            state.buttons |= uint32_t(1) << chord.button;
+    }
+    if (nowUs < m_selectPulseEndUs)
+        state.buttons |= uint32_t(1) << s_selectTapButton;
+
+    state.axes[AxisX] = pad.sticks[0];
+    state.axes[AxisY] = pad.sticks[1];
+    state.axes[AxisZ] = pad.sticks[3];
+    state.axes[AxisRz] = pad.sticks[2];
+    state.pov = -1;
+    return state;
+}
+
+// ---- Stick shaping ----
+
+void shapeStick(float x, float y, uint32_t deadZone, uint32_t saturation, float* outX, float* outY)
+{
+    const float dead = std::fmax(s_stickDeadZone, float(deadZone) / 10000.0f);
+    const float full = std::fmin(s_stickSaturation, float(saturation) / 10000.0f);
+    const float magnitude = std::sqrt(x * x + y * y);
+    if (magnitude <= dead)
+    {
+        *outX = 0.0f;
+        *outY = 0.0f;
+        return;
+    }
+    const float t = full > dead ? std::fmin(1.0f, (magnitude - dead) / (full - dead)) : 1.0f;
+    const float scale = (s_stickLinear * t + (1.0f - s_stickLinear) * t * t * t) / magnitude;
+    *outX = std::fmax(-1.0f, std::fmin(1.0f, x * scale));
+    *outY = std::fmax(-1.0f, std::fmin(1.0f, y * scale));
+}
+
+}}

@@ -184,7 +184,6 @@ const Setting s_vitaSettings[] = {
     { "g_CarEnvironmentMapUpdateData", 1 },
     { "g_CarHeadlightEnable", 1 },
     { "g_CrowdEnable", 1 },
-    { "g_RoadReflectionEnable", 2 },
     { "g_FogEnable", 1 },
     { "g_MotionBlurEnable", 1 },
     { "g_LightStreaksEnable", 1 },

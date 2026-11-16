@@ -1,7 +1,13 @@
 # Third-party code and licensing
 
-This repository's own code is licensed under the MIT License ([LICENSE](LICENSE)). It grew out of the UG1VITA port,
-which is also MIT licensed. The parts below come from other projects and keep their own terms.
+This repository's own code is licensed under the MIT License ([LICENSE](LICENSE)), which covers the port's own
+source. The parts below come from other projects and keep their own terms.
+
+## UG1VITA
+
+This project grew out of [UG1VITA](https://github.com/NDRWhun/UG1VITA) by NDRWhun, the PS Vita port of Need for
+Speed Underground, and still contains code from it. UG1VITA is MIT licensed; its copyright notice is kept in
+[LICENSE](LICENSE) beside this project's own, as that license requires.
 
 ## pefile
 

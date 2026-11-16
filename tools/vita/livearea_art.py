@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Makes the Vita icon and LiveArea images from the logo in your own game files.
+"""Makes the Vita icon and LiveArea images from the logo in your own game files, or checks your own images.
 
-Writes sce_sys/game/, which git ignores and the build prefers over the plain default images.
+Writes sce_sys/game/, which git ignores and the build prefers over the plain defaults; --vpk puts them into a VPK.
 """
 
 import argparse
 import math
 import os
+import shutil
 import struct
 import sys
+import zipfile
 import zlib
 
 HEADERS = 0x33310004
@@ -206,22 +208,50 @@ def write_png(path, width, height, palette, indices):
         f.write(b''.join(parts))
 
 
-def main():
-    here = os.path.dirname(os.path.abspath(__file__))
-    parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
-    parser.add_argument('game', help='the game folder, the one with SPEED2.EXE')
-    parser.add_argument('--out', default=os.path.join(here, '..', '..', 'sce_sys', 'game'),
-                        help='output folder (default: sce_sys/game)')
-    args = parser.parse_args()
-    source = os.path.join(args.game, LOGO_FILE)
+IMAGES = (('icon0.png', 128, 128), (os.path.join('livearea', 'contents', 'bg.png'), 840, 500),
+          (os.path.join('livearea', 'contents', 'startup.png'), 280, 158))
+
+
+def check_image(path, width, height):
+    """Returns why the Vita would reject this image, or None."""
+    try:
+        with open(path, 'rb') as f:
+            head = f.read(26)
+    except OSError:
+        return 'is missing'
+    if len(head) < 26 or head[:8] != b'\x89PNG\r\n\x1a\n':
+        return 'is not a PNG file'
+    found_width, found_height, depth, colour = struct.unpack('>IIBB', head[16:26])
+    if (found_width, found_height) != (width, height):
+        return 'is %dx%d, it must be %dx%d' % (found_width, found_height, width, height)
+    if depth != 8 or colour != 3:
+        return 'must be an 8-bit palette PNG (256 colours or fewer), as pngquant makes'
+    return None
+
+
+def copy_images(source, out):
+    """Checks a folder of your own images and copies them."""
+    for name, width, height in IMAGES:
+        path = os.path.join(source, name)
+        if not os.path.isfile(path):
+            path = os.path.join(source, os.path.basename(name))
+        problem = check_image(path, width, height)
+        if problem:
+            sys.exit('%s %s.' % (os.path.join(source, os.path.basename(name)), problem))
+        os.makedirs(os.path.dirname(os.path.join(out, name)), exist_ok=True)
+        if os.path.abspath(path) != os.path.abspath(os.path.join(out, name)):
+            shutil.copyfile(path, os.path.join(out, name))
+
+
+def from_game(game, out):
+    """Makes the three images from the game's logo."""
+    source = os.path.join(game, LOGO_FILE)
     if not os.path.isfile(source):
         sys.exit('%s not found: give the game folder, the one with SPEED2.EXE.' % source)
     try:
         logo = trim(*load_texture(source, LOGO_NAME))
     except (ValueError, struct.error, IndexError) as error:
         sys.exit('Could not read the logo (%s). The build will use the plain default images.' % error)
-
-    out = os.path.normpath(args.out)
     contents = os.path.join(out, 'livearea', 'contents')
     size = fit(logo[0], logo[1], 118, 118)
     icon = centred(128, 128, (255, 255, 255, 255), size[0], size[1], resize(*logo, *size))
@@ -230,7 +260,47 @@ def main():
     startup = centred(280, 158, (0, 0, 0, 77), size[0], size[1], resize(*logo, *size))
     write_png(os.path.join(contents, 'startup.png'), 280, 158, *quantise(startup))
     write_png(os.path.join(contents, 'bg.png'), 840, 500, *glow(840, 500))
+
+
+def patch_vpk(vpk, out):
+    """Replaces the three images inside a VPK, leaving the rest."""
+    wanted = {'sce_sys/' + name.replace(os.sep, '/'): os.path.join(out, name) for name, _, _ in IMAGES}
+    temporary = vpk + '.new'
+    if not zipfile.is_zipfile(vpk):
+        sys.exit('%s is not a VPK file.' % vpk)
+    with zipfile.ZipFile(vpk) as old, zipfile.ZipFile(temporary, 'w', zipfile.ZIP_DEFLATED) as new:
+        missing = set(wanted) - set(old.namelist())
+        if missing or 'eboot.bin' not in old.namelist():
+            os.remove(temporary)
+            sys.exit('%s does not look like a NFSU2VITA VPK.' % vpk)
+        for item in old.infolist():
+            if item.filename in wanted:
+                new.write(wanted[item.filename], item.filename)
+            else:
+                new.writestr(item, old.read(item.filename))
+    os.replace(temporary, vpk)
+
+
+def main():
+    here = os.path.dirname(os.path.abspath(__file__))
+    parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
+    parser.add_argument('game', nargs='?', help='the game folder, the one with SPEED2.EXE')
+    parser.add_argument('--images', help='use your own icon0.png, bg.png and startup.png from this folder instead')
+    parser.add_argument('--out', default=os.path.join(here, '..', '..', 'sce_sys', 'game'),
+                        help='output folder (default: sce_sys/game)')
+    parser.add_argument('--vpk', help='also put the images into this VPK, so it need not be built again')
+    args = parser.parse_args()
+    if bool(args.game) == bool(args.images):
+        parser.error('give the game folder, or --images with a folder of your own images')
+    out = os.path.normpath(args.out)
+    if args.images:
+        copy_images(args.images, out)
+    else:
+        from_game(args.game, out)
     print('Wrote icon0.png, livearea/contents/startup.png and bg.png to ' + out)
+    if args.vpk:
+        patch_vpk(args.vpk, out)
+        print('Put them into ' + args.vpk)
 
 
 if __name__ == '__main__':

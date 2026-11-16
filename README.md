@@ -25,7 +25,7 @@ Changes fall into two groups. Compatibility changes replace what the Vita does n
 </p>
 
 > **Playtest.** The game is playable in all aspects. The entire career mode is working, and the framerate is good in most scenes.
-> Expect rough edges; [Known issues](#known-issues) lists the ones we know.
+> Expect rough edges; [Known issues](#known-issues--caveats) lists the ones we know.
 
 ## Requirements
 
@@ -36,6 +36,8 @@ Changes fall into two groups. Compatibility changes replace what the Vita does n
 - Only the **US release** of version 1.2 has been tested. The EU release will be tested soon.
 - PS Vita with HENkaku / Ensō and [VitaShell](https://github.com/TheOfficialFloW/VitaShell)
 - About 2.5 GB free on the memory card
+- Only if you build the VPK yourself instead of downloading it: a Mac with Apple silicon or an x86-64 Windows PC
+  (see [Build](#build)). These are the two kinds of computer the build is tested on.
 - [CapUnlocker](https://github.com/GrapheneCt/CapUnlocker) is recommended: it lets the port use the Vita's fourth
   CPU core.
 - [PSVshell](https://github.com/Electry/PSVshell) is optional but recommended in this playtest state: overclocking
@@ -45,17 +47,40 @@ The port sets the Vita's CPU and GPU clocks itself, so the game runs without an 
 
 ## Install
 
-1. Install `NFSU2VITA.vpk` with VitaShell.
-2. Convert the movies in your game folder on the PC first (see [Movies](#movies)). Without this step the movies
-   will be very slow.
-3. On your PC, open the game folder (the one with `SPEED2.EXE`) and copy **everything inside it**, every file and
-   folder including `MOVIES`, to `ux0:data/NeedForSpeedUnderground2/` (VitaShell's FTP or USB mode works).
+1. Download `NFSU2VITA.vpk` from the [Releases](../../releases) page. You can also build it yourself from your game
+   folder (see [Build](#build)).
+2. Copy `NFSU2VITA.vpk` to the Vita and install it with VitaShell.
+3. (Recommended) Convert the movies in your game folder (see [Movies](#movies)). Without this step the movies will be very
+   slow.
+4. On your computer, open the game folder (the one with `SPEED2.EXE`) and copy **everything inside it**, every file
+   and folder including `MOVIES`, to `ux0:data/NeedForSpeedUnderground2/` (VitaShell's FTP or USB mode works).
    `SPEED2.EXE` must end up at `ux0:data/NeedForSpeedUnderground2/SPEED2.EXE`, not in a subfolder.
-4. Start the game from the home screen.
+5. Start the game from the home screen.
 
 If the game closes right away, `ux0:data/NeedForSpeedUnderground2/NeedForSpeedUnderground2.log` says what is missing.
 
 Your career is saved in `ux0:data/NeedForSpeedUnderground2/save/`. Copy that folder to back it up.
+
+### Icon and LiveArea images
+
+The downloadable VPK has the game's logo on its icon and LiveArea start button. The images in this repository are
+plain ones with the game's name as text; a script makes the logo ones from your own game files. It needs only
+[Python 3](https://www.python.org/downloads/) and a copy of this repository.
+
+If you build the VPK yourself, `tools/build.py` makes the logo images from your game folder as part of the build.
+To put them on a VPK that has plain ones, without building again:
+
+```sh
+python3 -I tools/vita/livearea_art.py "<game folder>" --vpk NFSU2VITA.vpk
+```
+
+To use your own pictures instead, put `icon0.png` (128x128), `bg.png` (840x500, the LiveArea background) and
+`startup.png` (280x158, the start button) in a folder. Each must be an 8-bit palette PNG, 256 colours or fewer,
+which [pngquant](https://pngquant.org) makes from an ordinary PNG; the script says so if one is not. Then:
+
+```sh
+python3 -I tools/vita/livearea_art.py --images "<your folder>" --vpk NFSU2VITA.vpk
+```
 
 ### PC save files
 
@@ -179,7 +204,7 @@ The port checks `SPEED2.EXE` when it starts. A modified executable of the origin
 ## Build
 
 You need your installed copy of the game and [Python 3](https://www.python.org/downloads/). One command does the
-rest, on Windows, macOS or Linux:
+rest, on a Mac with Apple silicon or an x86-64 Windows PC (Linux is set up the same way but untested):
 
 ```sh
 python3 tools/build.py "<folder with SPEED2.EXE>"   # -> build-vita/NFSU2VITA.vpk
@@ -215,8 +240,9 @@ ninja -C build-vita                                    # -> build-vita/NFSU2VITA
 - The generator is made for the 1.2 executable named under [Requirements](#requirements). With any other it prints a
   warning and asks before continuing (`--accept-sha256 <hash>` skips the question); see [Mods](#mods).
 - The build uses the profile in `pgo/` by default; `pgo/README.md` explains how it was recorded.
-- The repository's icon and LiveArea images are plain text. Step 3 writes ones with the game's logo to `sce_sys/game/`,
-  which the build uses when it is there; run it before `cmake`.
+- The icon and LiveArea images in `sce_sys/` are plain. Step 3 makes ones with the game's logo from your own game
+  files into `sce_sys/game/`, which the build uses when it is there; run it before `cmake`. See
+  [Icon and LiveArea images](#icon-and-livearea-images).
 - Shaders ship prebuilt in `shaders/gxp/`.
 - The build uses clang and lld only.
 
@@ -247,14 +273,3 @@ trademark of Electronic Arts. You must own the game.
 ## Contributions
 
 Pull requests are welcome. Changes to engine behaviour are accepted when their purpose is performance: for example cheaper particles or more aggressive level of detail which only affect visual fidelity. They should be behind a setting, say what they change visually, and come with a before and after measurement on a real Vita. Changes to gameplay (handling, AI, career) are out of scope.
-
-<!-- BADGES -->
-
-[platform-shield]: https://img.shields.io/badge/PS%20Vita-native-2f7bff?style=for-the-badge&labelColor=1a1f3d&logo=playstation&logoColor=white
-[platform-url]: https://vitasdk.org
-[resolution-shield]: https://img.shields.io/badge/960x544-native-b44dff?style=for-the-badge&labelColor=1a1f3d
-[resolution-url]: #settings
-[renderer-shield]: https://img.shields.io/badge/renderer-sceGxm-ff3b5c?style=for-the-badge&labelColor=1a1f3d
-[renderer-url]: #build
-[license-shield]: https://img.shields.io/badge/license-MIT-ff3b5c?style=for-the-badge&labelColor=1a1f3d
-[license-url]: LICENSE

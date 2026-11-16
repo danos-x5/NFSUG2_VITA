@@ -107,7 +107,7 @@ Folders folders(int, char**)
 }
 #endif
 
-// Reads the executable; another hash of the same size only warns.
+// Reads the executable; only the host build checks it.
 bool loadExecutable(const std::string& folder, std::vector<uint8_t>& image)
 {
     const std::string path = join(folder, ExeName);
@@ -128,6 +128,13 @@ bool loadExecutable(const std::string& folder, std::vector<uint8_t>& image)
         pf::logError("%s: reading %u bytes failed", path.c_str(), unsigned(image.size()));
         return false;
     }
+#ifdef __vita__
+    // The sections are mapped by file offset: a shorter file is padded so that never reads past its end.
+    if (image.size() < ug2::layout::exeSize)
+        image.resize(ug2::layout::exeSize);
+    pf::logInfo("%s: %u bytes", path.c_str(), unsigned(size));
+    return true;
+#else
     const std::string hash = pf::sha256Hex(image.data(), image.size());
     if (image.size() != ug2::layout::exeSize)
     {
@@ -145,6 +152,7 @@ bool loadExecutable(const std::string& folder, std::vector<uint8_t>& image)
     }
     pf::logInfo("%s: %u bytes, SHA-256 %s", path.c_str(), unsigned(image.size()), hash.c_str());
     return true;
+#endif
 }
 
 // Headers and section data at their guest addresses, zero-filled to size.

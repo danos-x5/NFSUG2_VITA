@@ -175,8 +175,8 @@ resolution stays at 960x544. Above the Medium detail setting the Vita will defin
 All mods are untested at this stage. The only kinds that could work are PC mods that change `SPEED2.EXE` and/or the
 game's asset files. They may cause crashes or major performance problems.
 
-The port checks `SPEED2.EXE` when it starts. A modified executable of the original size starts with a warning in
-`NeedForSpeedUnderground2.log`; one of another size does not start.
+The port does not check `SPEED2.EXE` on the Vita. A VPK is built from one particular executable, so a different one
+beside it may crash or misbehave.
 
 ## Known issues / caveats
 

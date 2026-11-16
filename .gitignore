@@ -8,7 +8,7 @@
 !/shaders/gxp/*.gxp
 param.sfo
 
-# Generated recompilation (tools/ug2-generate.ps1): derived from the game executable
+# Generated recompilation (tools/build.py): derived from the game executable
 /src/ug2/generated/
 
 # Icon and LiveArea images made from the user's game files (tools/vita/livearea_art.py)
@@ -44,9 +44,6 @@ param.sfo
 *.profdata
 *.gcda
 
-# Local environment
-tools/ug2-env.local.ps1
-
 # Editors / OS
 .vscode/
 .idea/
@@ -57,14 +54,12 @@ __pycache__/
 # Agent worktrees
 .claude/
 
-# Game folder remembered by tools/ug2-build.ps1
+# Game folder remembered by tools/build.py
 /build-game-dir.txt
 
 # Python packages fetched by tools/recompiler/bootstrap.py
 /.pydeps/
 
-# VitaSDK and LLVM fetched by tools/deps.py
-/.deps/
 
 # Generated from the game's effects by tools/fx/fxtable.py
 /include/winapi/d3d9_fxtables.h

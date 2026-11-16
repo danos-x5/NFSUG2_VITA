@@ -84,13 +84,13 @@ set(CMAKE_CXX_FLAGS_DEBUG "-O0 -g -DDEBUG -D_DEBUG" CACHE STRING "C++ debug flag
 # VitaSDK's script). The linker script is added in cmake/clang.cmake.
 set(CMAKE_EXE_LINKER_FLAGS
   "-fuse-ld=lld -nostdlib -Wl,-q -Wl,-z,nocopyreloc -Wl,-z,norelro -Wl,-z,max-page-size=0x1000 -Wl,--no-rosegment \
--Wl,--no-eh-frame-hdr -Wl,--pic-veneer -Wl,--defsym=__sce_headroom=0x2000 -L${NFSU_GCC_LIB_DIR} \
-${NFSU_GCC_LIB_DIR}/crti.o ${NFSU_GCC_LIB_DIR}/crtbegin.o ${NFSU_VITA_SYSROOT}/lib/crt0.o"
+-Wl,--no-eh-frame-hdr -Wl,--pic-veneer -Wl,--defsym=__sce_headroom=0x2000 \"-L${NFSU_GCC_LIB_DIR}\" \
+\"${NFSU_GCC_LIB_DIR}/crti.o\" \"${NFSU_GCC_LIB_DIR}/crtbegin.o\" \"${NFSU_VITA_SYSROOT}/lib/crt0.o\""
   CACHE STRING "executable linker flags" FORCE)
 set(NFSU_VITA_LIBRARIES
   "-lstdc++ -lm -Wl,--start-group -lgcc -lc -lSceRtc_stub -lSceSysmem_stub -lSceKernelThreadMgr_stub \
 -lSceKernelModulemgr_stub -lSceIofilemgr_stub -lSceProcessmgr_stub -lSceLibKernel_stub -lSceNet_stub \
--lSceNetCtl_stub -lSceSysmodule_stub -Wl,--end-group ${NFSU_GCC_LIB_DIR}/crtend.o ${NFSU_GCC_LIB_DIR}/crtn.o")
+-lSceNetCtl_stub -lSceSysmodule_stub -Wl,--end-group \"${NFSU_GCC_LIB_DIR}/crtend.o\" \"${NFSU_GCC_LIB_DIR}/crtn.o\"")
 set(CMAKE_C_STANDARD_LIBRARIES   "${NFSU_VITA_LIBRARIES}" CACHE STRING "C libraries" FORCE)
 set(CMAKE_CXX_STANDARD_LIBRARIES "${NFSU_VITA_LIBRARIES}" CACHE STRING "C++ libraries" FORCE)
 

@@ -1,4 +1,4 @@
-# The clang build (NFSU_COMPILER=clang): lld linker script, ThinLTO and profile-guided optimisation.
+# The clang build: lld linker script, ThinLTO and profile-guided optimisation.
 # Sets NFSU_CLANG_FLAGS (runtime, main), NFSU_CLANG_GAME_FLAGS (generated code), NFSU_CLANG_LIGHT_FLAGS (nfsu.cpp),
 # NFSU_CLANG_SOURCES, NFSU_CLANG_LINK_FLAGS and NFSU_LLD_SCRIPT.
 #   NFSU_LTO=ON            ThinLTO over the generated code, the runtime and main.cpp (default)

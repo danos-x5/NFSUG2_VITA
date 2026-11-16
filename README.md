@@ -178,17 +178,20 @@ The port checks `SPEED2.EXE` when it starts. A modified executable of the origin
 
 ## Build
 
-You need your installed copy of the game, [Python 3](https://www.python.org/downloads/),
-[CMake](https://cmake.org) 3.16 or newer, [Ninja](https://ninja-build.org), [VitaSDK](https://vitasdk.org) with
-`VITASDK` set, and [LLVM](https://llvm.org) (clang and lld) with `NFSU_LLVM` set to its root.
+You need your installed copy of the game and [Python 3](https://www.python.org/downloads/). One command does the
+rest, on Windows, macOS or Linux:
 
-On Windows, one script does everything:
-
-```powershell
-tools/ug2-build.ps1 -Game "<folder with SPEED2.EXE>"   # -> build-Release-clang/NFSU2VITA.vpk
+```sh
+python3 tools/build.py "<folder with SPEED2.EXE>"   # -> build-vita/NFSU2VITA.vpk
 ```
 
-By hand, from the repository root:
+It uses [VitaSDK](https://vitasdk.org) and [LLVM](https://llvm.org) (clang 20 or newer, with lld) if they are
+installed, found through `VITASDK`, `NFSU_LLVM`, `PATH` or Homebrew. Otherwise it downloads pinned versions once,
+about 1 GB on Windows and 1.6 GB on macOS or Linux, into a folder in your user profile that later builds reuse.
+[CMake](https://cmake.org) and [Ninja](https://ninja-build.org) are installed with pip when missing. The first build
+takes a while; later ones only redo what changed.
+
+By hand, with VitaSDK, LLVM, CMake 3.16 or newer and Ninja installed, from the repository root:
 
 ```sh
 # 0. Where VitaSDK and LLVM are installed (your paths may differ)
@@ -205,17 +208,17 @@ python3 -I tools/fx/fxtable.py --exe "<game folder>/SPEED2.EXE" --out include/wi
 python3 -I tools/vita/livearea_art.py "<game folder>"
 
 # 4. The VPK
-cmake -S . -B build-vita -G Ninja -DCMAKE_BUILD_TYPE=Release -DNFSU_COMPILER=clang -DNFSU_GAME_OPT=-O2
+cmake -S . -B build-vita -G Ninja -DCMAKE_BUILD_TYPE=Release -DNFSU_GAME_OPT=-O2
 ninja -C build-vita                                    # -> build-vita/NFSU2VITA.vpk
 ```
 
 - The generator is made for the 1.2 executable named under [Requirements](#requirements). With any other it prints a
   warning and asks before continuing (`--accept-sha256 <hash>` skips the question); see [Mods](#mods).
-- The clang build uses the profile in `pgo/` by default; `pgo/README.md` explains how it was recorded.
+- The build uses the profile in `pgo/` by default; `pgo/README.md` explains how it was recorded.
 - The repository's icon and LiveArea images are plain text. Step 3 writes ones with the game's logo to `sce_sys/game/`,
   which the build uses when it is there; run it before `cmake`.
 - Shaders ship prebuilt in `shaders/gxp/`.
-- `-DNFSU_COMPILER=gcc` builds with VitaSDK's own compiler instead; it is slower on the console.
+- The build uses clang and lld only.
 
 | Path | Contents |
 |------|----------|

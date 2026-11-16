@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""Builds NFSU2VITA.vpk from your game folder in one step, on Windows, macOS or Linux.
+
+python3 tools/build.py "<game folder>" [--clean] [--regenerate] [--jobs N] [--build-dir DIR]
+Finds or downloads the toolchain, translates the game code when it changed, then configures and builds.
+"""
+
+import argparse
+import hashlib
+import os
+import shutil
+import subprocess
+import sys
+import sysconfig
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.normpath(os.path.join(HERE, '..'))
+sys.path.insert(0, HERE)
+import deps  # noqa: E402
+
+EXE = 'SPEED2.EXE'
+REMEMBERED = os.path.join(REPO, 'build-game-dir.txt')
+GENERATED = os.path.join(REPO, 'src', 'ug2', 'generated')
+FX_TABLES = os.path.join(REPO, 'include', 'winapi', 'd3d9_fxtables.h')
+GAME_ART = os.path.join(REPO, 'sce_sys', 'game', 'icon0.png')
+
+
+def step(text):
+    print('\n== ' + text, flush=True)
+
+
+def run(command, **options):
+    """Runs a command; returns its exit code."""
+    return subprocess.call(command, **options)
+
+
+def find_exe(folder):
+    """The executable's path in a folder, whatever its letter case."""
+    if folder and os.path.isdir(folder):
+        for name in os.listdir(folder):
+            if name.upper() == EXE:
+                return os.path.join(folder, name)
+    return None
+
+
+def game_folder(given):
+    """The game folder: argument, NFSU_GAME_DIR, or the last one used."""
+    candidates = [given, os.environ.get('NFSU_GAME_DIR')]
+    if os.path.isfile(REMEMBERED):
+        with open(REMEMBERED, encoding='utf-8-sig') as f:
+            candidates.append(f.read().strip())
+    for folder in candidates:
+        if not folder:
+            continue
+        if find_exe(folder):
+            return os.path.abspath(folder)
+        if folder == given:
+            sys.exit('%s not found in %s. Give the game folder, the one with %s.' % (EXE, given, EXE))
+    return None
+
+
+def generator_stamp(folder):
+    """Fingerprint of everything the translated code depends on."""
+    files = [find_exe(folder)]
+    for root, _, names in os.walk(folder):
+        if os.path.basename(root).upper() == 'MOVIES':
+            continue
+        files += [os.path.join(root, n) for n in names if n.lower().endswith('.abk')]
+    for root, _, names in os.walk(os.path.join(HERE, 'recompiler')):
+        if '__pycache__' not in root:
+            files += [os.path.join(root, n) for n in names if n.endswith(('.py', '.txt'))]
+    digest = hashlib.sha256()
+    for path in sorted(files):
+        with open(path, 'rb') as f:
+            digest.update(hashlib.sha256(f.read()).digest())
+    return digest.hexdigest()
+
+
+def build_tool(name):
+    """Path of cmake or ninja, installed with pip when missing."""
+    found = shutil.which(name)
+    if found:
+        return found
+    step('Installing %s with pip' % name)
+    if run([sys.executable, '-m', 'pip', 'install', '--user', name]) != 0:
+        sys.exit('Could not install %s. Install it yourself and run this again.' % name)
+    folders = [sysconfig.get_path('scripts'), sysconfig.get_path('scripts', os.name + '_user')]
+    found = shutil.which(name, path=os.pathsep.join(f for f in folders if f))
+    if not found:
+        sys.exit('%s was installed with pip but is not where pip puts programs. Add it to PATH.' % name)
+    return found
+
+
+def translate(folder, force):
+    """Game code and effect tables, only when their inputs changed."""
+    stamp_file = os.path.join(GENERATED, '.stamp')
+    stamp = generator_stamp(folder)
+    current = open(stamp_file).read().strip() if os.path.isfile(stamp_file) else ''
+    changed = force or stamp != current or not os.path.isfile(os.path.join(GENERATED, 'ug2.cpp'))
+    if changed:
+        step('Translating the game code (about 5 minutes)')
+        os.makedirs(GENERATED, exist_ok=True)
+        command = [sys.executable, os.path.join(HERE, 'recompiler', 'generate.py'), '--game', 'ug2',
+                   '--binaries', folder, '--out', GENERATED]
+        if run(command) != 0:
+            sys.exit('Translating the game code failed.')
+        with open(stamp_file, 'w') as f:
+            f.write(stamp + '\n')
+    if changed or not os.path.isfile(FX_TABLES):
+        step('Making the effect tables')
+        command = [sys.executable, '-I', os.path.join(HERE, 'fx', 'fxtable.py'), '--exe', find_exe(folder),
+                   '--out', FX_TABLES]
+        if run(command) != 0:
+            sys.exit('Making the effect tables failed.')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__.split('\n')[0])
+    parser.add_argument('game', nargs='?', help='the game folder, the one with SPEED2.EXE (remembered afterwards)')
+    parser.add_argument('--clean', action='store_true', help='delete the build folder first')
+    parser.add_argument('--regenerate', action='store_true', help='translate the game code again')
+    parser.add_argument('--jobs', type=int, default=os.cpu_count() or 4, help='parallel compile jobs')
+    parser.add_argument('--build-dir', default=os.path.join(REPO, 'build-vita'), help='build folder')
+    args = parser.parse_args()
+
+    folder = game_folder(args.game)
+    have_code = os.path.isfile(os.path.join(GENERATED, 'ug2.cpp')) and os.path.isfile(FX_TABLES)
+    if not folder and not have_code:
+        sys.exit('Give the game folder: python3 tools/build.py "<folder with %s>"' % EXE)
+
+    step('Toolchain')
+    vitasdk, llvm = deps.vitasdk(), deps.llvm()
+    cmake, ninja = build_tool('cmake'), build_tool('ninja')
+    print('VitaSDK: %s\nLLVM:    %s\nCMake:   %s\nNinja:   %s' % (vitasdk, llvm, cmake, ninja))
+
+    if folder:
+        with open(REMEMBERED, 'w', encoding='utf-8') as f:
+            f.write(folder + '\n')
+        translate(folder, args.regenerate)
+        if not os.path.isfile(GAME_ART):
+            step('Icon and LiveArea images from the game files')
+            if run([sys.executable, '-I', os.path.join(HERE, 'vita', 'livearea_art.py'), folder]) != 0:
+                print('Using the plain default images.')
+    else:
+        print('Game folder not known: building the code translated earlier.')
+
+    build = os.path.abspath(args.build_dir)
+    if args.clean and os.path.isdir(build):
+        shutil.rmtree(build)
+    env = dict(os.environ, VITASDK=vitasdk, NFSU_LLVM=llvm)
+    env['PATH'] = os.pathsep.join([os.path.join(vitasdk, 'bin'), os.path.dirname(ninja), env.get('PATH', '')])
+    configure = [cmake, '-S', REPO, '-B', build, '-G', 'Ninja', '-DCMAKE_MAKE_PROGRAM=' + ninja,
+                 '-DCMAKE_TOOLCHAIN_FILE=' + os.path.join(REPO, 'cmake', 'vita-clang.cmake'),
+                 '-DCMAKE_BUILD_TYPE=Release', '-DNFSU_GAME_OPT=-O2',
+                 '-DVITASDK=' + vitasdk.replace('\\', '/'), '-DNFSU_LLVM=' + llvm.replace('\\', '/')]
+    options = '\n'.join(configure + ['game art: %s' % os.path.isfile(GAME_ART)]) + '\n'
+    options_file = os.path.join(build, 'build-options.txt')
+    current = open(options_file, encoding='utf-8').read() if os.path.isfile(options_file) else ''
+    if options != current or not os.path.isfile(os.path.join(build, 'build.ninja')):
+        step('Configuring')
+        if run(configure, env=env) != 0:
+            sys.exit('Configuring failed.')
+        with open(options_file, 'w', encoding='utf-8') as f:
+            f.write(options)
+    step('Building (the first build takes a while)')
+    if run([cmake, '--build', build, '--parallel', str(args.jobs)], env=env) != 0:
+        sys.exit('Building failed.')
+    print('\nDone: ' + os.path.join(build, 'NFSU2VITA.vpk'))
+
+
+if __name__ == '__main__':
+    main()

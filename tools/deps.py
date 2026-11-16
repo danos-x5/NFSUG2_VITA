@@ -1,7 +1,7 @@
 """Finds VitaSDK and LLVM, or downloads pinned versions once into a shared folder (~/vita-tools).
 
 python3 tools/deps.py vitasdk|llvm [--download]   prints the folder used
-VitaSDK is looked for in its usual places first. LLVM is the pinned version unless NFSU_LLVM names another.
+VitaSDK and LLVM (22.1.8 or newer) are looked for in their usual places first.
 """
 import hashlib
 import json
@@ -13,11 +13,12 @@ import subprocess
 import sys
 import tarfile
 import urllib.request
+import zipfile
 
 VITASDK_URL = 'https://github.com/vitasdk/autobuilds/releases/download/sdk-snapshot-20261015.850.1/'
 LLVM_URL = 'https://github.com/llvm/llvm-project/releases/download/llvmorg-22.1.8/'
 LLVM_VERSION = '22.1.8'
-LLVM_MINIMUM = 20  # older clang is untried with this code and its profile
+LLVM_MINIMUM = (22, 1, 8)  # the version the build is tested with; older ones are refused
 
 # (system, machine): archive name, SHA-256
 VITASDK = {
@@ -41,6 +42,31 @@ LLVM = {
                           'df0e1ecf16caf3489a272a5eea4eec9b0d82878f6477fa309504f918a0006384'),
     ('linux', 'arm64'): ('LLVM-22.1.8-Linux-ARM64.tar.xz',
                          '805efad2bb91cb4967fa569e0881d10c0f69c04461cf671cccbae19f547acc34'),
+}
+
+CMAKE_VERSION = '4.5.0'
+CMAKE_URL = 'https://github.com/Kitware/CMake/releases/download/v4.5.0/'
+CMAKE = {
+    ('windows', 'x86_64'): ('cmake-4.5.0-windows-x86_64.zip',
+                            '301b1728317ccd84e984b02e366a8293735bc5ac618757d3d8f58b578f062411'),
+    ('darwin', 'arm64'): ('cmake-4.5.0-macos-universal.tar.gz',
+                          'a645d69fd21e521759cc0c64e7c60462d43faf0c7214ac05f75c80f7c5037dde'),
+    ('darwin', 'x86_64'): ('cmake-4.5.0-macos-universal.tar.gz',
+                           'a645d69fd21e521759cc0c64e7c60462d43faf0c7214ac05f75c80f7c5037dde'),
+    ('linux', 'x86_64'): ('cmake-4.5.0-linux-x86_64.tar.gz',
+                          '81f0d5b0960fb6adc8197030ffc827fba937640d51e73e39e0e9e40d88c66f6f'),
+    ('linux', 'arm64'): ('cmake-4.5.0-linux-aarch64.tar.gz',
+                         '0c8447e7bba9701467b5ac6155d157aa9e309e71af4981f78bd4b9176107f553'),
+}
+NINJA_VERSION = '1.13.2'
+NINJA_URL = 'https://github.com/ninja-build/ninja/releases/download/v1.13.2/'
+NINJA = {
+    ('windows', 'x86_64'): ('ninja-win.zip', '07fc8261b42b20e71d1720b39068c2e14ffcee6396b76fb7a795fb460b78dc65'),
+    ('darwin', 'arm64'): ('ninja-mac.zip', 'c99048673aa765960a99cf10c6ddb9f1fad506099ff0a0e137ad8960a88f321b'),
+    ('darwin', 'x86_64'): ('ninja-mac.zip', 'c99048673aa765960a99cf10c6ddb9f1fad506099ff0a0e137ad8960a88f321b'),
+    ('linux', 'x86_64'): ('ninja-linux.zip', '5749cbc4e668273514150a80e387a957f933c6ed3f5f11e03fb30955e2bbead6'),
+    ('linux', 'arm64'): ('ninja-linux-aarch64.zip',
+                         'fd2cacc8050a7f12a16a2e48f9e06fca5c14fc4c2bee2babb67b58be17a607fc'),
 }
 
 EXE = '.exe' if os.name == 'nt' else ''
@@ -192,14 +218,13 @@ def remembered(name, folder=None):
     return saved.get(name)
 
 
-def choose(name, target, megabytes, valid, hints, download, why=''):
+def choose(name, target, megabytes, valid, hints, download, why='', otherwise='install it and add it to PATH'):
     """Asks whether to download or use a folder; returns a folder or None."""
     if download:
         return None
-    flag = '--vitasdk' if name == 'VitaSDK' else '--llvm'
     if not sys.stdin or not sys.stdin.isatty():
-        sys.exit('%s was not found. Run again with --download-tools to download it (%d MB), or with %s <folder>.'
-                 % (name, megabytes, flag))
+        sys.exit('%s was not found. Run again with --download-tools to download it (%d MB), or %s.'
+                 % (name, megabytes, otherwise))
     note('\n%s was not found in its usual places.%s' % (name, why))
     note('  1) Download it (%d MB) to %s' % (megabytes, target))
     note('  2) Use one already on this computer' + (' (found: %s)' % ', '.join(hints) if hints else ''))
@@ -223,21 +248,33 @@ def is_vitasdk(folder):
     return bool(folder) and os.path.isfile(os.path.join(folder, 'share', 'vita.toolchain.cmake'))
 
 
-def vitasdk(given=None, download=False):
-    """VitaSDK: named, in a usual place, chosen, or downloaded."""
+def vitasdk_megabytes():
+    return 116 if os.name == 'nt' else 105
+
+
+def find_vitasdk(given=None):
+    """VitaSDK folder in a usual place or named, else None; never asks or downloads."""
     if given:
-        if not is_vitasdk(given):
-            sys.exit('%s is not a VitaSDK folder (no share/vita.toolchain.cmake).' % given)
-        return os.path.abspath(given)
+        return os.path.abspath(given) if is_vitasdk(given) else None
     home = os.path.expanduser('~')
-    target = os.path.join(tools_dir(), 'vitasdk')
-    usual = [os.environ.get('VITASDK'), remembered('vitasdk'), target, '/usr/local/vitasdk',
-             os.path.join(home, 'vitasdk'), 'C:\\vitasdk' if os.name == 'nt' else None]
+    usual = [os.environ.get('VITASDK'), remembered('vitasdk'), os.path.join(tools_dir(), 'vitasdk'),
+             '/usr/local/vitasdk', os.path.join(home, 'vitasdk'), 'C:\\vitasdk' if os.name == 'nt' else None]
     for folder in usual:
         if is_vitasdk(folder):
             return os.path.abspath(folder)
-    megabytes = 116 if os.name == 'nt' else 105
-    folder = choose('VitaSDK', target, megabytes, is_vitasdk, [], download)
+    return None
+
+
+def vitasdk(given=None, download=False):
+    """VitaSDK: named, in a usual place, chosen, or downloaded."""
+    if given and not is_vitasdk(given):
+        sys.exit('%s is not a VitaSDK folder (no share/vita.toolchain.cmake).' % given)
+    found = find_vitasdk(given)
+    if found:
+        return found
+    target = os.path.join(tools_dir(), 'vitasdk')
+    folder = choose('VitaSDK', target, vitasdk_megabytes(), is_vitasdk, [], download,
+                    otherwise='run with --vitasdk <folder>')
     if folder:
         remembered('vitasdk', folder)
         return folder
@@ -249,21 +286,22 @@ def vitasdk(given=None, download=False):
 
 
 def clang_version(folder):
-    """Major version of the clang in folder/bin, or 0."""
+    """(major, minor, patch) of the clang in folder/bin, or (0, 0, 0)."""
+    none = (0, 0, 0)
     if not folder:
-        return 0
+        return none
     binaries = os.path.join(folder, 'bin')
     if not all(os.path.isfile(os.path.join(binaries, tool + EXE)) for tool in LLVM_TOOLS):
-        return 0
+        return none
     if not os.path.isfile(os.path.join(binaries, 'ld.lld' + EXE)) and not shutil.which('ld.lld'):
-        return 0
+        return none
     try:
         out = subprocess.run([os.path.join(binaries, 'clang' + EXE), '--version'], capture_output=True, text=True,
                              timeout=60).stdout
     except (OSError, subprocess.SubprocessError):
-        return 0
-    found = re.search(r'clang version (\d+)', out)
-    return int(found.group(1)) if found and 'Apple' not in out else 0
+        return none
+    found = re.search(r'clang version (\d+)\.(\d+)\.(\d+)', out)
+    return tuple(int(n) for n in found.groups()) if found and 'Apple' not in out else none
 
 
 def is_llvm(folder):
@@ -279,21 +317,34 @@ def installed_llvm():
     return [f for f in dict.fromkeys(folders) if is_llvm(f)]
 
 
-def llvm(given=None, download=False):
-    """LLVM: the pinned version unless another is named or chosen."""
+def llvm_megabytes():
+    return {'windows': 862, 'darwin': 1480}.get(host()[0], 1940)
+
+
+def find_llvm(given=None):
+    """LLVM folder that is named or already installed, else None; never asks or downloads."""
     given = given or os.environ.get('NFSU_LLVM')
     if given:
-        if not is_llvm(given):
-            sys.exit('%s is not a usable LLVM: it needs clang %d or newer, lld, llvm-ar and llvm-profdata in bin.'
-                     % (given, LLVM_MINIMUM))
-        return os.path.abspath(given)
-    target = os.path.join(tools_dir(), 'llvm-' + LLVM_VERSION)
-    for folder in (remembered('llvm'), target):
+        return os.path.abspath(given) if is_llvm(given) else None
+    for folder in [remembered('llvm'), os.path.join(tools_dir(), 'llvm-' + LLVM_VERSION)] + installed_llvm():
         if is_llvm(folder):
             return os.path.abspath(folder)
-    megabytes = {'windows': 862, 'darwin': 1480}.get(host()[0], 1940)
-    why = ' The build is tuned and measured with clang %s; another version may perform differently.' % LLVM_VERSION
-    folder = choose('LLVM ' + LLVM_VERSION, target, megabytes, is_llvm, installed_llvm(), download, why)
+    return None
+
+
+def llvm(given=None, download=False):
+    """LLVM of the minimum version or newer: named, installed, chosen, or downloaded."""
+    given = given or os.environ.get('NFSU_LLVM')
+    if given and not is_llvm(given):
+        sys.exit('%s is not a usable LLVM: it needs clang %s or newer, lld, llvm-ar and llvm-profdata in bin.'
+                 % (given, LLVM_VERSION))
+    found = find_llvm(given)
+    if found:
+        return found
+    target = os.path.join(tools_dir(), 'llvm-' + LLVM_VERSION)
+    why = ' The build needs clang %s or newer.' % LLVM_VERSION
+    folder = choose('LLVM ' + LLVM_VERSION, target, llvm_megabytes(), is_llvm, [], download, why,
+                    otherwise='run with --llvm <folder>')
     if folder:
         remembered('llvm', folder)
         return folder
@@ -301,6 +352,77 @@ def llvm(given=None, download=False):
     if not is_llvm(folder):
         sys.exit('The LLVM in %s does not run. Delete that folder and run this again.' % folder)
     return folder
+
+
+def unpack_plain(archive, target):
+    """Unpacks a .zip or .tar.gz, dropping a single top folder."""
+    if archive.endswith('.zip'):
+        with zipfile.ZipFile(archive) as z:
+            names = z.namelist()
+            top = names[0].split('/')[0] + '/' if all(n.startswith(names[0].split('/')[0] + '/') for n in names) else ''
+            for item in z.infolist():
+                name = item.filename[len(top):]
+                if not name or name.endswith('/'):
+                    continue
+                path = os.path.join(target, *name.split('/'))
+                os.makedirs(os.path.dirname(path), exist_ok=True)
+                with z.open(item) as src, open(path, 'wb') as out:
+                    shutil.copyfileobj(src, out)
+                if os.name != 'nt':
+                    os.chmod(path, 0o755)
+        return
+    with tarfile.open(archive, 'r:gz') as tar:
+        members = []
+        for member in tar.getmembers():
+            member.name = strip_top(member.name)
+            if member.name:
+                members.append(member)
+        if hasattr(tarfile, 'tar_filter'):
+            tar.extractall(target, members=members, filter='tar')
+        else:
+            tar.extractall(target, members=members)
+
+
+def program_in(folder, name):
+    """Path of a program inside a downloaded or chosen folder, or None."""
+    if not folder:
+        return None
+    for parts in ((name + EXE,), ('bin', name + EXE), ('CMake.app', 'Contents', 'bin', name)):
+        path = os.path.join(folder, *parts)
+        if os.path.isfile(path):
+            return path
+    return None
+
+
+def build_tool_megabytes(name):
+    if name == 'ninja':
+        return 1
+    return {'windows': 54, 'darwin': 89}.get(host()[0], 64)
+
+
+def find_build_tool(name):
+    """Path of cmake or ninja: on PATH, chosen or downloaded, else None; never asks."""
+    version = CMAKE_VERSION if name == 'cmake' else NINJA_VERSION
+    return (shutil.which(name) or program_in(remembered(name), name)
+            or program_in(os.path.join(tools_dir(), '%s-%s' % (name, version)), name))
+
+
+def build_tool(name, download=False):
+    """Path of cmake or ninja, found, chosen or downloaded."""
+    found = find_build_tool(name)
+    if found:
+        return found
+    table, url, version = (CMAKE, CMAKE_URL, CMAKE_VERSION) if name == 'cmake' else (NINJA, NINJA_URL, NINJA_VERSION)
+    title = 'CMake' if name == 'cmake' else 'Ninja'
+    target = os.path.join(tools_dir(), '%s-%s' % (name, version))
+    folder = choose(title, target, build_tool_megabytes(name), lambda f: bool(program_in(f, name)), [], download)
+    if folder:
+        remembered(name, folder)
+        return program_in(folder, name)
+    folder = install(title, table, url, '%s-%s' % (name, version), unpack_plain, 'PATH')
+    if not program_in(folder, name):
+        sys.exit('The %s in %s is incomplete. Delete that folder and run this again.' % (title, folder))
+    return program_in(folder, name)
 
 
 if __name__ == '__main__':

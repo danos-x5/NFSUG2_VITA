@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Builds NFSU2VITA.vpk from your game folder in one step, on Windows, macOS or Linux.
 
-python3 tools/build.py "<game folder>" [--download-tools] [--vitasdk DIR] [--llvm DIR] [--clean] [--regenerate]
+python3 tools/build.py "<game folder>" [--download-tools] [--vitasdk DIR] [--llvm DIR] [--clean] [--regenerate] [--no-game-art]
 Finds the toolchain or offers to download it, translates the game code when it changed, then builds.
 """
 
 import argparse
 import hashlib
+import json
 import os
 import shutil
 import subprocess
 import sys
-import sysconfig
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.normpath(os.path.join(HERE, '..'))
@@ -31,6 +31,8 @@ def step(text):
 
 def run(command, **options):
     """Runs a command; returns its exit code."""
+    if os.name == 'nt' and os.environ.get('NFSU_PYTHON'):
+        options['creationflags'] = subprocess.CREATE_NO_WINDOW
     return subprocess.call(command, **options)
 
 
@@ -76,20 +78,10 @@ def generator_stamp(folder):
     return digest.hexdigest()
 
 
-def build_tool(name):
-    """Path of cmake or ninja, installed with pip when missing."""
-    folders = [sysconfig.get_path('scripts'), sysconfig.get_path('scripts', os.name + '_user')]
-    pip_path = os.pathsep.join(f for f in folders if f)
-    found = shutil.which(name) or shutil.which(name, path=pip_path)
-    if found:
-        return found
-    step('Installing %s with pip' % name)
-    if run([sys.executable, '-m', 'pip', 'install', '--user', name]) != 0:
-        sys.exit('Could not install %s. Install it yourself and run this again.' % name)
-    found = shutil.which(name, path=pip_path)
-    if not found:
-        sys.exit('%s was installed with pip but is not where pip puts programs. Add it to PATH.' % name)
-    return found
+def python():
+    """Command that runs Python: this interpreter, or what NFSU_PYTHON names."""
+    named = os.environ.get('NFSU_PYTHON')
+    return json.loads(named) if named else [sys.executable]
 
 
 def translate(folder, force):
@@ -101,7 +93,7 @@ def translate(folder, force):
     if changed:
         step('Translating the game code (about 5 minutes)')
         os.makedirs(GENERATED, exist_ok=True)
-        command = [sys.executable, os.path.join(HERE, 'recompiler', 'generate.py'), '--game', 'ug2',
+        command = python() + [os.path.join(HERE, 'recompiler', 'generate.py'), '--game', 'ug2',
                    '--binaries', folder, '--out', GENERATED]
         if run(command) != 0:
             sys.exit('Translating the game code failed.')
@@ -109,7 +101,7 @@ def translate(folder, force):
             f.write(stamp + '\n')
     if changed or not os.path.isfile(FX_TABLES):
         step('Making the effect tables')
-        command = [sys.executable, '-I', os.path.join(HERE, 'fx', 'fxtable.py'), '--exe', find_exe(folder),
+        command = python() + ['-I', os.path.join(HERE, 'fx', 'fxtable.py'), '--exe', find_exe(folder),
                    '--out', FX_TABLES]
         if run(command) != 0:
             sys.exit('Making the effect tables failed.')
@@ -123,7 +115,8 @@ def main():
     parser.add_argument('--jobs', type=int, default=os.cpu_count() or 4, help='parallel compile jobs')
     parser.add_argument('--build-dir', default=os.path.join(REPO, 'build-vita'), help='build folder')
     parser.add_argument('--vitasdk', help='VitaSDK folder to use, if not in a usual place')
-    parser.add_argument('--llvm', help='LLVM folder to use in place of the pinned version')
+    parser.add_argument('--llvm', help='LLVM folder to use (clang 22.1.8 or newer)')
+    parser.add_argument('--no-game-art', action='store_true', help='use the plain default icon and LiveArea images')
     parser.add_argument('--download-tools', action='store_true', help='download missing tools without asking')
     args = parser.parse_args()
 
@@ -135,20 +128,23 @@ def main():
     step('Toolchain')
     vitasdk = deps.vitasdk(args.vitasdk, args.download_tools)
     llvm = deps.llvm(args.llvm, args.download_tools)
-    cmake, ninja = build_tool('cmake'), build_tool('ninja')
-    print('VitaSDK: %s\nLLVM:    %s\nCMake:   %s\nNinja:   %s' % (vitasdk, llvm, cmake, ninja))
+    cmake = deps.build_tool('cmake', args.download_tools)
+    ninja = deps.build_tool('ninja', args.download_tools)
+    clang = '.'.join(str(n) for n in deps.clang_version(llvm))
+    print('VitaSDK: %s\nLLVM:    %s (clang %s)\nCMake:   %s\nNinja:   %s' % (vitasdk, llvm, clang, cmake, ninja))
 
     if folder:
         with open(REMEMBERED, 'w', encoding='utf-8') as f:
             f.write(folder + '\n')
         translate(folder, args.regenerate)
-        if not os.path.isfile(GAME_ART):
+        if not args.no_game_art and not os.path.isfile(GAME_ART):
             step('Icon and LiveArea images from the game files')
-            if run([sys.executable, '-I', os.path.join(HERE, 'vita', 'livearea_art.py'), folder]) != 0:
+            if run(python() + ['-I', os.path.join(HERE, 'vita', 'livearea_art.py'), folder]) != 0:
                 print('Using the plain default images.')
     else:
         print('Game folder not known: building the code translated earlier.')
 
+    use_art = os.path.isfile(GAME_ART) and not args.no_game_art
     build = os.path.abspath(args.build_dir)
     if args.clean and os.path.isdir(build):
         shutil.rmtree(build)
@@ -158,7 +154,8 @@ def main():
                  '-DCMAKE_TOOLCHAIN_FILE=' + os.path.join(REPO, 'cmake', 'vita-clang.cmake'),
                  '-DCMAKE_BUILD_TYPE=Release', '-DNFSU_GAME_OPT=-O2',
                  '-DVITASDK=' + vitasdk.replace('\\', '/'), '-DNFSU_LLVM=' + llvm.replace('\\', '/')]
-    options = '\n'.join(configure + ['game art: %s' % os.path.isfile(GAME_ART)]) + '\n'
+    configure.append('-DNFSU_PLAIN_ART=' + ('OFF' if use_art else 'ON'))
+    options = '\n'.join(configure + ['game art: %s' % use_art]) + '\n'
     options_file = os.path.join(build, 'build-options.txt')
     current = open(options_file, encoding='utf-8').read() if os.path.isfile(options_file) else ''
     if options != current or not os.path.isfile(os.path.join(build, 'build.ninja')):

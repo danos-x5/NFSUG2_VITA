@@ -184,7 +184,7 @@ configure_file(
 
 # Images made from the user's game files (tools/vita/livearea_art.py) replace the plain defaults.
 set(NFSU_ART_DIR "${CMAKE_SOURCE_DIR}/sce_sys")
-if(EXISTS "${NFSU_ART_DIR}/game/icon0.png" AND EXISTS "${NFSU_ART_DIR}/game/livearea/contents/bg.png"
+if(NOT NFSU_PLAIN_ART AND EXISTS "${NFSU_ART_DIR}/game/icon0.png" AND EXISTS "${NFSU_ART_DIR}/game/livearea/contents/bg.png"
    AND EXISTS "${NFSU_ART_DIR}/game/livearea/contents/startup.png")
   set(NFSU_ART_DIR "${NFSU_ART_DIR}/game")
 endif()

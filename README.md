@@ -210,11 +210,12 @@ rest, on a Mac with Apple silicon or an x86-64 Windows PC (Linux is set up the s
 python3 tools/build.py "<folder with SPEED2.EXE>"   # -> build-vita/NFSU2VITA.vpk
 ```
 
-It uses [VitaSDK](https://vitasdk.org) and [LLVM](https://llvm.org) (clang 20 or newer, with lld) if they are
-installed, found through `VITASDK`, `NFSU_LLVM`, `PATH` or Homebrew. Otherwise it downloads pinned versions once,
-about 1 GB on Windows and 1.6 GB on macOS or Linux, into a folder in your user profile that later builds reuse.
-[CMake](https://cmake.org) and [Ninja](https://ninja-build.org) are installed with pip when missing. The first build
-takes a while; later ones only redo what changed.
+It uses [VitaSDK](https://vitasdk.org) and [LLVM](https://llvm.org) (clang 22.1.8 or newer, with lld) if they
+are installed, found through `VITASDK`, `NFSU_LLVM`, `PATH` or Homebrew, and [CMake](https://cmake.org) and
+[Ninja](https://ninja-build.org) if they are on `PATH`. For anything missing it asks whether to download it or use a
+folder you name. Downloads are pinned versions, checked against their publishers' checksums, about 1.1 GB in all on
+Windows and 1.7 GB on macOS or Linux; they go once into `vita-tools` in your home folder, which later builds reuse
+(`--download-tools` answers yes in advance). The first build takes a while; later ones only redo what changed.
 
 By hand, with VitaSDK, LLVM, CMake 3.20 or newer and Ninja installed, from the repository root:
 

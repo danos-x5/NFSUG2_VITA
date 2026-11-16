@@ -1,28 +1,14 @@
-<a id="readme-top"></a>
+# Need for Speed Underground 2 for the PS Vita
 
-<div align="left">
+A fan project that enables you to play your own PC copy of Need For Speed Underground 2 (Version 1.2) on your PS VITA. This is not the game files for Need For Speed Underground 2. You must provide your own legally obtained copy of the game. This project provides a compatibility layer along with performance optimisations to allow the PC version of the game to run on a PS VITA system.
 
-<p align="center">
-  <br />
-  A fan project that enables you to play your own PC copy of Need For Speed Underground 2 (Version 1.2) on your PS VITA. This is not the game files for Need For Speed Underground 2. You must provide your own legally obtained copy of the game. This project provides a compatibility layer along with performance optimisations to allow the PC version of the game to run on a PS VITA system. This project does not condone piracy.
-  <br />
-  <br />
-This is not a reverse-engineering of the game. The game's own code is translated to C++ ahead of time from your copy of SPEED2.EXE, and the gameplay itself (physics, AI, career, saves) is left as it is.
+This is not a decompilation or rewrite of the game. The game's own code is translated to C++ ahead of time from your copy of SPEED2.EXE, and the gameplay itself (physics, AI, career, saves) is left as it is.
 
 Changes fall into two groups. Compatibility changes replace what the Vita does not have: Windows, Direct3D 9, mouse and keyboard etc. Performance changes make the game run faster on the Vita's hardware, and some of them deliberately change how things are drawn, for example simpler scenery models at a distance. Anything that visibly changes the picture is a setting that can be turned on/off in config.
-  <br />
-  <br />
- It is very possible that some of these changes have brought about unexpected bugs/crashes that do not exist in the PC version, and this is something that will constantly be addressed with updates.
-  <br />
-  <br />
-  <a href="#install">Install</a>
-  &nbsp;·&nbsp;
-  <a href="#controls">Controls</a>
-  &nbsp;·&nbsp;
-  <a href="#settings">Settings</a>
-  &nbsp;·&nbsp;
-  <a href="../../issues">Report Bug</a>
-</p>
+
+It is very possible that some of these changes have brought about unexpected bugs/crashes that do not exist in the PC version, and this is something that will constantly be addressed with updates.
+
+[Install](#install) · [Controls](#controls) · [Settings](#settings) · [Report Bug](../../issues)
 
 > **Playtest.** The game is playable in all aspects. The entire career mode is working, and the framerate is good in most scenes.
 > Expect rough edges; [Known issues](#known-issues--caveats) lists the ones we know.
@@ -31,7 +17,7 @@ Changes fall into two groups. Compatibility changes replace what the Vita does n
 
 - Need for Speed Underground 2 for PC, **version 1.2**, installed (your own copy). The whole game folder is needed,
   about 1.7 GB, or about 2 GB with the converted movies.
-- `SPEED2.EXE` should be the original 1.2 executable, with SHA-256
+- `SPEED2.EXE` should be the 1.2 executable, with SHA-256
   `f9dd86c054878ce6276beb07c1fd61874f7a1e4bf1f241b084c65b73e24168a7`. See [Mods](#mods) for anything else.
 - Only the **US release** of version 1.2 has been tested. The EU release will be tested soon.
 - PS Vita with HENkaku / Ensō and [VitaShell](https://github.com/TheOfficialFloW/VitaShell)
@@ -198,6 +184,7 @@ The port checks `SPEED2.EXE` when it starts. A modified executable of the origin
   settings above the vita preset make this much worse.
 - At lower settings the framerate is very stable and can even hit 60fps during gameplay if the framerate is set to unlocked mode.
 - On-screen button prompts show PC key names, such as "Enter", not Vita buttons.
+- World objects sometimes show the wrong texture for a while. A fix is in testing.
 - No online or LAN play.
 - Sound bug where sometimes the music continues playing after entering the pause menu or changing scenes.
 

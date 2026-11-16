@@ -1,11 +1,11 @@
 """Compiles the port's Cg programs on the Vita (NFSU2VITA's shader compile mode) and fetches the .gxp files.
 
-vita_compile.py [--list FILE] [--out DIR] [--compare DIR] [--option KEY=VALUE ...] [--ip IP]
+vita_compile.py --ip IP [--list FILE] [--out DIR] [--compare DIR] [--option KEY=VALUE ...]
 
 Without --list, the programs are the ones cmake/shaders.cmake builds. Uploads shaders/*.cg and the manifest to
 ux0:data/NeedForSpeedUnderground2/shaders/, launches NFSU2VITA, waits for compile.log to end, downloads out/<name>.gxp into --out.
 --compare DIR reports, per program, whether DIR/<name>.gxp is identical (apart from the source-name hash, header
-bytes 16-19). Other sessions share the Vita: check with them before running.
+bytes 16-19).
 """
 import argparse
 import ftplib
@@ -73,7 +73,7 @@ def main():
     p.add_argument('--out', default=os.path.join(REPO, 'build-shaders'))
     p.add_argument('--compare', help='folder of reference .gxp files')
     p.add_argument('--option', action='append', default=[], help='KEY=VALUE compile option (O, fx, fastmath, ...)')
-    p.add_argument('--ip', default='192.168.1.237')
+    p.add_argument('--ip', required=True, help="the Vita's address on your network")
     p.add_argument('--timeout', type=int, default=900)
     a = p.parse_args()
     lines = open(a.list).read().splitlines() if a.list else programs()

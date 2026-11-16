@@ -46,6 +46,8 @@ x86::reg32 MemMap::s_sectionSize = 0;
 x86::reg32 MemMap::s_addressOffset = 0;
 x86::reg32 MemMap::s_lowFree = 0;
 x86::reg32 MemMap::s_highFree = 0;
+x86::reg32 MemMap::s_runtimeStart = 0;
+bool MemMap::s_split = true;
 MemMap::Reclaim MemMap::s_reclaim = nullptr;
 Mutex*     MemMap::s_lock = nullptr;
 x86::reg32 MemMap::s_liveCount = 0;
@@ -218,11 +220,11 @@ x86::reg32 MemMap::findLow(x86::reg32 count)
     return x86::reg32(-1);
 }
 
-// Highest b with [b, b + count) free.
-x86::reg32 MemMap::findHigh(x86::reg32 count)
+// Highest b with [b, b + count) free below limit.
+x86::reg32 MemMap::findHigh(x86::reg32 count, x86::reg32 limit)
 {
-    x86::reg32 e = s_highFree;
-    bool first = true;
+    bool first = limit >= s_highFree;
+    x86::reg32 e = first ? s_highFree : limit;
     while (e >= count)
     {
         e = previousBlockEnd(e, true);
@@ -255,7 +257,7 @@ MemMap::MemMap(x86::reg32 size, Placement placement, pf::perf::Alloc kind)
 {
     if (!place(size, placement))
     {
-        report(size);
+        report(size, kind, placement);
         pf::fatal("guest memory exhausted (requested %u bytes)", size);
     }
 }
@@ -277,18 +279,28 @@ bool MemMap::place(x86::reg32 size, Placement placement)
     const bool searchTimed = pf::perf::enabled();
     const uint32_t start = timed ? pf::perf::now() : 0;
     uint32_t searchUs = 0;
+    const bool large = s_split && placement == Low && m_blockCount >= LargeSize / 4096;
+    bool anywhere = false;
     for (;;)
     {
         s_lock->lock();
         const uint32_t searchStart = searchTimed ? pf::perf::now() : 0;
-        m_block = placement == High ? findHigh(m_blockCount) : findLow(m_blockCount);
+        if (placement == High)
+            m_block = findHigh(m_blockCount, s_blockCount);
+        else if (large)
+            m_block = findHigh(m_blockCount, anywhere ? s_blockCount : s_runtimeStart);
+        else
+            m_block = findLow(m_blockCount);
         if (searchTimed)
             searchUs += pf::perf::now() - searchStart;
         if (m_block != x86::reg32(-1))
             break;
         s_lock->unlock();
-        if (!s_reclaim || !s_reclaim())
+        if (s_reclaim && s_reclaim())
+            continue;
+        if (!large || anywhere)
             return false;
+        anywhere = true;
     }
     memset(s_blocks + m_block, 1, m_blockCount);
     markBlocks(m_block, m_blockCount, false);
@@ -353,28 +365,48 @@ static void logFreeMemory(const char* when)
 #endif
 }
 
-void MemMap::report(x86::reg32 requested)
+struct FreeRanges
+{
+    x86::reg32 blocks = 0, count = 0, largest = 0;
+};
+
+// Free ranges of [begin, end); s_lock held.
+static FreeRanges freeRanges(x86::reg32 begin, x86::reg32 end)
+{
+    FreeRanges f;
+    for (x86::reg32 b = nextBlock(begin, end, true); b < end; )
+    {
+        const x86::reg32 stop = nextBlock(b, end, false);
+        f.blocks += stop - b;
+        f.largest = std::max(f.largest, stop - b);
+        ++f.count;
+        b = nextBlock(stop, end, true);
+    }
+    return f;
+}
+
+void MemMap::report(x86::reg32 requested, pf::perf::Alloc requestKind, Placement placement)
 {
     static const int Largest = 8;
-    x86::reg32 freeBlocks = 0, runs = 0, largestRun = 0;
+    static const x86::reg32 Cells = 48;
     x86::reg32 kindBlocks[pf::perf::AllocCount] = {};
     x86::reg32 kindCounts[pf::perf::AllocCount] = {};
+    x86::reg32 kindFirst[pf::perf::AllocCount] = {};
+    x86::reg32 kindLast[pf::perf::AllocCount] = {};
     const MemMap* largest[Largest] = {};
     size_t live = 0;
     s_lock->lock();
-    for (x86::reg32 b = nextBlock(0, s_blockCount, true); b < s_blockCount; )
-    {
-        const x86::reg32 end = nextBlock(b, s_blockCount, false);
-        freeBlocks += end - b;
-        largestRun = std::max(largestRun, end - b);
-        ++runs;
-        b = nextBlock(end, s_blockCount, true);
-    }
+    const FreeRanges all = freeRanges(0, s_blockCount);
+    const FreeRanges guest = freeRanges(0, s_runtimeStart);
+    const FreeRanges runtime = freeRanges(s_runtimeStart, s_blockCount);
     for (x86::reg32 b = nextBlock(0, s_blockCount, false); b < s_blockCount;
          b = nextBlock(b + s_owners[b]->m_blockCount, s_blockCount, false))
     {
         const MemMap* m = s_owners[b];
         const int kind = m->m_kind >= 0 && m->m_kind < pf::perf::AllocCount ? m->m_kind : 0;
+        if (!kindCounts[kind])
+            kindFirst[kind] = m->getBlockStart();
+        kindLast[kind] = m->getBlockStart() + m->getBlockSize();
         kindBlocks[kind] += m->m_blockCount;
         ++kindCounts[kind];
         for (int i = 0; i < Largest; ++i)
@@ -399,18 +431,35 @@ void MemMap::report(x86::reg32 requested)
         if (length >= int(sizeof(line)))
             break;
     }
+    char map[Cells + 1];
+    const x86::reg32 perCell = (s_blockCount + Cells - 1) / Cells;
+    for (x86::reg32 c = 0; c < Cells; ++c)
+    {
+        const x86::reg32 begin = std::min(c * perCell, s_blockCount), end = std::min(begin + perCell, s_blockCount);
+        const x86::reg32 used = end - begin - freeRanges(begin, end).blocks;
+        map[c] = begin == end ? ' ' : !used ? '.' : used == end - begin ? '#' : char('0' + used * 10 / (end - begin));
+    }
+    map[Cells] = 0;
     s_lock->unlock();
 
-    pf::logInfo("memory: guest exhausted, %u bytes requested; arena %u KB, free %u KB in %u ranges, largest %u KB, "
-                "%u blocks live", requested, s_simulatedMemory / 1024, freeBlocks * 4, runs, largestRun * 4,
-                unsigned(live));
+    const bool large = s_split && placement == Low && requested >= LargeSize;
+    pf::logInfo("memory: guest exhausted, %u bytes requested (%s, %s); arena %u KB, free %u KB in %u ranges, largest "
+                "%u KB, %u blocks live", requested, pf::perf::allocName(requestKind),
+                placement == High ? "runtime, highest fit" : large ? "large, highest fit" : "lowest fit",
+                s_simulatedMemory / 1024, all.blocks * 4, all.count, all.largest * 4, unsigned(live));
+    pf::logInfo("memory: guest area 0x%08x %u KB, free %u KB in %u ranges, largest %u KB; runtime area 0x%08x %u KB, "
+                "free %u KB in %u ranges, largest %u KB", s_addressOffset, s_runtimeStart * 4, guest.blocks * 4,
+                guest.count, guest.largest * 4, s_addressOffset + s_runtimeStart * 4096,
+                (s_blockCount - s_runtimeStart) * 4, runtime.blocks * 4, runtime.count, runtime.largest * 4);
     for (int kind = 0; kind < pf::perf::AllocCount; ++kind)
     {
         if (kindCounts[kind])
-            pf::logInfo("memory: %s %u blocks, %u KB", pf::perf::allocName(pf::perf::Alloc(kind)),
-                        kindCounts[kind], kindBlocks[kind] * 4);
+            pf::logInfo("memory: %s %u blocks, %u KB, 0x%08x to 0x%08x", pf::perf::allocName(pf::perf::Alloc(kind)),
+                        kindCounts[kind], kindBlocks[kind] * 4, kindFirst[kind], kindLast[kind]);
     }
     pf::logInfo("memory: largest blocks:%s", line);
+    pf::logInfo("memory: map from 0x%08x, %u KB per cell, tenths used (. free, # full): %s", s_addressOffset,
+                perCell * 4, map);
     logFreeMemory("now");
     for (MemMap::Report r : s_reports)
     {
@@ -435,7 +484,7 @@ bool MemMap::isGuestRange(x86::reg32 address, x86::reg32 size)
     return x86::reg64(address) + size <= x86::reg64(s_addressOffset) + s_simulatedMemory;
 }
 
-void MemMap::init(x86::reg32 baseAddress, const std::vector<Section>& sections)
+void MemMap::init(x86::reg32 baseAddress, const std::vector<Section>& sections, bool split, x86::reg32 runtimeSize)
 {
 #ifdef __vita__
     if (!g_guestBase)
@@ -454,6 +503,11 @@ void MemMap::init(x86::reg32 baseAddress, const std::vector<Section>& sections)
     s_blockSize = s_blockMapSize;
     s_lowFree = 0;
     s_highFree = s_blockCount;
+    s_split = split;
+    s_runtimeStart = s_blockCount - std::min(runtimeSize / 4096, s_blockCount / 4);
+    pf::logInfo("guest memory: %s, runtime area %u KB at the top", split ? "blocks of 4096 KB and more placed from "
+                "the top (guest_memory_split=on)" : "every block placed lowest fit (guest_memory_split=off)",
+                (s_blockCount - s_runtimeStart) * 4);
     markBlocks(0, s_blockCount, true);
     x86::reg32 maxEnd = 0;
     for (std::vector<Section>::const_iterator it = sections.begin(); it != sections.end(); ++it)

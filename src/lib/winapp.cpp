@@ -161,7 +161,8 @@ WinApplication::WinApplication(const char* appName, x86::reg32 baseAddress, cons
     ,   m_methodShift(32 - s_initialMethodSlotBits)
     ,   m_cpu{}
 {
-    MemMap::init(baseAddress, sections);
+    MemMap::init(baseAddress, sections, pf::Config::getBool("guest_memory_split", true),
+                 x86::reg32(std::max(0, pf::Config::getInt("texture_cache_mb", 12)) + 8) * 1024 * 1024);
     m_appName = new MemMap(4096);
     m_appNameW = new MemMap(4096);
     m_env = new MemMap(4096);

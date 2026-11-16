@@ -26,12 +26,16 @@ struct Section
 class MemMap
 {
 public:
-    // Low: the lowest free range (first fit). High: the highest free range, for buffers of the runtime itself.
+    // Low: guest blocks, small ones lowest fit, LargeSize and above highest fit below the runtime area.
+    // High: buffers of the runtime itself, highest fit, the runtime area first.
     enum Placement
     {
         Low,
         High
     };
+    static const x86::reg32 LargeSize = 4 * 1024 * 1024;
+    static const x86::reg32 DefaultRuntimeSize = 20 * 1024 * 1024;
+
     // Called without the allocator lock when no range fits; returns true when it freed guest memory, and the
     // allocation is tried again.
     typedef bool (*Reclaim)();
@@ -48,7 +52,9 @@ public:
     x86::reg32 getBlockStart() const  { return s_addressOffset + m_block * 4096; }
     x86::reg32 getBlockSize() const   { return m_blockCount * 4096; }
 
-    static void init(x86::reg32 baseAddress, const std::vector<Section>& sections);
+    // split off: every Low block is placed lowest fit.
+    static void init(x86::reg32 baseAddress, const std::vector<Section>& sections, bool split = true,
+                     x86::reg32 runtimeSize = DefaultRuntimeSize);
     static void fini();
     static MemMap* findBlock(x86::reg32 memIndex);
     // True when [address, address + size) lies inside the guest address space.
@@ -56,8 +62,8 @@ public:
     static void setReclaim(Reclaim reclaim);
     // Up to 4 reports.
     static void addReport(Report report);
-    // Logs the free ranges, the live blocks per kind, the largest blocks and the added reports.
-    static void report(x86::reg32 requested);
+    // Logs the request, free ranges, kinds, a usage map and the added reports.
+    static void report(x86::reg32 requested, pf::perf::Alloc kind, Placement placement);
 
     static void fillDebugGraph(x86::reg16* graph);
     static void fillDebugGraph(x86::reg32* graph);
@@ -69,7 +75,7 @@ private:
 
     // First block of a free range of count blocks, or -1; s_lock held.
     static x86::reg32 findLow(x86::reg32 count);
-    static x86::reg32 findHigh(x86::reg32 count);
+    static x86::reg32 findHigh(x86::reg32 count, x86::reg32 limit);
 
     x86::reg32 m_block;
     x86::reg32 m_blockCount;
@@ -83,6 +89,8 @@ private:
     static x86::reg32           s_addressOffset;
     static x86::reg32           s_lowFree;      // every block below is used
     static x86::reg32           s_highFree;     // every block from here on is used
+    static x86::reg32           s_runtimeStart; // first block of the runtime area
+    static bool                 s_split;
     static Reclaim              s_reclaim;
     static Mutex*               s_lock;
     static x86::reg32           s_liveCount;

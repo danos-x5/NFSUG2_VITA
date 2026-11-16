@@ -78,14 +78,15 @@ def generator_stamp(folder):
 
 def build_tool(name):
     """Path of cmake or ninja, installed with pip when missing."""
-    found = shutil.which(name)
+    folders = [sysconfig.get_path('scripts'), sysconfig.get_path('scripts', os.name + '_user')]
+    pip_path = os.pathsep.join(f for f in folders if f)
+    found = shutil.which(name) or shutil.which(name, path=pip_path)
     if found:
         return found
     step('Installing %s with pip' % name)
     if run([sys.executable, '-m', 'pip', 'install', '--user', name]) != 0:
         sys.exit('Could not install %s. Install it yourself and run this again.' % name)
-    folders = [sysconfig.get_path('scripts'), sysconfig.get_path('scripts', os.name + '_user')]
-    found = shutil.which(name, path=os.pathsep.join(f for f in folders if f))
+    found = shutil.which(name, path=pip_path)
     if not found:
         sys.exit('%s was installed with pip but is not where pip puts programs. Add it to PATH.' % name)
     return found

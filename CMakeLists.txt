@@ -180,7 +180,7 @@ vita_create_self(NFSU2VITA.self NFSU2VITA.elf UNSAFE)
 configure_file(
   ${CMAKE_SOURCE_DIR}/sce_sys/livearea/contents/template.xml.in
   ${CMAKE_BINARY_DIR}/generated/livearea/template.xml
-  @ONLY)
+  @ONLY NEWLINE_STYLE LF)
 
 # Images made from the user's game files (tools/vita/livearea_art.py) replace the plain defaults.
 set(NFSU_ART_DIR "${CMAKE_SOURCE_DIR}/sce_sys")

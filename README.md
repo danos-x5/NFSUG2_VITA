@@ -17,8 +17,9 @@ It is very possible that some of these changes have brought about unexpected bug
 
 - Need for Speed Underground 2 for PC, **version 1.2**, installed (your own copy). The whole game folder is needed,
   about 1.7 GB, or about 2 GB with the converted movies.
-- `SPEED2.EXE` should be the 1.2 executable, with SHA-256
-  `f9dd86c054878ce6276beb07c1fd61874f7a1e4bf1f241b084c65b73e24168a7`. See [Mods](#mods) for anything else.
+- The port has only been tested with one version 1.2 `SPEED2.EXE`, the one with SHA-256
+  `f9dd86c054878ce6276beb07c1fd61874f7a1e4bf1f241b084c65b73e24168a7`. Nothing checks this on the Vita, and the build
+  only warns about another executable, but another one may not work. See [Mods](#mods).
 - Only the **US release** of version 1.2 has been tested. The EU release will be tested soon.
 - PS Vita with HENkaku / Ensō and [VitaShell](https://github.com/TheOfficialFloW/VitaShell)
 - About 2.5 GB free on the memory card

@@ -1,5 +1,5 @@
 # NFSU2VITA - Need for Speed Underground 2 (static recompilation) -> PS Vita. ELF -> SELF -> VPK.
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.20)
 
 # The PS Vita build (the VPK). The macOS test build is on the development branch.
 
@@ -177,8 +177,6 @@ target_link_libraries(NFSU2VITA.elf
 
 vita_create_self(NFSU2VITA.self NFSU2VITA.elf UNSAFE)
 
-# ATTRIBUTE2=12: extended memory budget for the guest arena.
-set(VITA_MKSFOEX_FLAGS "-d ATTRIBUTE2=12")
 configure_file(
   ${CMAKE_SOURCE_DIR}/sce_sys/livearea/contents/template.xml.in
   ${CMAKE_BINARY_DIR}/generated/livearea/template.xml
@@ -192,11 +190,28 @@ if(EXISTS "${NFSU_ART_DIR}/game/icon0.png" AND EXISTS "${NFSU_ART_DIR}/game/live
 endif()
 message(STATUS "Icon and LiveArea images: ${NFSU_ART_DIR}")
 
-vita_create_vpk(NFSU2VITA.vpk ${VITA_TITLEID} NFSU2VITA.self
-  VERSION ${VITA_VERSION}
-  NAME "${VITA_APP_NAME}"
-  FILE ${NFSU_ART_DIR}/icon0.png sce_sys/icon0.png
-  FILE ${NFSU_ART_DIR}/livearea/contents/bg.png sce_sys/livearea/contents/bg.png
-  FILE ${NFSU_ART_DIR}/livearea/contents/startup.png sce_sys/livearea/contents/startup.png
-  FILE ${CMAKE_BINARY_DIR}/generated/livearea/template.xml sce_sys/livearea/contents/template.xml
-)
+# Packaged here, not with vita_create_vpk: that macro breaks on folders with spaces in their names.
+set(NFSU_SELF "${CMAKE_BINARY_DIR}/NFSU2VITA.self")
+set(NFSU_SFO "${CMAKE_BINARY_DIR}/NFSU2VITA.vpk_param.sfo")
+set(NFSU_VPK "${CMAKE_BINARY_DIR}/NFSU2VITA.vpk")
+set(NFSU_TEMPLATE "${CMAKE_BINARY_DIR}/generated/livearea/template.xml")
+# ATTRIBUTE2=12: extended memory budget for the guest arena.
+add_custom_command(OUTPUT "${NFSU_SFO}"
+  COMMAND "${VITA_MKSFOEX}" -d ATTRIBUTE2=12 -s APP_VER=${VITA_VERSION} -s TITLE_ID=${VITA_TITLEID}
+          "${VITA_APP_NAME}" "${NFSU_SFO}"
+  DEPENDS "${NFSU_SELF}"
+  COMMENT "Generating param.sfo"
+  VERBATIM)
+add_custom_command(OUTPUT "${NFSU_VPK}"
+  COMMAND "${VITA_PACK_VPK}"
+          -a "${NFSU_ART_DIR}/icon0.png=sce_sys/icon0.png"
+          -a "${NFSU_ART_DIR}/livearea/contents/bg.png=sce_sys/livearea/contents/bg.png"
+          -a "${NFSU_ART_DIR}/livearea/contents/startup.png=sce_sys/livearea/contents/startup.png"
+          -a "${NFSU_TEMPLATE}=sce_sys/livearea/contents/template.xml"
+          -s "${NFSU_SFO}" -b "${NFSU_SELF}" "${NFSU_VPK}"
+  DEPENDS "${NFSU_SFO}" "${NFSU_SELF}" "${NFSU_TEMPLATE}" "${NFSU_ART_DIR}/icon0.png"
+          "${NFSU_ART_DIR}/livearea/contents/bg.png" "${NFSU_ART_DIR}/livearea/contents/startup.png"
+  COMMENT "Building NFSU2VITA.vpk"
+  VERBATIM)
+add_custom_target(NFSU2VITA.vpk-vpk ALL DEPENDS "${NFSU_VPK}")
+add_dependencies(NFSU2VITA.vpk-vpk NFSU2VITA.self-self)

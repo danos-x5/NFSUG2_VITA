@@ -191,7 +191,7 @@ about 1 GB on Windows and 1.6 GB on macOS or Linux, into a folder in your user p
 [CMake](https://cmake.org) and [Ninja](https://ninja-build.org) are installed with pip when missing. The first build
 takes a while; later ones only redo what changed.
 
-By hand, with VitaSDK, LLVM, CMake 3.16 or newer and Ninja installed, from the repository root:
+By hand, with VitaSDK, LLVM, CMake 3.20 or newer and Ninja installed, from the repository root:
 
 ```sh
 # 0. Where VitaSDK and LLVM are installed (your paths may differ)

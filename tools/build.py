@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Builds NFSU2VITA.vpk from your game folder in one step, on Windows, macOS or Linux.
 
-python3 tools/build.py "<game folder>" [--clean] [--regenerate] [--jobs N] [--build-dir DIR]
-Finds or downloads the toolchain, translates the game code when it changed, then configures and builds.
+python3 tools/build.py "<game folder>" [--download-tools] [--vitasdk DIR] [--llvm DIR] [--clean] [--regenerate]
+Finds the toolchain or offers to download it, translates the game code when it changed, then builds.
 """
 
 import argparse
@@ -121,6 +121,9 @@ def main():
     parser.add_argument('--regenerate', action='store_true', help='translate the game code again')
     parser.add_argument('--jobs', type=int, default=os.cpu_count() or 4, help='parallel compile jobs')
     parser.add_argument('--build-dir', default=os.path.join(REPO, 'build-vita'), help='build folder')
+    parser.add_argument('--vitasdk', help='VitaSDK folder to use, if not in a usual place')
+    parser.add_argument('--llvm', help='LLVM folder to use in place of the pinned version')
+    parser.add_argument('--download-tools', action='store_true', help='download missing tools without asking')
     args = parser.parse_args()
 
     folder = game_folder(args.game)
@@ -129,7 +132,8 @@ def main():
         sys.exit('Give the game folder: python3 tools/build.py "<folder with %s>"' % EXE)
 
     step('Toolchain')
-    vitasdk, llvm = deps.vitasdk(), deps.llvm()
+    vitasdk = deps.vitasdk(args.vitasdk, args.download_tools)
+    llvm = deps.llvm(args.llvm, args.download_tools)
     cmake, ninja = build_tool('cmake'), build_tool('ninja')
     print('VitaSDK: %s\nLLVM:    %s\nCMake:   %s\nNinja:   %s' % (vitasdk, llvm, cmake, ninja))
 
@@ -157,6 +161,10 @@ def main():
     options_file = os.path.join(build, 'build-options.txt')
     current = open(options_file, encoding='utf-8').read() if os.path.isfile(options_file) else ''
     if options != current or not os.path.isfile(os.path.join(build, 'build.ninja')):
+        if current and [l for l in current.split('\n') if 'VITASDK=' in l or 'NFSU_LLVM=' in l] != \
+                [l for l in options.split('\n') if 'VITASDK=' in l or 'NFSU_LLVM=' in l]:
+            print('The toolchain changed: starting the build folder again.')
+            shutil.rmtree(build)
         step('Configuring')
         if run(configure, env=env) != 0:
             sys.exit('Configuring failed.')

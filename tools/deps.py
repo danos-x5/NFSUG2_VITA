@@ -1,9 +1,10 @@
-"""Finds VitaSDK and LLVM on this computer, or downloads pinned versions once into a per-user folder.
+"""Finds VitaSDK and LLVM, or downloads pinned versions once into a shared folder (~/vita-tools).
 
-python3 -I tools/deps.py vitasdk|llvm   prints the folder used
-Tools already installed are preferred (VITASDK, NFSU_LLVM, PATH, Homebrew). Downloads are checked against SHA-256.
+python3 tools/deps.py vitasdk|llvm [--download]   prints the folder used
+VitaSDK is looked for in its usual places first. LLVM is the pinned version unless NFSU_LLVM names another.
 """
 import hashlib
+import json
 import os
 import platform
 import re
@@ -56,16 +57,8 @@ def host():
 
 
 def tools_dir():
-    """Per-user folder that outlives any one copy of the source."""
-    if os.environ.get('NFSU_TOOLS_DIR'):
-        return os.environ['NFSU_TOOLS_DIR']
-    home = os.path.expanduser('~')
-    if os.name == 'nt':
-        return os.path.join(os.environ.get('LOCALAPPDATA') or os.path.join(home, 'AppData', 'Local'),
-                            'NFSU2Vita', 'tools')
-    if sys.platform == 'darwin':
-        return os.path.join(home, 'Library', 'Application Support', 'NFSU2Vita', 'tools')
-    return os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.join(home, '.cache'), 'nfsu2vita', 'tools')
+    """Shared folder, not tied to this project or one copy of it."""
+    return os.environ.get('NFSU_TOOLS_DIR') or os.path.join(os.path.expanduser('~'), 'vita-tools')
 
 
 def note(text):
@@ -183,23 +176,82 @@ def install(name, table, base_url, folder, unpack, variable):
     return target
 
 
+def remembered(name, folder=None):
+    """Reads, or with a folder stores, a location the user chose."""
+    path = os.path.join(tools_dir(), 'locations.json')
+    try:
+        with open(path, encoding='utf-8') as f:
+            saved = json.load(f)
+    except (OSError, ValueError):
+        saved = {}
+    if folder:
+        saved[name] = folder
+        os.makedirs(tools_dir(), exist_ok=True)
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(saved, f, indent=2)
+    return saved.get(name)
+
+
+def choose(name, target, megabytes, valid, hints, download, why=''):
+    """Asks whether to download or use a folder; returns a folder or None."""
+    if download:
+        return None
+    flag = '--vitasdk' if name == 'VitaSDK' else '--llvm'
+    if not sys.stdin or not sys.stdin.isatty():
+        sys.exit('%s was not found. Run again with --download-tools to download it (%d MB), or with %s <folder>.'
+                 % (name, megabytes, flag))
+    note('\n%s was not found in its usual places.%s' % (name, why))
+    note('  1) Download it (%d MB) to %s' % (megabytes, target))
+    note('  2) Use one already on this computer' + (' (found: %s)' % ', '.join(hints) if hints else ''))
+    while True:
+        note('Choice [1]: ')
+        line = sys.stdin.readline()
+        if not line:
+            sys.exit('No answer given; nothing was downloaded.')
+        answer = line.strip()
+        if answer in ('', '1'):
+            return None
+        if answer == '2':
+            note('Folder: ')
+            folder = os.path.expanduser(sys.stdin.readline().strip().strip('"'))
+            if valid(folder):
+                return os.path.abspath(folder)
+            note('%s is not a usable %s folder.' % (folder, name))
+
+
 def is_vitasdk(folder):
     return bool(folder) and os.path.isfile(os.path.join(folder, 'share', 'vita.toolchain.cmake'))
 
 
-def vitasdk():
-    """An installed VitaSDK, else the pinned download."""
-    for folder in (os.environ.get('VITASDK'), '/usr/local/vitasdk'):
+def vitasdk(given=None, download=False):
+    """VitaSDK: named, in a usual place, chosen, or downloaded."""
+    if given:
+        if not is_vitasdk(given):
+            sys.exit('%s is not a VitaSDK folder (no share/vita.toolchain.cmake).' % given)
+        return os.path.abspath(given)
+    home = os.path.expanduser('~')
+    target = os.path.join(tools_dir(), 'vitasdk')
+    usual = [os.environ.get('VITASDK'), remembered('vitasdk'), target, '/usr/local/vitasdk',
+             os.path.join(home, 'vitasdk'), 'C:\\vitasdk' if os.name == 'nt' else None]
+    for folder in usual:
         if is_vitasdk(folder):
             return os.path.abspath(folder)
-    folder = install('VitaSDK', VITASDK, VITASDK_URL, 'vitasdk-20261015', unpack_vitasdk, 'VITASDK')
+    megabytes = 116 if os.name == 'nt' else 105
+    folder = choose('VitaSDK', target, megabytes, is_vitasdk, [], download)
+    if folder:
+        remembered('vitasdk', folder)
+        return folder
+    folder = install('VitaSDK', VITASDK, VITASDK_URL, 'vitasdk', unpack_vitasdk, 'VITASDK')
     if not is_vitasdk(folder):
         sys.exit('The VitaSDK in %s is incomplete. Delete that folder and run this again.' % folder)
+    note('Other Vita projects can use it: set VITASDK to %s and add its bin folder to PATH.' % folder)
     return folder
 
 
 def clang_version(folder):
     """Major version of the clang in folder/bin, or 0."""
+    if not folder:
+        return 0
     binaries = os.path.join(folder, 'bin')
     if not all(os.path.isfile(os.path.join(binaries, tool + EXE)) for tool in LLVM_TOOLS):
         return 0
@@ -214,23 +266,44 @@ def clang_version(folder):
     return int(found.group(1)) if found and 'Apple' not in out else 0
 
 
-def llvm():
-    """An installed LLVM that is new enough, else the pinned download."""
-    candidates = [os.environ.get('NFSU_LLVM')]
+def is_llvm(folder):
+    return clang_version(folder) >= LLVM_MINIMUM
+
+
+def installed_llvm():
+    """LLVM folders on this computer that could build the project."""
+    folders = ['/opt/homebrew/opt/llvm', '/usr/local/opt/llvm']
     on_path = shutil.which('clang')
     if on_path:
-        candidates.append(os.path.dirname(os.path.dirname(os.path.realpath(on_path))))
-    candidates += ['/opt/homebrew/opt/llvm', '/usr/local/opt/llvm']
-    for folder in candidates:
-        if folder and clang_version(folder) >= LLVM_MINIMUM:
+        folders.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(on_path))))
+    return [f for f in dict.fromkeys(folders) if is_llvm(f)]
+
+
+def llvm(given=None, download=False):
+    """LLVM: the pinned version unless another is named or chosen."""
+    given = given or os.environ.get('NFSU_LLVM')
+    if given:
+        if not is_llvm(given):
+            sys.exit('%s is not a usable LLVM: it needs clang %d or newer, lld, llvm-ar and llvm-profdata in bin.'
+                     % (given, LLVM_MINIMUM))
+        return os.path.abspath(given)
+    target = os.path.join(tools_dir(), 'llvm-' + LLVM_VERSION)
+    for folder in (remembered('llvm'), target):
+        if is_llvm(folder):
             return os.path.abspath(folder)
+    megabytes = {'windows': 862, 'darwin': 1480}.get(host()[0], 1940)
+    why = ' The build is tuned and measured with clang %s; another version may perform differently.' % LLVM_VERSION
+    folder = choose('LLVM ' + LLVM_VERSION, target, megabytes, is_llvm, installed_llvm(), download, why)
+    if folder:
+        remembered('llvm', folder)
+        return folder
     folder = install('LLVM', LLVM, LLVM_URL, 'llvm-' + LLVM_VERSION, unpack_llvm, 'NFSU_LLVM')
-    if clang_version(folder) < LLVM_MINIMUM:
+    if not is_llvm(folder):
         sys.exit('The LLVM in %s does not run. Delete that folder and run this again.' % folder)
     return folder
 
 
 if __name__ == '__main__':
-    if len(sys.argv) != 2 or sys.argv[1] not in ('vitasdk', 'llvm'):
+    if len(sys.argv) < 2 or sys.argv[1] not in ('vitasdk', 'llvm') or sys.argv[2:] not in ([], ['--download']):
         sys.exit(__doc__)
-    print(vitasdk() if sys.argv[1] == 'vitasdk' else llvm())
+    print((vitasdk if sys.argv[1] == 'vitasdk' else llvm)(download=sys.argv[2:] == ['--download']))

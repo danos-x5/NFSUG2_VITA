@@ -2,8 +2,8 @@
 
 Usage: generate.py [--game ug2] --binaries <dir> --out <dir> [--analysis <file.json>]
 
-<dir> must hold the executable named by games/<game>.py. Its SHA-256 is checked: the tables there fit only that
-file. The routines of the audio banks are translated too when the game has them (bankcode.py).
+<dir> must hold the executable named by games/<game>.py. Its SHA-256 is compared with the one the port was tested
+with; another executable gets a warning. The routines of the audio banks are translated too when the game has them (bankcode.py).
 
 Files in the output directory are replaced only when their content changes; generated files that are no longer
 produced are deleted, other files are left alone.
@@ -49,36 +49,33 @@ class GameModule:
 
 
 MODIFIED_WARNING = """
-WARNING: %(path)s is not the executable this port was made for.
+WARNING: %(path)s is not the executable this port has been tested with.
   found    SHA-256 %(found)s
-  expected SHA-256 %(expected)s (the original, unmodified version)
+  tested   SHA-256 %(expected)s
 
-The function tables, patches and native replacements in this repository were written for the original
-executable. Code generated from another one is untested: the build may fail, or the game may not start, may
-crash, or may run much slower. Changes inside functions the port replaces with its own code are ignored.
+The port has only been tested against that one executable. With another, the build may fail, or the game may not
+start, may crash, or may run much slower. Changes inside functions the port replaces with its own code are ignored.
 """
 
 
-# Asks before generating from an executable other than the expected one.
-def check_binary(directory, accepted=()):
+# Warns about an untested executable, and asks when someone can answer.
+def check_binary(directory):
     path = os.path.join(directory, GAME.EXE_NAME)
     if not os.path.isfile(path):
         sys.exit('missing %s' % path)
     with open(path, 'rb') as f:
         sha256 = hashlib.sha256(f.read()).hexdigest()
     if sha256 != GAME.EXE_SHA256:
-        print(MODIFIED_WARNING % {'path': path, 'found': sha256, 'expected': GAME.EXE_SHA256})
-        if sha256 in accepted:
-            print('Continuing: this SHA-256 was given with --accept-sha256.')
-        elif sys.stdin.isatty():
+        print(MODIFIED_WARNING % {'path': path, 'found': sha256, 'expected': GAME.EXE_SHA256}, flush=True)
+        if sys.stdin is not None and sys.stdin.isatty():
             try:
-                answer = input('Generate code from this executable anyway? [y/N] ')
+                answer = input('Continue with this executable anyway? [y/N] ')
             except EOFError:
                 answer = ''
             if answer.strip().lower() not in ('y', 'yes'):
                 sys.exit('stopped: nothing was generated')
         else:
-            sys.exit('stopped: nothing was generated. To continue without a prompt, add --accept-sha256 %s' % sha256)
+            print('Continuing with it: there is no terminal to ask on.', flush=True)
     return pe_image.Image(path, getattr(GAME, 'RELOCATION_SECTION', None))
 
 
@@ -242,8 +239,6 @@ def main():
     parser.add_argument('--binaries', required=True, help='directory with the game executable')
     parser.add_argument('--out', required=True, help='output directory for the generated sources')
     parser.add_argument('--analysis', help='also write the analysis summary (JSON) for test tools')
-    parser.add_argument('--accept-sha256', action='append', default=[], metavar='SHA256',
-                        help='generate from an executable with this SHA-256 without asking (its PATCHES bytes are still checked)')
     parser.add_argument('--memory-x87', action='store_true',
                         help='keep the x87 stack in cpu.fpu instead of C++ locals (for comparisons)')
     parser.add_argument('--memory-registers', action='store_true',
@@ -258,7 +253,7 @@ def main():
     global GAME
     GAME = importlib.import_module('games.' + args.game)
     started = time.time()
-    image = check_binary(args.binaries, [h.lower() for h in args.accept_sha256])
+    image = check_binary(args.binaries)
     apply_patches(image)
     print('%s: read, %d sections, %d relocations, %d imports, %d patches'
           % (GAME.EXE_NAME, len(image.sections), len(image.relocations), len(image.imports), len(GAME.PATCHES)))

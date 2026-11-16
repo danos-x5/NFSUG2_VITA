@@ -225,8 +225,8 @@ cmake -S . -B build-vita -G Ninja -DCMAKE_BUILD_TYPE=Release -DNFSU_GAME_OPT=-O2
 ninja -C build-vita                                    # -> build-vita/NFSU2VITA.vpk
 ```
 
-- The generator is made for the 1.2 executable named under [Requirements](#requirements). With any other it prints a
-  warning and asks before continuing (`--accept-sha256 <hash>` skips the question); see [Mods](#mods).
+- The port has only been tested with the executable named under [Requirements](#requirements). With any other the
+  build prints a warning that it may not work and asks before continuing; see [Mods](#mods).
 - The build uses the profile in `pgo/` by default; `pgo/README.md` explains how it was recorded.
 - The icon and LiveArea images in `sce_sys/` are plain. Step 3 makes ones with the game's logo from your own game
   files into `sce_sys/game/`, which the build uses when it is there; run it before `cmake`. See

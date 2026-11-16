@@ -250,6 +250,8 @@ ninja -C build-vita                                    # -> build-vita/NFSU2VITA
 - [Electry](https://github.com/Electry): PSVshell
 - [ThirteenAG](https://github.com/ThirteenAG): the WidescreenFixesPack, read as a guide to what a wider picture
   needs fixed; none of its code is used
+- [nfsu2-recompiled](https://github.com/codepdbh/nfsu2-recompiled): another recompilation of the same game, read as
+  a reference for how the game works; none of its code is used
 
 ## License
 

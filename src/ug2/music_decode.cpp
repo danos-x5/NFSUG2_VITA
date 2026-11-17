@@ -314,7 +314,18 @@ void queueNext(Stream& s, reg32 at, const Granule& first, const Granule& second)
     const uint8_t* data = following(second);
     Granule a, b;
     if (!data || !ealayer3::parse(data, a) || a.index != 0 || !sameShape(first, a))
+    {
+        static int s_logged = 0;
+        if (s.check && s_logged++ < 6)
+        {
+            const uint8_t* e = second.data + second.bytes;
+            pf::logInfo("music check: no next frame after 0x%08x (%s): %02x %02x %02x %02x %02x %02x %02x %02x | "
+                        "%02x %02x %02x %02x %02x %02x %02x %02x", unsigned(at + reg32(e - first.data)),
+                        data ? "bad granule" : "no block", e[0], e[1], e[2], e[3], e[4], e[5], e[6], e[7], e[8], e[9],
+                        e[10], e[11], e[12], e[13], e[14], e[15]);
+        }
         return;
+    }
     const uint8_t* bData = ealayer3::next(a);
     const bool pair = bData && ealayer3::parse(bData, b) && b.index == 1 && sameShape(a, b);
     j.size = ealayer3::frame(&a, pair ? &b : nullptr, j.frame);

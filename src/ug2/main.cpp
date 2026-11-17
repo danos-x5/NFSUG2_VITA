@@ -4,6 +4,7 @@
 #include "audio_cull.h"
 #include "audio_defer.h"
 #include "audio_mixer.h"
+#include "audio_stats.h"
 #include "bankcode.h"
 #include "boot.h"
 #include "movies.h"
@@ -253,6 +254,7 @@ int main(int argc, char** argv)
         std::vector<uint8_t>().swap(image);
         ug2::mixer::configure(app);
         ug2::cull::configure(app);
+        ug2::mixstats::configure(app);
         ug2::sndq::configure(app);
         ug2::music::configure(app);
         ug2::boot::configure(app);

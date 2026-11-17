@@ -15,8 +15,8 @@ namespace
 
 const int MaxEntries = 64;
 const int MaxKey     = 32;
-const int MaxValue   = 192;
-const int MaxLine    = 256;
+const int MaxValue   = 384;
+const int MaxLine    = 448;
 
 // Every setting the game reads; other keys are reported as unknown.
 const char* const Known[] =

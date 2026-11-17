@@ -84,6 +84,9 @@ public:
     // Synthetic pad merged into every reading: inputs ORed, nonzero sticks and a touch replace. Any thread.
     static void setInjectedPad(const controls::PadSample& pad);
 
+    // Right stick of the last pad reading, injected pad included: -1..1, y down. Any thread.
+    static void getRightStick(float* x, float* y);
+
     // Front touch as the mouse: last position (0..1 of the pointer area) and the left button.
     struct Touch
     {

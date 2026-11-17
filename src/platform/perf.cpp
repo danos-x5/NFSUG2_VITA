@@ -77,6 +77,7 @@ std::atomic<uint32_t> s_deferTotal[DeferCount];
 std::atomic<uint32_t> s_deferDepth{0};
 SndStat s_deferLatency;
 uint32_t s_sndDepth = 0;        // audio thread only
+SndObserver s_sndObserver = nullptr;
 uint32_t s_sndStart = 0;
 SndStat s_sndHold;
 SndStat s_sndLockWait[SndCauseCount];
@@ -742,7 +743,11 @@ void sndAcquired(uint32_t handle, uint32_t thread)
     if (!sndHandle(handle) || !sndThread(thread))
         return;
     if (s_sndDepth++ == 0)
+    {
         s_sndStart = now();
+        if (s_sndObserver)
+            s_sndObserver(true);
+    }
 }
 
 void sndReleased(uint32_t handle, uint32_t thread)
@@ -750,7 +755,16 @@ void sndReleased(uint32_t handle, uint32_t thread)
     if (!sndHandle(handle) || !sndThread(thread) || s_sndDepth == 0)
         return;
     if (--s_sndDepth == 0)
+    {
         s_sndHold.add(now() - s_sndStart);
+        if (s_sndObserver)
+            s_sndObserver(false);
+    }
+}
+
+void setSndObserver(SndObserver observer)
+{
+    s_sndObserver = observer;
 }
 
 void sndLockWait(SndCause cause, uint32_t microseconds)

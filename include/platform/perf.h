@@ -292,6 +292,9 @@ void sndIdentify(uint32_t handle, uint32_t thread);
 // After a wait on handle returned (mutex owned) or a mutex release succeeded, on thread (a thread block).
 void sndAcquired(uint32_t handle, uint32_t thread);
 void sndReleased(uint32_t handle, uint32_t thread);
+// Audio thread: told when its SND mutex ownership starts (true) and ends (false).
+typedef void (*SndObserver)(bool held);
+void setSndObserver(SndObserver observer);
 // True for the SND mutex handle, and for the audio thread.
 bool sndHandle(uint32_t handle);
 bool sndThread(uint32_t thread);

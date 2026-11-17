@@ -5,6 +5,7 @@
 
 #include "bankcode.h"
 #include "audio_mixer.h"
+#include "audio_stats.h"
 #include "banknative.h"
 
 #include <lib/foreigncode.h>
@@ -1034,6 +1035,7 @@ void runRoutine(win32::WinApplication* app, x86::CPU& cpu)
         unsupported(cpu.ip, "no loaded bank routine");
     const bool timed = pf::perf::enabled() && s_depth == 0;
     const uint32_t start = timed ? pf::perf::now() : 0;
+    const mixstats::Scoped scope(cpu, mixstats::Bank);
     ++s_depth;
     const Settings& options = settings();
     Routine* cached = routine(range);

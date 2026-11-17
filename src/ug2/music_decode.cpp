@@ -123,8 +123,8 @@ void logCheck(const Stream& s)
                 "16 bits in the game's (left out), %u granule size mismatches, %u of %u PCM inserts in place, "
                 "%u lone granules",
                 unsigned(s.object), unsigned(c.granules), double(c.maxDiff), std::sqrt(c.sumSquares / samples),
-                unsigned(c.over2), unsigned(c.apart), unsigned(c.clipped), unsigned(c.sizeMismatches), unsigned(c.insertsFound),
-                unsigned(c.inserts), unsigned(s.lone));
+                unsigned(c.over2), unsigned(c.apart), unsigned(c.clipped), unsigned(c.sizeMismatches),
+                unsigned(c.insertsFound), unsigned(c.inserts), unsigned(s.lone));
 }
 
 void release(Stream& s)

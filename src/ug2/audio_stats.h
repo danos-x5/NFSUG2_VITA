@@ -4,8 +4,8 @@
 #include <lib/winapp.h>
 #include <x86.h>
 
-// Development counters of the EA SND mixer thread (dev_mixer_stats=on, needs timing_log): voices, module runs, kernel
-// work and time by scope with and without the SND mutex, logged once a second.
+// Dev counters of the EA SND mixer thread (dev_mixer_stats=on, needs timing_log): voices, module runs, kernel work,
+// time by scope with and without the SND mutex, logged each second.
 namespace ug2 { namespace mixstats
 {
 
@@ -18,7 +18,7 @@ extern bool g_on;
 
 inline bool on() { return g_on; }
 
-// Reads dev_mixer_stats and wraps the module renders; before guest code runs.
+// Reads dev_mixer_stats, wraps module renders; before guest code runs.
 void configure(win32::WinApplication& app);
 
 void enter(const x86::CPU& cpu, int scope);

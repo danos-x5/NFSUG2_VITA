@@ -49,7 +49,7 @@ const char* const Known[] =
     "effect_stats", "effect_trace", "effect_check", "optimised_particles", "smoke_log", "smoke_skip", "smoke_fade", "smoke_near", "smoke_mip",
     // Native versions of guest code and their shadow compares.
     "audio_log", "audio_silence_db", "audio_cull_check", "dev_cull_stats", "audio_block_ms", "audio_mix_rate", "audio_mixer", "audio_defer", "audio_defer_log", "audio_defer_notify", "audio_defer_hook", "audio_inline_with_hooks", "audio_hook_release", "audio_hook_wait_ms", "audio_snd_yield", "audio_mixer_stay", "audio_dump", "audio_engine_inline", "ea_timer_unlocked", "yield_relock_spin_us", "audio_inline_notifications", "audio_library_audit", "audio_native_kernels", "audio_neon_kernels", "audio_selftest", "audio_hash", "bank_native", "shadow_bank", "bank_cache_check", "bank_lib_check", "coll_native", "shadow_coll", "cull_native", "cull_parallel", "shadow_cull", "music_hw_check", "music_hw_check_dump", "music_hw_ahead", "dev_mixer_stats", "dev_snd_watch", "audio_mixer_split", "audio_split_check",
-    "sampler", "sampler_interval_us", "sampler_copies", "sampler_thread",
+    "sampler", "sampler_interval_us", "sampler_copies", "sampler_thread", "sampler_from_race",
     "draw_native", "shadow_draw", "flush_native", "flush_async", "flush_async_core", "flush_async_priority",
     "flush_async_frame", "flares_native", "flares_parallel", "shadow_flares",
     "load_native", "shadow_load", "math_native", "shadow_math", "particles_native", "particles_update",

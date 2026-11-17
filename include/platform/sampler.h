@@ -18,6 +18,8 @@ bool sampleIo();
 void retarget(int thread);
 // Any thread: a pair (0xffffffff, value) goes before the next sample when value changes.
 void mark(uint32_t value);
+// Boot race start and end: time marks; sampler_from_race samples only between.
+void race(bool on);
 // Ends sampling and writes the file.
 void stop();
 

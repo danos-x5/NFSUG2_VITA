@@ -156,6 +156,7 @@ void framePresented(uint32_t presentUs)
         {
             s_endReason = framesUp ? "frame limit" : "time limit";
             phase = Stopping;
+            pf::sampler::race(false);
         }
     }
     if (phase != Stopping)
@@ -197,7 +198,10 @@ void raceStarted()
     s_windowStartUs = s_startUs;
     pf::limiter::start();
     if (s_phase.compare_exchange_strong(expected, Recording, std::memory_order_acq_rel))
+    {
+        pf::sampler::race(true);
         pf::logInfo("bench: race started, measuring");
+    }
 }
 
 void setWindowNote(WindowNote note)
@@ -212,7 +216,10 @@ void raceEnded(const char* reason)
     s_endReason = reason;
     int expected = Recording;
     if (s_phase.compare_exchange_strong(expected, Stopping, std::memory_order_acq_rel))
+    {
+        pf::sampler::race(false);
         pf::logInfo("bench: measurement ended: %s", reason);
+    }
 }
 
 bool measurementOver()

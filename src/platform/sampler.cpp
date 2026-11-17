@@ -36,6 +36,8 @@ const uint32_t ContextWords = 128;
 const uint32_t Magic = 0x32504d53;     // "SMP2": pc and lr pairs
 const uint32_t WaitingSample = 0xff000000u;     // | the wait type: the thread was not running
 const uint32_t MarkSample = 0xffffffffu;        // followed by the mark's value
+const uint32_t TimeMark = 0x40000000u;          // | ms since the race start, a mark every TimeMarkUs
+const uint32_t TimeMarkUs = 100000;
 
 uint32_t s_samples[MaxSamples];
 std::atomic<uint32_t> s_count{0};
@@ -47,6 +49,11 @@ std::atomic<SceUID> s_target{-1};
 bool s_mixer = false;                            // sampler_thread=mixer
 bool s_io = false;                               // sampler_thread=io
 std::atomic<uint32_t> s_mark{0};
+bool s_fromRace = false;                         // sampler_from_race
+std::atomic<int> s_race{0};                      // 0 before the race, 1 racing, 2 after
+uint64_t s_raceStartUs = 0;
+uint32_t s_nextTimeMarkUs = 0;
+bool s_raceWritten = false;
 uint32_t s_markWritten = 0;
 int s_pcWord = -1;
 uint32_t s_intervalUs = 1000;
@@ -201,11 +208,42 @@ void findLayout()
 void logCopies();
 void logWaits();
 
+void append(uint32_t a, uint32_t b)
+{
+    const uint32_t n = s_count.load(std::memory_order_relaxed);
+    if (n + 2 <= MaxSamples)
+    {
+        s_samples[n] = a;
+        s_samples[n + 1] = b;
+        s_count.store(n + 2, std::memory_order_relaxed);
+    }
+}
+
 int samplerEntry(void*)
 {
     while (s_run.load(std::memory_order_relaxed))
     {
         sceKernelDelayThread(s_intervalUs);
+        const int race = s_race.load(std::memory_order_acquire);
+        if (race == 1)
+        {
+            const uint32_t sinceUs = uint32_t(sceKernelGetProcessTimeWide() - s_raceStartUs);
+            if (sinceUs >= s_nextTimeMarkUs)
+            {
+                append(MarkSample, TimeMark | (sinceUs / 1000));
+                s_nextTimeMarkUs = (sinceUs / TimeMarkUs + 1) * TimeMarkUs;
+            }
+        }
+        if (s_fromRace && race != 1)
+        {
+            if (race == 2 && !s_raceWritten)
+            {
+                s_raceWritten = true;
+                writeSamples();
+                writeHeader(s_count.load(std::memory_order_relaxed) / 2);
+            }
+            continue;
+        }
         const uint32_t mark = s_mark.load(std::memory_order_relaxed);
         if (mark != s_markWritten)
         {
@@ -248,7 +286,7 @@ int samplerEntry(void*)
             s_samples[n + 1] = s_cpu[s_layout.lr];
             s_count.store(n + 2, std::memory_order_relaxed);
         }
-        if (s_count.load(std::memory_order_relaxed) - s_written >= ChunkWords)
+        if (!s_fromRace && s_count.load(std::memory_order_relaxed) - s_written >= ChunkWords)
             writeSamples();
         if (!s_tablesLogged && s_count.load(std::memory_order_relaxed) >= TablesAtWords)
         {
@@ -484,11 +522,13 @@ void start(const char* path)
     writeHeader(0);
     s_run = true;
     s_copying = Config::getBool("sampler_copies", false);
+    s_fromRace = Config::getBool("sampler_from_race", false);
     s_thread = new Thread("sampler", &samplerEntry, nullptr, Thread::PriorityHigh, 16 * 1024,
                           cores::hasCore3() ? Thread::Cpu3 : Thread::Cpu2);
     s_thread->start();
-    logInfo("sampler: thread 0x%08x every %u us, pc in context word %d%s", unsigned(s_target.load()),
-            unsigned(s_intervalUs), s_pcWord, s_mixer ? " (moves to the audio mixer: sampler_thread=mixer)"
+    logInfo("sampler: thread 0x%08x every %u us, pc in context word %d%s%s", unsigned(s_target.load()),
+            unsigned(s_intervalUs), s_pcWord, s_fromRace ? ", from the race start to its end (sampler_from_race)" : "",
+            s_mixer ? " (moves to the audio mixer: sampler_thread=mixer)"
                     : s_io ? " (moves to the first I/O thread: sampler_thread=io)" : "");
 }
 
@@ -505,6 +545,23 @@ bool sampleIo()
 void mark(uint32_t value)
 {
     s_mark.store(value, std::memory_order_relaxed);
+}
+
+void race(bool on)
+{
+    if (!s_thread)
+        return;
+    if (on && s_race.load(std::memory_order_relaxed) == 0)
+    {
+        s_raceStartUs = sceKernelGetProcessTimeWide();
+        s_race.store(1, std::memory_order_release);
+        logInfo("sampler: race started, %u samples so far", unsigned(s_count.load() / 2));
+    }
+    else if (!on && s_race.load(std::memory_order_relaxed) == 1)
+    {
+        s_race.store(2, std::memory_order_release);
+        logInfo("sampler: race ended, %u samples", unsigned(s_count.load() / 2));
+    }
 }
 
 void retarget(int thread)

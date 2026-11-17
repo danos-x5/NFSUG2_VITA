@@ -282,8 +282,13 @@ bool decodeFrame(Stream& s, reg32 at, const Granule* first, const Granule* secon
     return samples == int(ealayer3::FrameSamples);
 }
 
-// First granule of the frame after the pair ending at second: in its block, or the next SCDl block's first. A block
-// may end with up to one stray byte, or a zero end marker and zero padding.
+uint32_t le32(const uint8_t* p)
+{
+    return p[0] | (p[1] << 8) | (p[2] << 16) | (uint32_t(p[3]) << 24);
+}
+
+// First granule of the frame after the pair ending at second: in its block, or the next block's first. In the
+// game's stream buffer a block follows the last one's frames (after up to 4 end bytes) with its tag set to 0x100.
 const uint8_t* following(const Granule& second)
 {
     Granule g;
@@ -292,17 +297,18 @@ const uint8_t* following(const Granule& second)
         if (ealayer3::parse(p, g))
             return p;
     }
-    const uint8_t* p = second.data + second.bytes;
-    const uint8_t* end = p + 64;
-    while (p < end && memcmp(p, "SCDl", 4) != 0)
-        ++p;
-    if (p == end)
-        return nullptr;
-    const uint32_t size = p[4] | (p[5] << 8) | (p[6] << 16) | (uint32_t(p[7]) << 24);
-    if (size < 32 || size > 0x10000)
-        return nullptr;
-    p += 8 + 4 + 4 * second.channels;
-    return p[0] == 0 && p[1] != 0 ? p + 1 : nullptr;
+    const uint8_t* end = second.data + second.bytes;
+    for (const uint8_t* p = end; p <= end + 4; ++p)
+    {
+        if (memcmp(p, "SCDl", 4) != 0 && le32(p) != 0x100)
+            continue;
+        const uint32_t size = le32(p + 4), samples = le32(p + 8);
+        const uint8_t* first = p + 8 + 4 + 4 * second.channels;
+        if (size >= 32 && size <= 0x10000 && samples <= 0x10000 && first[0] == 0 && first[1] != 0
+            && ealayer3::parse(first + 1, g) && g.index == 0)
+            return first + 1;
+    }
+    return nullptr;
 }
 
 // Queues the frame after the pair (first at, second) for the worker.

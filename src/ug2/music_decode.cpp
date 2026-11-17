@@ -282,18 +282,21 @@ bool decodeFrame(Stream& s, reg32 at, const Granule* first, const Granule* secon
     return samples == int(ealayer3::FrameSamples);
 }
 
-// First granule of the frame after the pair ending at second: in its block, or the next SCDl block's first.
+// First granule of the frame after the pair ending at second: in its block, or the next SCDl block's first. A block
+// may end with up to one stray byte, or a zero end marker and zero padding.
 const uint8_t* following(const Granule& second)
 {
+    Granule g;
     if (const uint8_t* p = ealayer3::next(second))
-        return p;
+    {
+        if (ealayer3::parse(p, g))
+            return p;
+    }
     const uint8_t* p = second.data + second.bytes;
-    if (p[0] != 0 || p[1] != 0)
-        return nullptr;
-    p += 2;
-    for (int i = 0; i < 64 && *p == 0; ++i)
+    const uint8_t* end = p + 64;
+    while (p < end && memcmp(p, "SCDl", 4) != 0)
         ++p;
-    if (memcmp(p, "SCDl", 4) != 0)
+    if (p == end)
         return nullptr;
     const uint32_t size = p[4] | (p[5] << 8) | (p[6] << 16) | (uint32_t(p[7]) << 24);
     if (size < 32 || size > 0x10000)

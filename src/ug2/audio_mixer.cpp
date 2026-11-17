@@ -1047,6 +1047,8 @@ void voiceYield(win32::WinApplication* app, x86::CPU& cpu)
 // Mix kernel: dst[i] += src[i] * gain (n, gain, src, dst).
 void sub_72c360(win32::WinApplication* app, x86::CPU& cpu)
 {
+    if (cull::checking())
+        cull::checkMix(cpu);
     if (mixer::s_sndMutex && mixer::unlocked(cpu) && argument(cpu, 2) == rc::ld32(VoiceScratch))
         voiceYield(app, cpu);
     if (!mixer::s_nativeKernels)
@@ -1151,14 +1153,28 @@ void sub_72c480(win32::WinApplication* app, x86::CPU& cpu)
     }
 }
 
+void resampleLinear(win32::WinApplication* app, x86::CPU& cpu);
+
 // Linear resampler (n, src, dst, &position, &fraction, step, step fraction).
 void sub_733700(win32::WinApplication* app, x86::CPU& cpu)
 {
     if (cull::skipKernel(cpu))
     {
-        cull::advanceLinear(cpu);
+        if (!cull::checking())
+        {
+            cull::advanceLinear(cpu);
+            return;
+        }
+        const cull::KernelCheck check(cpu, false);
+        resampleLinear(app, cpu);
+        check.finish();
         return;
     }
+    resampleLinear(app, cpu);
+}
+
+void resampleLinear(win32::WinApplication* app, x86::CPU& cpu)
+{
     if (!mixer::s_nativeKernels)
     {
         sub_733700_guest(app, cpu);

@@ -3,6 +3,7 @@
 
 #include "audio_cull.h"
 
+#include <lib/heap.h>
 #include <platform/config.h>
 #include <platform/log.h>
 #include <platform/perf.h>
@@ -13,7 +14,13 @@
 #include <cstdlib>
 #include <cstring>
 
-namespace ug2 { namespace cull
+namespace ug2
+{
+
+void sub_733388(win32::WinApplication* app, x86::CPU& cpu);
+void sub_733700_guest(win32::WinApplication* app, x86::CPU& cpu);
+
+namespace cull
 {
 
 namespace
@@ -27,6 +34,7 @@ const reg32 VoiceCount      = 0x8b47f8;     // byte
 const reg32 ChannelCount    = 0x8b47f9;     // byte
 const reg32 AuxCount        = 0x8180b8;
 const reg32 AuxBuffers      = 0x8b4804;     // per aux effect: buffer or 0
+const reg32 ChannelBuffers  = 0x8b48f0;     // per channel
 const reg32 AuxIdle         = 0x8b47c8;     // aux effect idle counter, cleared when a voice mixes into an aux
 const reg32 VoiceSize       = 0x5c;
 const reg32 PlayingVoice    = 2;
@@ -71,6 +79,9 @@ const int MaxChain  = 8;
 const int SetSize   = 512;      // modules of silent voices, open addressing
 const int SetLimit  = 256;
 const int MaxSaved  = 512;
+const reg32 MaxShadow = 2048;
+const reg32 MaxShadowChannels = 8;
+const int MaxCulled = 128;
 
 struct Saved
 {
@@ -82,6 +93,7 @@ struct Saved
 
 bool s_enabled = false;
 bool s_stats = false;                   // dev_cull_stats
+bool s_check = false;                   // audio_cull_check: decide and measure, skip nothing
 float s_threshold = 0.0f;               // linear gain
 reg32 s_fs = 0;                         // thread running the voice render, else 0
 bool s_skip = false;                    // inside a resampler module of a silent voice
@@ -96,8 +108,14 @@ win32::MethodPtr s_cubicOriginal = nullptr;
 struct Stats
 {
     uint32_t renders = 0, voices = 0, zero = 0, quiet = 0, quietUnskippable = 0, since = 0;
+    uint32_t kernels = 0, mismatches = 0, mixes = 0;
+    float maxCall = 0.0f, maxDropped = 0.0f;       // largest dropped sample of one voice and of the sum, as 16-bit units
 };
 Stats s_stat;
+reg32 s_culled[MaxCulled];              // voices decided silent this render
+int s_culledCount = 0;
+float s_shadow[MaxShadowChannels][MaxShadow];   // what the silent voices would have added to the channels
+reg32 s_shadowLength = 0;
 
 inline reg32 argument(const x86::CPU& cpu, int n)
 {
@@ -160,6 +178,7 @@ void markVoices()
 {
     s_setCount = 0;
     s_savedCount = 0;
+    s_culledCount = 0;
     memset(s_set, 0, sizeof(s_set));
     const reg32 voices = rc::ld32(VoiceArray);
     const reg32 count = rc::ld8(VoiceCount);
@@ -217,6 +236,10 @@ void markVoices()
             continue;
         for (int k = 0; k < skippableCount; ++k)
             insert(skippable[k]);
+        if (s_culledCount < MaxCulled)
+            s_culled[s_culledCount++] = voice;
+        if (s_check)
+            continue;
         for (int k = 0; k < mixedCount; ++k)
         {
             s_saved[s_savedCount++] = {mixed[k], voice, root, rc::ld32(mixed[k])};
@@ -249,8 +272,15 @@ void logStats()
     pf::logInfo("cull: %.2f s: %u voice renders, %u voices: %u zero gain, %u under threshold (%u of them not skippable), "
                 "culled %.1f%%", (now - t.since) / 1e6, t.renders, t.voices, t.zero, t.quiet, t.quietUnskippable,
                 t.voices ? 100.0 * (t.zero + t.quiet - t.quietUnskippable) / t.voices : 0.0);
+    if (s_check)
+        pf::logInfo("cull check: %u kernel advances compared, %u differ; %u mixes dropped, largest one sample %.3f, "
+                    "largest sum in a channel %.3f (16-bit units)", t.kernels, t.mismatches, t.mixes, double(t.maxCall),
+                    double(t.maxDropped));
+    const Stats keep = s_stat;
     s_stat = Stats();
     s_stat.since = now;
+    s_stat.maxCall = keep.maxCall;
+    s_stat.maxDropped = keep.maxDropped;
 }
 
 bool counted(const x86::CPU& cpu)
@@ -296,7 +326,7 @@ void skipFilter(win32::WinApplication* app, x86::CPU& cpu, bool outputIsInput)
 template <int K>
 void filterHook(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (counted(cpu) && contains(argument(cpu, 0)))
+    if (!s_check && counted(cpu) && contains(argument(cpu, 0)))
     {
         skipFilter(app, cpu, K < 2);
         return;
@@ -306,9 +336,20 @@ void filterHook(win32::WinApplication* app, x86::CPU& cpu)
 
 void cubicHook(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (skipKernel(cpu) && advanceCubic(cpu))
+    if (!skipKernel(cpu))
+    {
+        s_cubicOriginal(app, cpu);
         return;
-    s_cubicOriginal(app, cpu);
+    }
+    if (s_check)
+    {
+        const KernelCheck check(cpu, true);
+        s_cubicOriginal(app, cpu);
+        check.finish();
+        return;
+    }
+    if (!advanceCubic(cpu))
+        s_cubicOriginal(app, cpu);
 }
 
 }
@@ -322,6 +363,9 @@ void configure(win32::WinApplication& app)
 {
     const char* const text = pf::Config::getString("audio_silence_db", "-60");
     s_stats = pf::Config::getBool("dev_cull_stats", false);
+    s_check = pf::Config::getBool("audio_cull_check", false);
+    if (pf::Config::getBool("audio_selftest", false))
+        selfTest(app);
     if (pf::Config::getBool("audio_snd_yield", false))
     {
         pf::logInfo("audio cull: off while audio_snd_yield is on");
@@ -349,6 +393,7 @@ void configure(win32::WinApplication& app)
     s_filter[2] = app.replaceMethod(0x72a9b3, &filterHook<2>);
     s_filter[3] = app.replaceMethod(0x72aa55, &filterHook<3>);
     s_cubicOriginal = app.replaceMethod(0x733388, &cubicHook);
+    s_stats = s_stats || s_check;
     pf::logInfo("audio cull: voices under %.1f dB (gain %.6f) skip resampler, filters and mix (audio_silence_db)", db,
                 double(s_threshold));
 }
@@ -367,6 +412,16 @@ Voices::~Voices()
     if (!m_on)
         return;
     restoreGains();
+    if (s_check)
+    {
+        for (reg32 c = 0; c < MaxShadowChannels; ++c)
+        {
+            for (reg32 i = 0; i < s_shadowLength; ++i)
+                s_stat.maxDropped = std::max(s_stat.maxDropped, std::fabs(s_shadow[c][i]));
+            memset(s_shadow[c], 0, sizeof(float) * s_shadowLength);
+        }
+        s_shadowLength = 0;
+    }
     s_fs = 0;
     s_skip = false;
     if (s_stats)
@@ -381,35 +436,167 @@ bool skipKernel(const x86::CPU& cpu)
     return s_skip && counted(cpu);
 }
 
-void advanceLinear(x86::CPU& cpu)
+bool checking()
+{
+    return s_check;
+}
+
+namespace
+{
+
+struct Advanced
+{
+    reg32 position, fraction;
+    bool  valid;
+};
+
+Advanced predictLinear(const x86::CPU& cpu)
 {
     const sreg32 n = sreg32(argument(cpu, 0));
-    const reg32 positionAddress = argument(cpu, 3);
-    const reg32 fractionAddress = argument(cpu, 4);
-    const reg32 step = argument(cpu, 5);
-    const reg32 stepFraction = argument(cpu, 6);
-    cpu.esp += 4;
+    Advanced a{rc::ld32(argument(cpu, 3)), rc::ld32(argument(cpu, 4)), true};
     if (n <= 0)
-        return;
-    const uint64_t total = uint64_t(rc::ld32(fractionAddress)) + uint64_t(reg32(n)) * stepFraction;
-    rc::st32(fractionAddress, reg32(total));
-    rc::st32(positionAddress, rc::ld32(positionAddress) + reg32(n) * step + reg32(total >> 32));
+        return a;
+    const uint64_t total = uint64_t(a.fraction) + uint64_t(reg32(n)) * argument(cpu, 6);
+    a.fraction = reg32(total);
+    a.position += reg32(n) * argument(cpu, 5) + reg32(total >> 32);
+    return a;
+}
+
+Advanced predictCubic(const x86::CPU& cpu)
+{
+    const sreg32 n = sreg32(argument(cpu, 0));
+    const reg32 whole = argument(cpu, 5);
+    Advanced a{rc::ld32(argument(cpu, 3)), rc::ld32(argument(cpu, 4)), whole < 0x8000};
+    const reg32 step = (whole << 16) | (argument(cpu, 6) >> 16);
+    const uint64_t total = (a.fraction >> 16) + (n > 0 ? uint64_t(reg32(n)) * step : 0);
+    a.fraction = reg32(total & 0xffff) << 16;
+    a.position += reg32(total >> 16);
+    return a;
+}
+
+void store(const x86::CPU& cpu, const Advanced& a)
+{
+    rc::st32(argument(cpu, 3), a.position);
+    rc::st32(argument(cpu, 4), a.fraction);
+}
+
+}
+
+void advanceLinear(x86::CPU& cpu)
+{
+    store(cpu, predictLinear(cpu));
+    cpu.esp += 4;
 }
 
 bool advanceCubic(x86::CPU& cpu)
 {
-    const reg32 stepWhole = argument(cpu, 5);
-    if (stepWhole >= 0x8000)
+    const Advanced a = predictCubic(cpu);
+    if (!a.valid)
         return false;
-    const sreg32 n = sreg32(argument(cpu, 0));
-    const reg32 positionAddress = argument(cpu, 3);
-    const reg32 fractionAddress = argument(cpu, 4);
-    const reg32 step = (stepWhole << 16) | (argument(cpu, 6) >> 16);
-    const uint64_t total = (rc::ld32(fractionAddress) >> 16) + (n > 0 ? uint64_t(reg32(n)) * step : 0);
-    rc::st32(fractionAddress, reg32(total & 0xffff) << 16);
-    rc::st32(positionAddress, rc::ld32(positionAddress) + reg32(total >> 16));
+    store(cpu, a);
     cpu.esp += 4;
     return true;
+}
+
+KernelCheck::KernelCheck(const x86::CPU& cpu, bool cubic)
+    :   m_position(argument(cpu, 3))
+    ,   m_fraction(argument(cpu, 4))
+{
+    const Advanced a = cubic ? predictCubic(cpu) : predictLinear(cpu);
+    m_valid = a.valid;
+    m_predictedPosition = a.position;
+    m_predictedFraction = a.fraction;
+}
+
+void KernelCheck::finish() const
+{
+    if (!m_valid)
+        return;
+    ++s_stat.kernels;
+    s_stat.mismatches += rc::ld32(m_position) != m_predictedPosition || rc::ld32(m_fraction) != m_predictedFraction;
+}
+
+void checkMix(const x86::CPU& cpu)
+{
+    const reg32 voice = cpu.esi;
+    bool culled = false;
+    for (int i = 0; i < s_culledCount && !culled; ++i)
+        culled = s_culled[i] == voice;
+    if (!counted(cpu) || !culled || argument(cpu, 2) != rc::ld32(0x8b48d4))
+        return;
+    const reg32 n = std::min<reg32>(argument(cpu, 0), MaxShadow);
+    const reg32 dst = argument(cpu, 3);
+    const reg32 channels = std::min<reg32>(rc::ld8(ChannelCount), MaxShadowChannels);
+    for (reg32 c = 0; c < channels; ++c)
+    {
+        if (rc::ld32(ChannelBuffers + 4 * c) != dst)
+            continue;
+        float gain;
+        const reg32 bits = argument(cpu, 1);
+        memcpy(&gain, &bits, sizeof(gain));
+        for (reg32 i = 0; i < n; ++i)
+        {
+            const float v = gain * rc::ldf32(argument(cpu, 2) + 4 * i);
+            s_shadow[c][i] += v;
+            s_stat.maxCall = std::max(s_stat.maxCall, std::fabs(v));
+        }
+        s_shadowLength = std::max(s_shadowLength, n);
+        ++s_stat.mixes;
+        return;
+    }
+}
+
+void selfTest(win32::WinApplication& app)
+{
+    const reg32 Size = 0x10000;
+    const reg32 base = win32::heap::allocate(Size, true);
+    const reg32 stack = win32::heap::allocate(0x100, true);
+    if (!base || !stack)
+    {
+        pf::logError("audio cull selftest: no guest memory");
+        return;
+    }
+    uint32_t random = 0x2468aceu;
+    const auto next = [&random]() { random ^= random << 13; random ^= random >> 17; random ^= random << 5; return random; };
+    uint32_t runs[2] = {0, 0}, bad[2] = {0, 0};
+    for (int round = 0; round < 4000; ++round)
+    {
+        const bool cubic = round & 1;
+        for (reg32 i = 0; i < 0x4000; i += 4)
+        {
+            const float f = float(int32_t(next() % 20001) - 10000) / 7.0f;
+            rc::stf32(base + i, f);
+        }
+        const reg32 n = 1 + next() % 600;
+        const reg32 whole = next() % 4;
+        const reg32 stepFraction = (next() & 0xffff) << 16;
+        const reg32 position = base + 0x8000, fraction = base + 0x8004;
+        const reg32 start = next() % 64;
+        const reg32 startFraction = cubic ? (next() & 0xffff) << 16 : next();
+        reg32 result[2][2];
+        for (int which = 0; which < 2; ++which)
+        {
+            rc::st32(position, start);
+            rc::st32(fraction, startFraction);
+            x86::CPU cpu{};
+            cpu.esp = stack;
+            const reg32 args[] = {0x1000, n, base + 32, base + 0x4000, position, fraction, whole, stepFraction};
+            for (int k = 0; k < 8; ++k)
+                rc::st32(stack + 4 * k, args[k]);
+            if (which == 0)
+                cubic ? sub_733388(&app, cpu) : sub_733700_guest(&app, cpu);
+            else if (!cubic)
+                advanceLinear(cpu);
+            else if (!advanceCubic(cpu))
+                break;
+            result[which][0] = rc::ld32(position);
+            result[which][1] = rc::ld32(fraction);
+        }
+        ++runs[cubic];
+        bad[cubic] += result[0][0] != result[1][0] || result[0][1] != result[1][1];
+    }
+    pf::logInfo("audio cull selftest: advance of the linear kernel %u runs, %u differ; of the cubic kernel %u runs, "
+                "%u differ", runs[0], bad[0], runs[1], bad[1]);
 }
 
 }}

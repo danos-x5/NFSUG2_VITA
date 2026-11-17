@@ -41,7 +41,7 @@ const uint32_t CheckLogEvery = 500;
 
 struct Check
 {
-    uint32_t granules = 0, sizeMismatches = 0, over2 = 0, clipped = 0, reported = 0;
+    uint32_t granules = 0, sizeMismatches = 0, over2 = 0, apart = 0, clipped = 0, reported = 0;
     uint32_t inserts = 0, insertsFound = 0;
     FILE* dump = nullptr;
     uint32_t dumped = 0;
@@ -119,10 +119,11 @@ void logCheck(const Stream& s)
     if (!c.granules)
         return;
     const double samples = double(c.granules) * GranuleSamples * 2;
-    pf::logInfo("music check 0x%08x: %u granules, max difference %.2f, rms %.4f, %u samples over 2 LSB, %u past "
-                "16 bits in the game's (left out), %u granule size mismatches, %u of %u PCM inserts in place, %u lone granules",
+    pf::logInfo("music check 0x%08x: %u granules, max difference %.2f, rms %.4f, %u samples over 2 LSB in %u granules, %u past "
+                "16 bits in the game's (left out), %u granule size mismatches, %u of %u PCM inserts in place, "
+                "%u lone granules",
                 unsigned(s.object), unsigned(c.granules), double(c.maxDiff), std::sqrt(c.sumSquares / samples),
-                unsigned(c.over2), unsigned(c.clipped), unsigned(c.sizeMismatches), unsigned(c.insertsFound),
+                unsigned(c.over2), unsigned(c.apart), unsigned(c.clipped), unsigned(c.sizeMismatches), unsigned(c.insertsFound),
                 unsigned(c.inserts), unsigned(s.lone));
 }
 
@@ -312,6 +313,7 @@ void compare(Stream& s, const float* game, const float* hardware, uint32_t gameB
         c.over2 += d > 2.0f;
         peak = std::max(peak, std::fabs(game[i]));
     }
+    c.apart += c.over2 > over2;
     if (!c.searched && (c.kept || peak > 1000.0f))
     {
         memcpy(c.game + c.kept * GranuleSamples, game, GranuleSamples * sizeof(float));

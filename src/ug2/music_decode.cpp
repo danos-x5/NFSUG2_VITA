@@ -294,7 +294,7 @@ const uint8_t* following(const Granule& second)
     Granule g;
     if (const uint8_t* p = ealayer3::next(second))
     {
-        if (ealayer3::parse(p, g))
+        if (ealayer3::parse(p, g) && g.index == 0 && sameShape(g, second))
             return p;
     }
     const uint8_t* end = second.data + second.bytes;
@@ -305,7 +305,7 @@ const uint8_t* following(const Granule& second)
         const uint32_t size = le32(p + 4), samples = le32(p + 8);
         const uint8_t* first = p + 8 + 4 + 4 * second.channels;
         if (size >= 32 && size <= 0x10000 && samples <= 0x10000 && first[0] == 0 && first[1] != 0
-            && ealayer3::parse(first + 1, g) && g.index == 0)
+            && ealayer3::parse(first + 1, g) && g.index == 0 && sameShape(g, second))
             return first + 1;
     }
     return nullptr;

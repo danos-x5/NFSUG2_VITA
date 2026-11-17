@@ -57,7 +57,7 @@ const char* const Known[] =
     // Movies through the platform video decoder (src/ug2/movies.cpp).
     "movies", "movies_dir", "movies_selftest",
     // Front end (src/ug2/frontend.cpp).
-    "boot_script", "fe_log", "fe_files", "ime_test", "ime_test_field", "movies_skip", "fe_msg", "fe_grep_words", "fe_grep", "fe_grep_frame", "fe_scan_file", "fe_scan_every", "boot_steps", "fe_dump", "boot_quit_after", "fe_gfx_apply", "fe_gfx_apply_delay",
+    "boot_script", "fe_log", "fe_files", "ime_test", "ime_test_field", "movies_skip", "fe_msg", "fe_orbit", "fe_grep_words", "fe_grep", "fe_grep_frame", "fe_scan_file", "fe_scan_every", "boot_steps", "fe_dump", "boot_quit_after", "fe_gfx_apply", "fe_gfx_apply_delay",
     // Save folder (src/lib/file.cpp).
     "save_dir", "save_log", "save_sync", "save_atomic", "file_lazy_seek", "file_handle_cache",
     // Host build.

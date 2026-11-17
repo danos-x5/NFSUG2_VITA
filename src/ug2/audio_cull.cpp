@@ -109,6 +109,8 @@ struct Stats
 {
     uint32_t renders = 0, voices = 0, zero = 0, quiet = 0, quietUnskippable = 0, since = 0;
     uint32_t kernels = 0, mismatches = 0, mixes = 0;
+    uint32_t skippedKernels = 0, skippedFilters = 0, skippedMixes = 0;
+    uint32_t byKind[3][2] = {};                    // MPEG, EA-XA, PCM: voices, culled
     float maxCall = 0.0f, maxDropped = 0.0f;       // largest dropped sample of one voice and of the sum, as 16-bit units
 };
 Stats s_stat;
@@ -174,6 +176,22 @@ bool chainOf(reg32 root, reg32* skippable, int& skippableCount, double& scale)
     return true;
 }
 
+int sourceGroup(reg32 root)
+{
+    reg32 module = root;
+    for (int depth = 0; module && depth < MaxChain; ++depth, module = rc::ld32(module + 8))
+    {
+        const reg32 render = rc::ld32(module);
+        if (render == 0x72802d || render == 0x7282ef || render == 0x7285bd)
+            return 0;
+        if (render == 0x732c84 || render == 0x732dfb || render == 0x733023)
+            return 1;
+        if (render == 0x7330f5 || render == 0x7331ff || render == 0x7332a3)
+            return 2;
+    }
+    return -1;
+}
+
 void markVoices()
 {
     s_setCount = 0;
@@ -231,6 +249,14 @@ void markVoices()
             s_stat.zero += allQuiet && !anyMixed;
             s_stat.quiet += allQuiet && anyMixed;
             s_stat.quietUnskippable += allQuiet && !known;
+            const int group = known ? sourceGroup(root) : -1;
+            if (group >= 0)
+            {
+                ++s_stat.byKind[group][0];
+                s_stat.byKind[group][1] += allQuiet;
+            }
+            if (allQuiet && known)
+                s_stat.skippedMixes += mixedCount;
         }
         if (!allQuiet || !known || s_setCount + skippableCount > SetLimit || s_savedCount + mixedCount > MaxSaved)
             continue;
@@ -272,6 +298,9 @@ void logStats()
     pf::logInfo("cull: %.2f s: %u voice renders, %u voices: %u zero gain, %u under threshold (%u of them not skippable), "
                 "culled %.1f%%", (now - t.since) / 1e6, t.renders, t.voices, t.zero, t.quiet, t.quietUnskippable,
                 t.voices ? 100.0 * (t.zero + t.quiet - t.quietUnskippable) / t.voices : 0.0);
+    pf::logInfo("cull skipped: %u resampler kernels, %u filters, %u mixes | by source (voices/culled): MPEG %u/%u, "
+                "EA-XA %u/%u, PCM %u/%u", t.skippedKernels, t.skippedFilters, t.skippedMixes, t.byKind[0][0],
+                t.byKind[0][1], t.byKind[1][0], t.byKind[1][1], t.byKind[2][0], t.byKind[2][1]);
     if (s_check)
         pf::logInfo("cull check: %u kernel advances compared, %u differ; %u mixes dropped, largest one sample %.3f, "
                     "largest sum in a channel %.3f (16-bit units)", t.kernels, t.mismatches, t.mixes, double(t.maxCall),
@@ -298,6 +327,7 @@ void resamplerHook(win32::WinApplication* app, x86::CPU& cpu)
 
 void skipFilter(win32::WinApplication* app, x86::CPU& cpu, bool outputIsInput)
 {
+    ++s_stat.skippedFilters;
     const reg32 module = argument(cpu, 0);
     const reg32 frames = argument(cpu, 1);
     const reg32 child = rc::ld32(module + 8);
@@ -433,7 +463,12 @@ Voices::~Voices()
 
 bool skipKernel(const x86::CPU& cpu)
 {
-    return s_skip && counted(cpu);
+    if (s_skip && counted(cpu))
+    {
+        ++s_stat.skippedKernels;
+        return true;
+    }
+    return false;
 }
 
 bool checking()

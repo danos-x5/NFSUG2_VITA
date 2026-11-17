@@ -302,6 +302,14 @@ bool fastEffects()
     return NFSU_RENDER_FAST_CACHED("d3d_fast_effects");
 }
 
+bool fastLayer()
+{
+    return NFSU_RENDER_FAST_CACHED("d3d_fast_layer");
+}
+
+// Bumped when a parameter's texture changes: recorded passes read their textures again.
+uint32_t s_textureBindings = 0;
+
 struct Values;
 // Value blocks by id (the render thread mirrors their floats), and the blocks to send whole.
 std::vector<Values*>    s_blocks;
@@ -322,11 +330,11 @@ struct Values
 {
     enum { PendingSlots = 4 };
 
-    std::vector<float>  floats;
-    Object*             textures[ParamCount] = {};
-    uint16_t            id;
+    uint16_t            id;                 // id, dirty and pendingCount first: every write reads them
     bool                dirty = false;
     uint32_t            pendingCount = 0;
+    std::vector<float>  floats;
+    Object*             textures[ParamCount] = {};
     Pending             pending[PendingSlots];
 
     Pending* findPending(int p)
@@ -448,6 +456,7 @@ bool tracing()
 {
     if (s_traceLeft < 0)
         s_traceLeft = std::max(pf::Config::getInt("effect_trace", 0), 0);
+    bridge::g_hot.trace = s_traceLeft != 0;
     return s_traceLeft > 0;
 }
 
@@ -494,6 +503,7 @@ public:
         if (pool)
             pool->addRef();
         m_fast = fastEffects();
+        m_reuseRecord = m_fast && fastLayer();
         for (uint32_t i = 0; i < MaxPasses && m_fast; ++i)
         {
             const fx::Pass* pass = passOf(kind, i);
@@ -502,7 +512,8 @@ public:
         for (uint32_t p = 0; p < ParamCount; ++p)
         {
             Values& v = values(int(p));
-            const bool isFloat = (s_kinds[kind].fast[p] & FastFloat) && m_fast;
+            const bool isFloat = (s_kinds[kind].fast[p] & FastFloat) && m_fast
+                                 && device == bridge::g_hot.streamDevice;
             m_slots[p] = Slot{ &v, v.floats.data() + s_offsets[p], uint16_t(s_offsets[p]),
                                uint16_t(isFloat ? fx::s_params[p].floats : 0) };
         }
@@ -600,6 +611,7 @@ private:
     // After m_pass or m_technique changed.
     void passChanged()
     {
+        m_recorded = false;
         m_passCount = technique().passCount;
         alwaysDrawn = m_technique != 0 ? m_fast : m_pass < MaxPasses && ((m_always >> m_pass) & 1);
         m_info = m_fast && m_technique == 0 && m_pass < MaxPasses ? &s_passInfo[m_kind][m_pass] : nullptr;
@@ -642,7 +654,7 @@ private:
     void storeWords(int p, const void* data, uint32_t n);
     void trace(const char* method, int p, const void* data, uint32_t n) const
     {
-        if (__builtin_expect(s_traceLeft != 0, 0))
+        if (__builtin_expect(bridge::g_hot.trace, 0))
             traceSlow(method, p, data, n);
     }
     void traceSlow(const char* method, int p, const void* data, uint32_t n) const;
@@ -661,6 +673,12 @@ private:
     mutable uint8_t m_textureStages = 0;    // stages whose texture parameter changed in this pass (CommitChanges)
     bool            m_saved = false;        // Begin saved the states technique 0 sets
     DWORD           m_restore[MaxRestore];
+    bool            m_reuseRecord = false;  // d3d_fast_layer: record() reuses its last result
+    mutable bool    m_recorded = false;     // m_record* hold it, valid while no texture binding or storage changed
+    mutable uint8_t m_recordSlots = 0;
+    mutable uint32_t m_recordBindings = 0, m_recordEpoch = 0;   // s_textureBindings, g_textureEpoch
+    mutable EffectDraw m_recordEffect = {};
+    mutable const render::TextureStorage* m_recordTextures[render::MaxSamplers] = {};
 };
 
 }}
@@ -668,32 +686,16 @@ private:
 namespace win32 { namespace d3d9
 {
 
-namespace
-{
-
-// The last effect looked up.
-struct LastEffect
-{
-    x86::reg32  guest = 0;
-    uint32_t    generation = 0;
-    Effect*     effect = nullptr;
-};
-
-LastEffect s_last;
-
-}
-
 // lookup, caching the last effect until objects change.
 inline Effect* effectObject(x86::reg32 guest)
 {
-    if (__builtin_expect(guest == s_last.guest && g_objectGeneration == s_last.generation, 1))
-        return s_last.effect;
+    if (__builtin_expect(guest == bridge::g_hot.effectGuest, 1))
+        return static_cast<Effect*>(bridge::g_hot.effect);
     Effect* e = static_cast<Effect*>(lookup(guest));
     if (e)
     {
-        s_last.guest = guest;
-        s_last.generation = g_objectGeneration;
-        s_last.effect = e;
+        bridge::g_hot.effectGuest = guest;
+        bridge::g_hot.effect = e;
     }
     return e;
 }
@@ -770,6 +772,7 @@ void Effect::traceSlow(const char* method, int p, const void* data, uint32_t n) 
     if (!tracing())
         return;
     --s_traceLeft;
+    bridge::g_hot.trace = s_traceLeft != 0;
     char text[160];
     int length = 0;
     for (uint32_t i = 0; i < n && i < 8 && length >= 0 && length < int(sizeof(text)); ++i)
@@ -832,7 +835,7 @@ __attribute__((always_inline)) inline void Effect::storeSlot(const Slot& s, cons
         return;
     memcpy(to, data, n * 4);
     Values& v = *s.values;
-    Stream* stream = m_device->stream();
+    Stream* stream = static_cast<Stream*>(bridge::g_hot.stream);
     if (__builtin_expect(!stream || v.dirty, 0))
     {
         v.markDirty();
@@ -851,7 +854,7 @@ __attribute__((always_inline)) inline bool Effect::setFast(x86::reg32 handle, co
     if (__builtin_expect(i >= ParamCount || !data, 0))
         return false;
     const Slot& s = m_slots[i];
-    if (__builtin_expect(s.floats < N || s_traceLeft != 0 || s.values->pendingCount, 0))
+    if (__builtin_expect(s.floats < N || bridge::g_hot.trace || s.values->pendingCount, 0))
         return false;
     storeSlot<N>(s, data, N);
     return true;
@@ -934,7 +937,7 @@ __attribute__((always_inline)) inline HRESULT Effect::setVectors(x86::reg32 hand
     if (__builtin_expect(i < ParamCount && vectors && count * 4 && count <= 64, 1))
     {
         const Slot& s = m_slots[i];
-        if (__builtin_expect(s.floats >= count * 4 && s_traceLeft == 0 && !s.values->pendingCount, 1))
+        if (__builtin_expect(s.floats >= count * 4 && !bridge::g_hot.trace && !s.values->pendingCount, 1))
         {
             storeSlot<0>(s, vectors, count * 4);
             return D3D_OK;
@@ -1004,6 +1007,14 @@ void Effect::record(EffectDraw& effect, const render::TextureStorage* textures[r
         recordSlow(effect, textures, deviceSlots);
         return;
     }
+    if (m_recorded && m_recordBindings == s_textureBindings && m_recordEpoch == g_textureEpoch)
+    {
+        effect = m_recordEffect;
+        deviceSlots = m_recordSlots;
+        for (uint32_t i = 0; i < render::MaxSamplers; ++i)
+            textures[i] = m_recordTextures[i];
+        return;
+    }
     const PassInfo& info = passInfo(*m_info, m_kind, m_pass);
     effect.own = m_values.id;
     effect.shared = m_pool ? m_pool->values.id : uint16_t(NoBlock);
@@ -1017,6 +1028,16 @@ void Effect::record(EffectDraw& effect, const render::TextureStorage* textures[r
         const Object* t = p != fx::NoParam ? m_slots[p].values->textures[p] : nullptr;
         textures[i] = t && (t->kind() == KindTexture || t->kind() == KindCubeTexture)
                     ? static_cast<const Texture*>(t)->storage() : nullptr;
+    }
+    if (m_reuseRecord)
+    {
+        m_recorded = true;
+        m_recordBindings = s_textureBindings;
+        m_recordEpoch = g_textureEpoch;
+        m_recordEffect = effect;
+        m_recordSlots = deviceSlots;
+        for (uint32_t i = 0; i < render::MaxSamplers; ++i)
+            m_recordTextures[i] = textures[i];
     }
 }
 
@@ -1862,11 +1883,15 @@ HRESULT Effect::SetTexture(WinApplication* app, x86::CPU& cpu, x86::reg32 handle
     if (texture && texture->kind() != KindTexture && texture->kind() != KindCubeTexture)
         return D3DERR_INVALIDCALL;
     Object*& slot = values(p).textures[p];
-    if (texture)
-        texture->bind();
-    if (slot)
-        slot->unbind();
-    slot = texture;
+    if (slot != texture || !m_reuseRecord || !bridge::quiet())
+    {
+        if (texture)
+            texture->bind();
+        if (slot)
+            slot->unbind();
+        slot = texture;
+        ++s_textureBindings;
+    }
     // Applied at the active pass's CommitChanges, as in D3DX 9.0c.
     if (const EffectPass* active = m_device->effectPass())
     {

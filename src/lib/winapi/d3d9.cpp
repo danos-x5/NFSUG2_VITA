@@ -60,9 +60,16 @@ x86::reg32 allocateBlock()
 
 uint32_t g_objectGeneration = 0;
 
-Object::~Object()
+void objectsChanged()
 {
     ++g_objectGeneration;
+    bridge::g_hot.deviceGuest = 0;
+    bridge::g_hot.effectGuest = 0;
+}
+
+Object::~Object()
+{
+    objectsChanged();
     if (m_boundOnly)
         bridge::countBoundOnly(-1);
     if (!m_guest || !s_app)
@@ -135,7 +142,7 @@ ULONG Object::Release(WinApplication* app, x86::CPU& cpu)
 x86::reg32 publish(WinApplication* app, Object* object)
 {
     initInterfaces(app);
-    ++g_objectGeneration;
+    objectsChanged();
     uint32_t handle;
     if (!s_freeHandles.empty())
     {

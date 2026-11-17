@@ -18,6 +18,7 @@
 #include <x86.h>
 #include <winapi/types.h>
 
+#include <atomic>
 #include <cstring>
 #include <vector>
 
@@ -353,17 +354,44 @@ bool deferBegin(WinApplication* app, x86::CPU& cpu, reg32 device);
 // Closes the window; the queued calls keep running.
 void deferEnd();
 
-extern bool g_deferPending;
+// What every bridge call reads first, in one cache line (game thread, but captures).
+struct alignas(32) Hot
+{
+    uint8_t     pending = 0;            // queued calls not run yet
+    uint8_t     owned = 0;              // a deferral window's thread has its calls queued
+    uint8_t     deferDevice = 0;        // deferral has a device: bindings are noted after direct calls
+    uint8_t     trace = 1;              // effect_trace writes left, or the setting not read yet
+    std::atomic<uint32_t> captures{0};  // threads inside begin()..end()
+    reg32       deviceGuest = 0;        // device lookup cache; cleared when objects change
+    void*       device = nullptr;
+    reg32       effectGuest = 0;        // effect lookup cache; cleared when objects change
+    void*       effect = nullptr;
+    void*       streamDevice = nullptr; // the device whose frame stream is mirrored
+    void*       stream = nullptr;       // its Stream of the frame being recorded; null between frames
+};
+extern Hot g_hot;
+
+// No deferral window, queued call or capture.
+inline bool quiet()
+{
+    return !(g_hot.pending | g_hot.owned) && g_hot.captures.load(std::memory_order_relaxed) == 0;
+}
+
 void drainSlow(reg32 site);
 // Waits until every queued call has run (runs them with DeferInline); site: the guest method address the wait is
 // counted for (0: a native caller). Callers hold the execution lock, or no guest code runs any more.
 inline void drain(reg32 site = 0)
 {
-    if (__builtin_expect(g_deferPending, 0))
+    if (__builtin_expect(g_hot.pending, 0))
         drainSlow(site);
 }
+void afterDirectSlow();
 // After a method that did not go through the queue: notes the bindings it left.
-void afterDirect();
+inline void afterDirect()
+{
+    if (__builtin_expect(g_hot.deferDevice, 0))
+        afterDirectSlow();
+}
 
 enum { DeferOpCount = 40, DeferSiteCount = 8 };
 

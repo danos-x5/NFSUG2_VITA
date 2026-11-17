@@ -151,6 +151,9 @@ Device::Device(WinApplication* app, Direct3D* d3d, const D3DPRESENT_PARAMETERS& 
 #ifdef DEV_SETTINGS
     s_fastDraw = NFSU_RENDER_FAST("d3d_fast_draw");
 #endif
+    m_fastLayer = NFSU_RENDER_FAST("d3d_fast_layer");
+    if (!bridge::g_hot.streamDevice)
+        bridge::g_hot.streamDevice = this;
     // frame_rate=0 (unlocked) and 60 show each frame for one vblank; 30 (default) shows each for two.
     const int frameRate = pf::Config::getInt("frame_rate", 30);
     m_vblanks = frameRate == 0 || frameRate >= 60 ? 1 : 2;
@@ -161,6 +164,11 @@ Device::Device(WinApplication* app, Direct3D* d3d, const D3DPRESENT_PARAMETERS& 
 Device::~Device()
 {
     bridge::deviceGone(this);
+    if (bridge::g_hot.streamDevice == this)
+    {
+        bridge::g_hot.streamDevice = nullptr;
+        bridge::g_hot.stream = nullptr;
+    }
     // Values recorded into a frame that is never submitted.
     if (m_frame)
         markEffectValuesDirty();
@@ -202,6 +210,7 @@ void Device::resetBackBuffer(const D3DPRESENT_PARAMETERS& params)
         bindSlot(m_state.target, static_cast<Surface*>(nullptr));
     if (m_state.depth == m_autoDepth)
         bindSlot(m_state.depth, static_cast<Surface*>(nullptr));
+    m_sceneCached = false;
     for (Surface** implicit : { &m_backBuffer, &m_autoDepth })
     {
         if (!*implicit)
@@ -271,6 +280,8 @@ void Device::defaults()
     m_viewportChanged = true;
     m_sceneOpen = false;
     m_stateDirty = true;
+    m_sceneCached = false;
+    m_layoutDeclaration = nullptr;
 }
 
 // ---- Recording -----------------------------------------------------------------------------------------------------
@@ -300,6 +311,8 @@ render::Frame* Device::frame(WinApplication* app, x86::CPU& cpu)
         m_sceneOpen = false;
         m_frameFull = false;
         m_stream = &frameStream(m_frame->index);
+        if (bridge::g_hot.streamDevice == this)
+            bridge::g_hot.stream = m_stream;
         s_dumping = dumpThisFrame(m_frame->index);
         if (__builtin_expect(s_dumping.load(std::memory_order_relaxed), 0))
             pf::logInfo("dump: frame %u, back buffer %ux%u", m_frame->index, unsigned(m_params.BackBufferWidth),
@@ -327,6 +340,8 @@ void Device::submit()
     gpu().submitFrame(m_frame, m_vblanks);
     m_frame = nullptr;
     m_stream = nullptr;
+    if (bridge::g_hot.streamDevice == this)
+        bridge::g_hot.stream = nullptr;
     if (!bridge::onQueueThread())
         Texture::trimKept();
 }
@@ -371,6 +386,10 @@ void Device::recordWords(uint32_t header, const void* payload, uint32_t words)
 
 __attribute__((always_inline)) inline render::Scene* Device::scene()
 {
+    render::Frame& f = *m_frame;
+    if (m_sceneCached && m_sceneOpen && m_sceneFrame == f.index && m_sceneCount == f.sceneCount
+        && m_sceneEpoch == g_textureEpoch)
+        return &f.scenes[f.sceneCount - 1];
     render::Target target = {};
     uint16_t width = uint16_t(m_params.BackBufferWidth), height = uint16_t(m_params.BackBufferHeight);
     Surface* t = m_state.target;
@@ -383,7 +402,15 @@ __attribute__((always_inline)) inline render::Scene* Device::scene()
     }
     if (m_state.depth && m_state.depth->depth())
         target.depth = m_state.depth->depth();
-    return scene(target, width, height);
+    render::Scene* s = scene(target, width, height);
+    if (s && m_fastLayer)
+    {
+        m_sceneCached = true;
+        m_sceneFrame = f.index;
+        m_sceneCount = f.sceneCount;
+        m_sceneEpoch = g_textureEpoch;
+    }
+    return s;
 }
 
 render::Scene* Device::scene(const render::Target& target, uint16_t width, uint16_t height)
@@ -452,6 +479,65 @@ bool Device::viewportIndex(render::Frame& f, const render::Viewport& viewport, u
     f.viewports[f.viewportCount] = viewport;
     *index = uint16_t(f.viewportCount++);
     return true;
+}
+
+__attribute__((always_inline)) inline void Device::markRead(
+    render::Frame& f, const render::TextureStorage* const textures[render::MaxSamplers],
+    render::BufferStorage* vertexStorage, render::BufferStorage* indexStorage)
+{
+    if (m_markFrame != f.index || m_markEpoch != g_textureEpoch || !m_fastLayer)
+    {
+        m_markFrame = f.index;
+        m_markEpoch = g_textureEpoch;
+        memset(m_marked, 0, sizeof(m_marked));
+    }
+    for (uint32_t i = 0; i < render::MaxSamplers; ++i)
+    {
+        const render::TextureStorage* t = textures[i];
+        if (!t || t == m_marked[i])
+            continue;
+        const_cast<render::TextureStorage*>(t)->lastUse = f.index;
+        if (t->uploads.load(std::memory_order_relaxed))
+            f.uploads = true;
+        if (m_fastLayer)
+            m_marked[i] = t;
+    }
+    if (vertexStorage && vertexStorage != m_marked[render::MaxSamplers])
+    {
+        vertexStorage->lastUse = f.index;
+        if (m_fastLayer)
+            m_marked[render::MaxSamplers] = vertexStorage;
+    }
+    if (indexStorage && indexStorage != m_marked[render::MaxSamplers + 1])
+    {
+        indexStorage->lastUse = f.index;
+        if (m_fastLayer)
+            m_marked[render::MaxSamplers + 1] = indexStorage;
+    }
+}
+
+__attribute__((always_inline)) inline void Device::drawLayout(VertexDeclaration* declaration, uint32_t stride,
+                                                              uint8_t& layout, uint32_t& texComponents,
+                                                              bool& positionT)
+{
+    if (declaration == m_layoutDeclaration && stride == m_layoutStride)
+    {
+        layout = m_layoutId;
+        texComponents = m_layoutTexComponents;
+        positionT = m_layoutPositionT;
+        return;
+    }
+    layout = declaration->layout(stride);
+    texComponents = declaration->texComponents();
+    positionT = declaration->positionT();
+    if (m_fastLayer)
+    {
+        m_layoutDeclaration = declaration;
+        m_layoutStride = stride;
+        m_layoutId = layout;
+        m_layoutTexComponents = uint8_t(texComponents);
+        m_layoutPositionT = positionT;
+    }
 }
 
 // Records the geometry, the textures (marked read by this frame) and the active effect pass; the render thread
@@ -562,18 +648,7 @@ __attribute__((always_inline)) inline HRESULT Device::draw(
         r.deviceSamplers = 0;
         r.deviceStates = 0;
     }
-    for (const render::TextureStorage* t : r.textures)
-    {
-        if (!t)
-            continue;
-        const_cast<render::TextureStorage*>(t)->lastUse = f->index;
-        if (t->uploads.load(std::memory_order_relaxed))
-            f->uploads = true;
-    }
-    if (vertexStorage)
-        vertexStorage->lastUse = f->index;
-    if (indexStorage)
-        indexStorage->lastUse = f->index;
+    markRead(*f, r.textures, vertexStorage, indexStorage);
     ++f->drawCount;
     s->drawCount = f->drawCount - s->firstDraw;
     return D3D_OK;
@@ -996,6 +1071,7 @@ HRESULT Device::SetRenderTarget(WinApplication* app, x86::CPU& cpu, DWORD index,
         || (surface->role() == Surface::RoleLevel && (!surface->container() || !surface->container()->desc().target)))
         return D3DERR_INVALIDCALL;
     bindSlot(m_state.target, surface);
+    m_sceneCached = false;
     // A new render target resets the viewport to the whole target.
     m_state.viewport = D3DVIEWPORT9{ 0, 0, surface->width(), surface->height(), 0.0f, 1.0f };
     m_viewportChanged = true;
@@ -1165,6 +1241,7 @@ HRESULT Device::SetDepthStencilSurface(WinApplication* app, x86::CPU& cpu, Surfa
     if (surface && surface->role() != Surface::RoleDepth)
         return D3DERR_INVALIDCALL;
     bindSlot(m_state.depth, surface);
+    m_sceneCached = false;
     return D3D_OK;
 }
 
@@ -1596,8 +1673,12 @@ HRESULT Device::DrawPrimitive(WinApplication* app, x86::CPU& cpu, DWORD type, UI
     render::BufferStorage* storage = nullptr;
     const uint8_t* base = vb->drawData(frameIndex(), first, first + uint64_t(vertices) * m_state.streamStride,
                                        &storage);
-    return draw(app, cpu, type, count, base + first, nullptr, vertices, decl->layout(m_state.streamStride),
-                decl->texComponents(), decl->positionT(), storage, nullptr);
+    uint8_t layout;
+    uint32_t texComponents;
+    bool positionT;
+    drawLayout(decl, m_state.streamStride, layout, texComponents, positionT);
+    return draw(app, cpu, type, count, base + first, nullptr, vertices, layout, texComponents, positionT, storage,
+                nullptr);
 }
 
 HRESULT Device::DrawIndexedPrimitive(WinApplication* app, x86::CPU& cpu, DWORD type, LONG baseVertex, UINT minIndex,
@@ -1622,8 +1703,12 @@ HRESULT Device::DrawIndexedPrimitive(WinApplication* app, x86::CPU& cpu, DWORD t
     const uint8_t* indexBase = ib->drawData(index, uint64_t(startIndex) * 2,
                                             (uint64_t(startIndex) + vertexCount(type, count)) * 2, &indexStorage);
     const uint16_t* indices = reinterpret_cast<const uint16_t*>(indexBase) + startIndex;
-    return draw(app, cpu, type, count, base + first, indices, minIndex + vertices, decl->layout(m_state.streamStride),
-                decl->texComponents(), decl->positionT(), vertexStorage, indexStorage);
+    uint8_t layout;
+    uint32_t texComponents;
+    bool positionT;
+    drawLayout(decl, m_state.streamStride, layout, texComponents, positionT);
+    return draw(app, cpu, type, count, base + first, indices, minIndex + vertices, layout, texComponents, positionT,
+                vertexStorage, indexStorage);
 }
 
 void* Device::frameVertices(WinApplication* app, x86::CPU& cpu, uint32_t bytes)
@@ -1655,8 +1740,12 @@ HRESULT Device::drawIndexedFrameVertices(WinApplication* app, x86::CPU& cpu, DWO
     const uint8_t* indexBase = ib->drawData(frameIndex(), uint64_t(startIndex) * 2,
                                             (uint64_t(startIndex) + vertexCount(type, count)) * 2, &indexStorage);
     const uint16_t* indices = reinterpret_cast<const uint16_t*>(indexBase) + startIndex;
-    return draw(app, cpu, type, count, data, indices, minIndex + vertices, decl->layout(m_state.streamStride),
-                decl->texComponents(), decl->positionT(), nullptr, indexStorage);
+    uint8_t layout;
+    uint32_t texComponents;
+    bool positionT;
+    drawLayout(decl, m_state.streamStride, layout, texComponents, positionT);
+    return draw(app, cpu, type, count, data, indices, minIndex + vertices, layout, texComponents, positionT, nullptr,
+                indexStorage);
 }
 
 HRESULT Device::DrawPrimitiveUP(WinApplication* app, x86::CPU& cpu, DWORD type, UINT count, const void* data,
@@ -1704,8 +1793,11 @@ HRESULT Device::DrawPrimitiveUP(WinApplication* app, x86::CPU& cpu, DWORD type, 
         pf::logInfo("dump: up draw, stride %u, x %.3f..%.3f, y %.3f..%.3f, diffuse %08x", stride, x0, x1, y0, y1,
                     diffuse);
     }
-    return draw(app, cpu, type, count, copy, nullptr, vertices, decl->layout(stride), decl->texComponents(),
-                decl->positionT(), nullptr, nullptr);
+    uint8_t layout;
+    uint32_t texComponents;
+    bool positionT;
+    drawLayout(decl, stride, layout, texComponents, positionT);
+    return draw(app, cpu, type, count, copy, nullptr, vertices, layout, texComponents, positionT, nullptr, nullptr);
 }
 
 HRESULT Device::DrawIndexedPrimitiveUP(WinApplication* app, x86::CPU& cpu, DWORD type, UINT minIndex, UINT vertices,
@@ -1757,6 +1849,7 @@ HRESULT Device::SetVertexDeclaration(WinApplication* app, x86::CPU& cpu, VertexD
     RC_USE(cpu);
     bindSlot(m_state.declaration, declaration);
     m_state.fvf = 0;
+    m_layoutDeclaration = nullptr;
     return D3D_OK;
 }
 
@@ -1778,6 +1871,7 @@ HRESULT Device::SetFVF(WinApplication* app, x86::CPU& cpu, DWORD fvf)
     RC_USE(cpu);
     bindSlot(m_state.declaration, static_cast<VertexDeclaration*>(nullptr));
     m_state.fvf = fvf;
+    m_layoutDeclaration = nullptr;
     return D3D_OK;
 }
 

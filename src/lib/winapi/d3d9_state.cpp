@@ -259,22 +259,34 @@ void multiply(const float* a, const float* b, float* out)
 }
 #endif
 
-const uint8_t g_passRenderState[PassStateCount] = { 7, 14, 15, 19, 20, 22, 23, 24, 27, 28, 34, 60, 137, 168 };
+constexpr uint8_t g_passRenderState[PassStateCount] = { 7, 14, 15, 19, 20, 22, 23, 24, 27, 28, 34, 60, 137, 168 };
+
+namespace
+{
+
+// g_passRenderState inverted, built at compile time (no guard on the hot path).
+struct PassStateTable
+{
+    int8_t of[256];
+};
+
+constexpr PassStateTable passStateTable()
+{
+    PassStateTable t = {};
+    for (int i = 0; i < 256; ++i)
+        t.of[i] = -1;
+    for (int s = 0; s < PassStateCount; ++s)
+        t.of[g_passRenderState[s]] = int8_t(s);
+    return t;
+}
+
+constexpr PassStateTable s_passStates = passStateTable();
+
+}
 
 int passStateOf(DWORD state)
 {
-    struct Table
-    {
-        int8_t of[256];
-        Table()
-        {
-            memset(of, -1, sizeof(of));
-            for (int s = 0; s < PassStateCount; ++s)
-                of[g_passRenderState[s]] = int8_t(s);
-        }
-    };
-    static const Table s_table;
-    return state < 256 ? s_table.of[state] : -1;
+    return state < 256 ? s_passStates.of[state] : -1;
 }
 
 render::Sampler samplerOf(const DWORD* states)

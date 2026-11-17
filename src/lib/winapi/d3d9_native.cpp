@@ -20,14 +20,13 @@
 namespace win32 { namespace d3d9 { namespace bridge
 {
 
-bool g_deferPending = false;
+Hot g_hot;
 
 namespace
 {
 
 // Per thread: calls of other threads during a capture run and are not recorded.
 thread_local Capture* s_capture = nullptr;
-std::atomic<uint32_t> s_captures{0};    // threads inside begin()..end(); 0 skips the thread-local reads
 thread_local uint32_t s_paused = 0;
 WinApplication* s_app = nullptr;
 MemMap* s_calloutMemory = nullptr;
@@ -41,21 +40,16 @@ const char* const s_methodNames[MethodCount] = {
     "Effect::End", "Effect::SetIntArray", "guest call",
 };
 
-reg32 s_deviceGuest = 0;
-uint32_t s_deviceGeneration = 0;
-Device* s_deviceObject = nullptr;
-
 // lookup, caching the last device until objects change.
 inline Device* device(reg32 guest)
 {
-    if (__builtin_expect(guest == s_deviceGuest && g_objectGeneration == s_deviceGeneration, 1))
-        return s_deviceObject;
+    if (__builtin_expect(guest == g_hot.deviceGuest, 1))
+        return static_cast<Device*>(g_hot.device);
     Device* d = static_cast<Device*>(lookup(guest));
     if (d)
     {
-        s_deviceGuest = guest;
-        s_deviceGeneration = g_objectGeneration;
-        s_deviceObject = d;
+        g_hot.deviceGuest = guest;
+        g_hot.device = d;
     }
     return d;
 }
@@ -193,7 +187,7 @@ private:
     std::vector<uint32_t> m_words;
 };
 
-// Out of line: emulated-TLS address calls would otherwise run before the s_captures test.
+// Out of line: emulated-TLS address calls would otherwise run before the captures test.
 __attribute__((noinline)) bool activeSlow()
 {
     return s_capture && !s_paused;
@@ -206,12 +200,12 @@ __attribute__((noinline)) bool capturingSlow()
 
 inline bool active()
 {
-    return s_captures.load(std::memory_order_relaxed) && activeSlow();
+    return g_hot.captures.load(std::memory_order_relaxed) && activeSlow();
 }
 
 inline bool capturingNow()
 {
-    return s_captures.load(std::memory_order_relaxed) && capturingSlow();
+    return g_hot.captures.load(std::memory_order_relaxed) && capturingSlow();
 }
 
 // Guest call: the registers it starts with.
@@ -355,7 +349,7 @@ struct Deferral
 
     // Callers holding the execution lock.
     WinApplication* app = nullptr;
-    bool owned = false;                 // the calls of the guest thread with this fs base are queued
+    // g_hot.owned: the calls of the guest thread with this fs base are queued.
     reg32 ownerFs = 0;
     bool inWindow = false;
     reg32 deviceGuest = 0;
@@ -413,13 +407,7 @@ Deferral s_defer;
 
 inline bool deferring(const x86::CPU& cpu)
 {
-    return s_defer.owned && s_defer.ownerFs == cpu.efs;
-}
-
-// No deferral window, queued call or capture.
-inline bool quiet()
-{
-    return !s_defer.owned && !g_deferPending && s_captures.load(std::memory_order_relaxed) == 0;
+    return g_hot.owned && s_defer.ownerFs == cpu.efs;
 }
 
 inline bool deferringDevice(const x86::CPU& cpu, reg32 guest)
@@ -493,10 +481,10 @@ inline bool drawBindings()
 }
 
 // The bindings of the device after a call that ran at once; game thread, queue empty.
-void refreshBindings()
+inline void refreshBindings()
 {
     Deferral& d = s_defer;
-    if (!d.device)
+    if (!g_hot.deferDevice || !d.device)
         return;
     d.device->bindings(d.streamBound, d.streamStride, d.indicesBound, d.declarationBound, d.fvf);
     d.frameOpen = d.device->stream() != nullptr;
@@ -1059,7 +1047,7 @@ __attribute__((noinline)) uint32_t* putSlow(uint32_t op, uint32_t words)
     p[0] = op | (words + 1) << 8;
     d.head += need;
     ++d.stats.records[op];
-    g_deferPending = true;
+    g_hot.pending = 1;
     d.last = p + 1;
     d.lastWords = words;
     d.lastOp = op;
@@ -1078,7 +1066,7 @@ inline uint32_t* put(uint32_t op, uint32_t words)
     p[0] = op | (words + 1) << 8;
     d.head += need;
     ++d.stats.records[op];
-    g_deferPending = true;
+    g_hot.pending = 1;
     d.last = p + 1;
     d.lastWords = words;
     d.lastOp = op;
@@ -1144,7 +1132,7 @@ void begin(Capture& capture, Capture::Mode mode)
     capture.next = 0;
     capture.replayed = 0;
     if (!s_capture)
-        s_captures.fetch_add(1, std::memory_order_relaxed);
+        g_hot.captures.fetch_add(1, std::memory_order_relaxed);
     s_capture = &capture;
     s_paused = 0;
 }
@@ -1152,7 +1140,7 @@ void begin(Capture& capture, Capture::Mode mode)
 void end()
 {
     if (s_capture)
-        s_captures.fetch_sub(1, std::memory_order_relaxed);
+        g_hot.captures.fetch_sub(1, std::memory_order_relaxed);
     s_capture = nullptr;
 }
 
@@ -1210,7 +1198,7 @@ void configureDeferral(DeferMode mode, bool frame, int core, int priority)
 bool deferBegin(WinApplication* app, x86::CPU& cpu, reg32 guest)
 {
     Deferral& d = s_defer;
-    if (d.mode == DeferOff || d.inWindow || capturingNow() || (d.owned && d.ownerFs != cpu.efs))
+    if (d.mode == DeferOff || d.inWindow || capturingNow() || (g_hot.owned && d.ownerFs != cpu.efs))
         return false;
     if (!d.device)
     {
@@ -1226,6 +1214,7 @@ bool deferBegin(WinApplication* app, x86::CPU& cpu, reg32 guest)
         }
         d.deviceGuest = guest;
         d.device = static_cast<Device*>(object);
+        g_hot.deferDevice = 1;
         refreshBindings();
     }
     else if (guest != d.deviceGuest)
@@ -1239,7 +1228,7 @@ bool deferBegin(WinApplication* app, x86::CPU& cpu, reg32 guest)
         d.fpscr = fpscr;
         d.fpscrSent = true;
     }
-    d.owned = true;
+    g_hot.owned = 1;
     d.ownerFs = cpu.efs;
     d.inWindow = true;
     ++d.stats.windows;
@@ -1252,10 +1241,10 @@ void deferEnd()
     publish();
     d.inWindow = false;
     if (!d.frameScope)
-        d.owned = false;
+        g_hot.owned = 0;
 }
 
-void afterDirect()
+void afterDirectSlow()
 {
     refreshBindings();
 }
@@ -1265,9 +1254,10 @@ void deviceGone(const Device* device)
     Deferral& d = s_defer;
     if (device != d.device)
         return;
-    d.owned = false;
+    g_hot.owned = 0;
     d.inWindow = false;
     d.device = nullptr;
+    g_hot.deferDevice = 0;
     d.deviceGuest = 0;
 }
 
@@ -1300,7 +1290,7 @@ void drainSlow(reg32 site)
         delete object;
     d.stats.deletes += uint32_t(d.deletes.size());
     d.deletes.clear();
-    g_deferPending = false;
+    g_hot.pending = 0;
 }
 
 DeferStats takeDeferStats()
@@ -1773,8 +1763,9 @@ HRESULT passDrawIndexed(WinApplication* app, x86::CPU& cpu, reg32 effect, UINT p
 // ---- CallGroup ----
 
 CallGroup::CallGroup(WinApplication* app, x86::CPU& cpu)
-    :   m_app(app), m_cpu(cpu), m_queued(s_defer.inWindow && deferring(cpu)), m_bindings(s_defer.boundOnly == 0),
-        m_device(s_defer.deviceGuest), m_fpscr(s_defer.fpscr)
+    :   m_app(app), m_cpu(cpu), m_queued(g_hot.owned && s_defer.inWindow && deferring(cpu)),
+        m_bindings(m_queued && s_defer.boundOnly == 0), m_device(m_queued ? s_defer.deviceGuest : 0),
+        m_fpscr(m_queued ? s_defer.fpscr : 0)
 {
 }
 
@@ -2013,7 +2004,7 @@ HRESULT drawIndexedPrimitive(WinApplication* app, x86::CPU& cpu, reg32 guest, DW
                              UINT minIndex, UINT vertices, UINT startIndex, UINT count)
 {
     // No deferral device: no bindings to refresh after the draw.
-    if (__builtin_expect(quiet() && !s_defer.device, 1))
+    if (__builtin_expect(quiet() && !g_hot.deferDevice, 1))
         return device(guest)->DrawIndexedPrimitive(app, cpu, type, baseVertex, minIndex, vertices, startIndex, count);
     return drawIndexedPrimitiveQueued(app, cpu, guest, type, baseVertex, minIndex, vertices, startIndex, count);
 }

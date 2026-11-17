@@ -298,6 +298,10 @@ void deviceGone(const Device* device);
 
 // Counts object publications and deletions.
 extern uint32_t g_objectGeneration;
+// Game thread: bumped by texture writes, which may replace a texture's storage or queue uploads into it.
+extern uint32_t g_textureEpoch;
+// An object was published or deleted: bumps the generation and clears the bridge's lookup caches.
+void objectsChanged();
 
 // A guest method that drains the deferred calls (d3d9_native.h) before it runs; cpu.ip is its slot address.
 template< MethodPtr M >
@@ -312,7 +316,7 @@ void drained(WinApplication* app, x86::CPU& cpu)
 template< MethodPtr M >
 void drainedNoBindings(WinApplication* app, x86::CPU& cpu)
 {
-    const bool pending = bridge::g_deferPending;
+    const bool pending = bridge::g_hot.pending;
     bridge::drain(cpu.ip);
     M(app, cpu);
     if (__builtin_expect(pending, 0))
@@ -1040,21 +1044,28 @@ private:
                  bool positionT, render::BufferStorage* vertexStorage, render::BufferStorage* indexStorage);
     VertexDeclaration* fvfDeclaration(DWORD fvf);
 
+    // The draw's layout of the bound declaration (or FVF) at a stride; cached under d3d_fast_layer.
+    void drawLayout(VertexDeclaration* declaration, uint32_t stride, uint8_t& layout, uint32_t& texComponents,
+                    bool& positionT);
+    // Marks storages read by the frame being recorded; repeats of the last draw's are skipped (d3d_fast_layer).
+    void markRead(render::Frame& frame, const render::TextureStorage* const textures[render::MaxSamplers],
+                  render::BufferStorage* vertexStorage, render::BufferStorage* indexStorage);
+
     WinApplication*         m_app;
     Direct3D*               m_d3d;
     D3DPRESENT_PARAMETERS   m_params;
     HWND                    m_window;
     DWORD                   m_flags;
-    State                   m_state;
+    std::vector<VertexDeclaration*> m_fvfDeclarations;
+    DWORD                   m_lights[8][26] = {};
+    BOOL                    m_lightEnabled[8] = {};
+    DWORD                   m_material[17] = {};
+    State                   m_state;        // from here on: the fields draws read, together
     Surface*                m_backBuffer = nullptr;
     Surface*                m_autoDepth = nullptr;
     const EffectPass*       m_effectPass = nullptr;
     uint32_t                m_deviceSamplers = 0;
     uint32_t                m_deviceStates = 0;
-    std::vector<VertexDeclaration*> m_fvfDeclarations;
-    DWORD                   m_lights[8][26] = {};
-    BOOL                    m_lightEnabled[8] = {};
-    DWORD                   m_material[17] = {};
 
     // Recording
     render::Frame*          m_frame = nullptr;
@@ -1066,6 +1077,16 @@ private:
     bool                    m_stateDirty = true;    // changed while no frame recorded: sent whole before a draw
     bool                    m_viewportChanged = true;   // m_state.viewport written since drawViewport
     uint32_t                m_viewportFrame = 0, m_viewportCount = 0;   // frame and table size at drawViewport
+
+    bool                    m_fastLayer = false;        // d3d_fast_layer: the caches below are used
+    VertexDeclaration*      m_layoutDeclaration = nullptr;  // layout cache key; reset when a declaration or FVF is set
+    uint32_t                m_layoutStride = 0;
+    uint8_t                 m_layoutId = 0, m_layoutTexComponents = 0;
+    bool                    m_layoutPositionT = false;
+    bool                    m_sceneCached = false;      // the last scene is still the one of the bound targets
+    uint32_t                m_sceneFrame = 0, m_sceneCount = 0, m_sceneEpoch = 0;   // frame, scene count, texture epoch
+    uint32_t                m_markFrame = 0, m_markEpoch = 0;   // m_marked holds what this frame marked at this epoch
+    const void*             m_marked[render::MaxSamplers + 2] = {};
 };
 
 }}

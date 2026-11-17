@@ -62,7 +62,7 @@ const char* const Known[] =
     // Save folder (src/lib/file.cpp).
     "save_dir", "save_log", "save_sync", "save_atomic", "file_lazy_seek", "file_handle_cache",
     // Host build.
-    "host_gpu_latency", "limiter_log", "debug_scene_finish", "display_vblank_wait", "wait_probe", "frame_stats", "d3d_fast_effects", "d3d_fast_draw", "flush_direct", "host_check_ranges",
+    "host_gpu_latency", "limiter_log", "debug_scene_finish", "display_vblank_wait", "wait_probe", "frame_stats", "d3d_fast_effects", "d3d_fast_draw", "d3d_fast_layer", "flush_direct", "host_check_ranges",
 };
 
 bool isKnown(const char* key)

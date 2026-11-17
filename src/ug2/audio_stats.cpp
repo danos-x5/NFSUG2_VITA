@@ -298,7 +298,7 @@ void report(uint32_t elapsed)
     t = Second();
 }
 
-// Mix kernel throughput on one voice block: buffers in cache, then spread over 4 MB.
+// Mix kernel speed: cached buffers, then spread over 4 MB.
 void benchKernels()
 {
     const reg32 Size = 0x400000;

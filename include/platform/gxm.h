@@ -17,6 +17,18 @@ enum
     MaxWindowHeight = 768
 };
 
+// The texture heap (textures and depth buffers): bytes now, counts since start.
+struct TextureMemory
+{
+    uint32_t    totalBytes, usedBytes;          // chunks; allocations, released ones not freed yet included
+    uint32_t    pendingBytes, pendingCount;     // released, waiting for their frames or uploads
+    uint32_t    largestHole;
+    uint32_t    failures;                       // allocations that returned null
+    uint32_t    instantFrees, queuedFrees;      // releases freed at once / queued
+    uint32_t    rescued;                        // allocations that worked after freeing or waiting
+    uint32_t    peakUsedBytes, peakPendingBytes;    // since the previous textureMemory call
+};
+
 struct Rect
 {
     int x0, y0, x1, y1;     // [x0, x1) x [y0, y1); empty when x0 >= x1 or y0 >= y1
@@ -59,6 +71,11 @@ public:
     uint32_t lastSubmittedFrame() const;
     // Bytes in use in the texture heap (0 on the host).
     uint32_t textureBytesInUse() const;
+    // Any thread; starts the next peak interval.
+    TextureMemory textureMemory();
+    // Game thread: frees the released textures the GPU is done with, after at most 100 ms for frames in flight,
+    // and gives the heap's empty chunks back.
+    void collectTextures();
     // Program list: after init, before the game draws or registers vertex layouts. Creates the shader programs listed
     // in path (written by an earlier run) now instead of at their first draw, and lists every program created in
     // path at shutdown.
@@ -91,7 +108,8 @@ public:
     render::DepthStorage* createDepth(uint32_t width, uint32_t height);
     // Vertex or index data; BufferStorage::data is written directly.
     render::BufferStorage* createBuffer(uint32_t size);
-    // Freed once the frames that may still read the resource and its queued uploads are finished.
+    // Freed once the frames that may still read the resource and its queued uploads are finished: at once when they
+    // already are (texture_instant_free, default on), else at a later frame start or allocation failure.
     void release(render::TextureStorage* texture);
     void release(render::DepthStorage* depth);
     void release(render::BufferStorage* buffer);

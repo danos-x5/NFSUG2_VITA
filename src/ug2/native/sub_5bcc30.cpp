@@ -1,4 +1,7 @@
 // Native replacement of sub_5bcc30: per-mesh texture bind, alpha and blend state, texture scroll upload (cdecl: texture info).
+// texture_retry: a record whose texture creation failed is created again and drawn black meanwhile.
+
+#include "textures.h"
 
 #include <native/common.h>
 #include <native/shadow.h>
@@ -20,6 +23,8 @@ void sub_5bcc30_guest(win32::WinApplication* app, x86::CPU& cpu);
 
 namespace native
 {
+
+void sub_5ce170(win32::WinApplication* app, x86::CPU& cpu);
 
 namespace
 {
@@ -53,6 +58,29 @@ Real scroll(float time, float speed, x86::sreg32 type, float step)
 alignas(16) const x86::reg32 identity[16] = {0x3f800000u, 0, 0, 0, 0, 0x3f800000u, 0, 0,
                                              0, 0, 0x3f800000u, 0, 0, 0, 0, 0x3f800000u};
 
+bool retrying()
+{
+    return pf::cachedStatic([] { return pf::Config::getBool("texture_retry", true); });
+}
+
+// Creates the record's missing texture again, once a frame.
+[[gnu::noinline]] x86::reg32 retry(win32::WinApplication* app, x86::CPU& cpu, x86::reg32 tex)
+{
+    static x86::reg32 s_next = 0;
+    const x86::reg32 frame = rc::ld32(0x86514c);
+    if (x86::sreg32(frame - s_next) < 0)
+        return 0;
+    const x86::reg32 esp = cpu.esp;
+    cpu.ecx = tex;
+    cpu.esp = esp - 4;
+    sub_5ce170(app, cpu);
+    cpu.esp = esp;
+    const x86::reg32 texture = rc::ld32(rc::ld32(tex) + 0x18);
+    s_next = frame + (texture ? 1 : 30);
+    textures::retried(texture != 0);
+    return texture;
+}
+
 // The cache missed: tex or the current group changed.
 [[gnu::noinline]] void miss(win32::WinApplication* app, x86::CPU& cpu, x86::reg32 tex, x86::reg32 group)
 {
@@ -62,7 +90,21 @@ alignas(16) const x86::reg32 identity[16] = {0x3f800000u, 0, 0, 0, 0, 0x3f800000
     rc::st32(0x872f10, rc::ld32(0x872f10) + 1);
     rc::st32(0x870940, tex);
     rc::st32(0x870944, group);
-    const x86::reg32 texture = rc::ld32(plat + 0x18);
+    x86::reg32 texture = rc::ld32(plat + 0x18);
+    if (texture == 0 && group != 0 && rc::ld32(tex + 0x70) != 0 && retrying())
+    {
+        texture = retry(app, cpu, tex);
+        if (cpu.terminate)
+            return;
+        if (texture == 0)
+        {
+            // The original binds nothing and draws with the previous bucket's texture: black instead, not cached.
+            br::effectSetTexture(app, cpu, rc::ld32(group + 0x20), rc::ld32(rc::ld32(group + 0x1c) + 0x13c), 0);
+            rc::st32(0x870940, 0);
+            cpu.esp += 4;
+            return;
+        }
+    }
     // group == 0 binds through the device, then faults reading [4] in the original; not reproduced.
     if (texture == 0 || group == 0)
     {

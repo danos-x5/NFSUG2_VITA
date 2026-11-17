@@ -43,6 +43,7 @@ const char* const Known[] =
     "gfx_preset", "gfx_set", "gfx_level",
     // Renderer.
     "alpha_draw_order", "skip_unused_alpha_test", "matrices_on_render_thread", "texture_cache_mb", "guest_memory_split", "texture_async", "texture_batch",
+    "texture_instant_free", "texture_heap_mb", "texture_retry", "texture_release_all", "texture_load_drain", "texture_heap_shrink",
     "gxm_precomputed", "gxm_lists", "gxm_core2", "gxm_program_list", "cull_swap", "debug_frame_dump", "debug_hold_frame",
     "debug_skip_vp", "debug_skip_fp", "debug_max_draws", "debug_scene_scale", "debug_scene_dump", "debug_merge_limit", "debug_plan_check", "debug_shot_frames", "scene_merge", "blend_op_exact", "copy_elide", "dead_passes",
     "effect_stats", "effect_trace", "effect_check", "optimised_particles", "smoke_log", "smoke_skip", "smoke_fade", "smoke_near", "smoke_mip",

@@ -1279,6 +1279,16 @@ uint32_t Device::textureBytesInUse() const
     return m_impl->frames.textureBytesInUse();
 }
 
+TextureMemory Device::textureMemory()
+{
+    return m_impl->frames.textureMemory();
+}
+
+void Device::collectTextures()
+{
+    m_impl->frames.collectTextures();
+}
+
 uint32_t Device::lastSubmittedFrame() const
 {
     return m_impl->frames.lastSubmitted();

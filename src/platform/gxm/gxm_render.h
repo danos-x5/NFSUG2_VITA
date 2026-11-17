@@ -4,6 +4,7 @@
 // Direct3D frames on SceGxm (platform/render.h): GPU memory, resources, frame slots (game thread) and the
 // drawing of a frame's scenes (render thread). Used by gxm_device.cpp.
 
+#include <platform/gxm.h>
 #include <platform/render.h>
 #include <platform/sync.h>
 #include <psp2/gxm.h>
@@ -16,15 +17,27 @@
 
 namespace pf { namespace gxm {
 
-// Sub-allocates GPU-mapped memory blocks (first fit, coalescing free list); game thread only.
+// Sub-allocates GPU-mapped memory blocks (first fit, coalescing free list); callers serialise calls.
 class GpuHeap
 {
 public:
     GpuHeap(const char* name, SceKernelMemBlockType type, uint32_t chunkSize, uint32_t attributes);
     ~GpuHeap();
-    void* allocate(uint32_t size, uint32_t alignment);   // null when no block can be added
+    // Null when no block can be added; quiet: no failure counted or logged.
+    void* allocate(uint32_t size, uint32_t alignment, bool quiet = false);
+    // Counts and logs a failed allocation.
+    void failed(uint32_t size);
     void free(void* pointer);
     uint32_t usedBytes() const { return m_usedBytes; }
+    uint32_t totalBytes() const { return m_totalBytes; }
+    uint32_t largestHole() const;
+    uint32_t sizeOf(void* pointer) const;
+    // Most bytes of chunks (0: no limit); the last chunk takes what is left.
+    void setLimit(uint32_t bytes) { m_limit = bytes; }
+    // Empty chunks beyond one spare go back to the system.
+    void setShrink(bool on) { m_shrink = on; }
+    // Every empty chunk goes back, the spare too.
+    void trimEmpty();
 
 private:
     struct Chunk
@@ -35,6 +48,7 @@ private:
         std::map<uint32_t, uint32_t>    holes;      // offset -> size
     };
     bool addChunk(uint32_t minimum);
+    void trim(Chunk* chunk);
 
     const char*                         m_name;
     SceKernelMemBlockType               m_type;
@@ -44,6 +58,10 @@ private:
     std::unordered_map<void*, std::pair<Chunk*, uint32_t>> m_used;   // pointer -> chunk, size
     uint32_t                            m_usedBytes = 0;
     uint32_t                            m_totalBytes = 0;
+    uint32_t                            m_limit = 0;
+    uint32_t                            m_failures = 0;
+    bool                                m_full = false;     // the last chunk asked for could not be had
+    bool                                m_shrink = false;
 };
 
 // GPU-read memory (MAIN_NC) for what frames in flight read: chunks are reused once every frame that used them is
@@ -160,6 +178,8 @@ public:
     // Any thread. Ticket 0 is always done.
     bool uploadDone(uint32_t ticket);
     uint32_t textureBytesInUse() const { return m_textureHeap ? m_textureHeap->usedBytes() : 0; }
+    TextureMemory textureMemory();
+    void collectTextures();
     void waitUpload(uint32_t ticket);
     // Until the queued writes into the texture are finished.
     void waitWrites(const render::TextureStorage* texture);
@@ -234,6 +254,7 @@ private:
         int         kind;           // 0 texture, 1 depth, 2 buffer
         void*       object;
         uint32_t    after;          // freed once this frame is finished
+        uint32_t    bytes;          // texture heap bytes
     };
     struct VertexProgram
     {
@@ -354,8 +375,13 @@ private:
     void settle(const Texture* texture);
     // Render thread: before the frame's scenes are drawn.
     void waitFrameUploads(const render::Frame& frame);
+    // Under m_heapLock.
     void freePending();
     void destroy(int kind, void* object);
+    void queueRelease(int kind, void* object, uint32_t after, uint32_t bytes);
+    // A texture heap block; on failure frees what is finished, then waits a little for submitted frames.
+    void* allocateTexture(uint32_t bytes, uint32_t alignment);
+    bool waitForPending();
     const VertexEntry* vertexProgram(uint8_t program, uint8_t layout);
     const FragmentEntry* fragmentProgram(const render::DrawState& state);
     // Creates the fragment program of a cache key (fragmentKey) and adds it to the cache.
@@ -402,6 +428,11 @@ private:
     uint32_t                m_lastSubmitted = 0;
     uint32_t                m_completed = 0;
     std::vector<Pending>    m_pending;
+    LwMutex*                m_heapLock = nullptr;       // texture heap, m_pending and the counts below
+    bool                    m_instantFree = true;       // setting texture_instant_free
+    uint32_t                m_pendingBytes = 0;
+    uint32_t                m_textureFailures = 0, m_instantFrees = 0, m_queuedFrees = 0, m_rescued = 0;
+    uint32_t                m_peakUsed = 0, m_peakPending = 0;
     SceUID                  m_sequenceUid = -1;
     uint16_t*               m_sequence = nullptr;       // 0..65535
     SceUID                  m_arenaUid = -1;

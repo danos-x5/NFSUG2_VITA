@@ -10,6 +10,7 @@
 #include <platform/perf.h>
 #include <platform/stall.h>
 #include <platform/texture.h>
+#include <psp2/kernel/threadmgr.h>
 #include <algorithm>
 #include <cstdio>
 #include <cstring>
@@ -320,11 +321,27 @@ GpuHeap::~GpuHeap()
 bool GpuHeap::addChunk(uint32_t minimum)
 {
     const uint32_t granularity = m_type == SCE_KERNEL_MEMBLOCK_TYPE_USER_CDRAM_RW ? 256 * 1024 : 4096;
-    const uint32_t size = alignUp(std::max(minimum, m_chunkSize), granularity);
+    const uint32_t least = alignUp(minimum, granularity);
+    uint32_t size = alignUp(std::max(minimum, m_chunkSize), granularity);
+    if (m_limit && m_totalBytes + size > m_limit)
+    {
+        const uint32_t left = m_limit > m_totalBytes ? (m_limit - m_totalBytes) / granularity * granularity : 0;
+        m_full = left < least;
+        if (m_full)
+            return false;
+        size = left;
+    }
     const bool timed = perf::hitch();
     const uint32_t start = timed ? perf::now() : 0;
-    const SceUID uid = sceKernelAllocMemBlock(m_name, m_type, size, nullptr);
-    if (uid < 0)
+    const uint32_t smallest = std::max<uint32_t>(least, 1024 * 1024);
+    SceUID uid = sceKernelAllocMemBlock(m_name, m_type, size, nullptr);
+    while (uid < 0 && size > smallest)
+    {
+        size = std::max(smallest, alignUp(size / 2, granularity));
+        uid = sceKernelAllocMemBlock(m_name, m_type, size, nullptr);
+    }
+    m_full = uid < 0;
+    if (m_full)
         return false;
     void* base = nullptr;
     sceKernelGetMemBlockBase(uid, &base);
@@ -343,7 +360,7 @@ bool GpuHeap::addChunk(uint32_t minimum)
     return true;
 }
 
-void* GpuHeap::allocate(uint32_t size, uint32_t alignment)
+void* GpuHeap::allocate(uint32_t size, uint32_t alignment, bool quiet)
 {
     // Whole alignment units: smaller sizes leave a sliver hole per block that every search walks.
     size = alignUp(size ? size : 1, std::max<uint32_t>(alignment, 16));
@@ -371,9 +388,32 @@ void* GpuHeap::allocate(uint32_t size, uint32_t alignment)
         if (attempt == 0 && !addChunk(size + alignment))
             break;
     }
-    logError("gxm: %s heap: no memory for %u KB (%u of %u KB in use)", m_name, size / 1024, m_usedBytes / 1024,
-             m_totalBytes / 1024);
+    if (!quiet)
+        failed(size);
     return nullptr;
+}
+
+void GpuHeap::failed(uint32_t size)
+{
+    // A log line costs about 20 ms on the Vita without log_async: the first few, then every 64th.
+    if (++m_failures <= 4 || m_failures % 64 == 0)
+        logError("gxm: %s heap: no memory for %u KB (%u of %u KB in use, largest hole %u KB, failure %u)", m_name,
+                 size / 1024, m_usedBytes / 1024, m_totalBytes / 1024, largestHole() / 1024, m_failures);
+}
+
+uint32_t GpuHeap::largestHole() const
+{
+    uint32_t largest = 0;
+    for (const Chunk* c : m_chunks)
+        for (const auto& hole : c->holes)
+            largest = std::max(largest, hole.second);
+    return largest;
+}
+
+uint32_t GpuHeap::sizeOf(void* pointer) const
+{
+    const auto it = m_used.find(pointer);
+    return it == m_used.end() ? 0 : it->second.second;
 }
 
 void GpuHeap::free(void* pointer)
@@ -403,6 +443,44 @@ void GpuHeap::free(void* pointer)
         }
     }
     c->holes[start] = size;
+    if (m_shrink && size == c->size)
+        trim(c);
+}
+
+// Frees an empty chunk when another empty one stays as a spare.
+void GpuHeap::trim(Chunk* chunk)
+{
+    bool spare = false;
+    for (const Chunk* c : m_chunks)
+        spare = spare || (c != chunk && c->holes.size() == 1 && c->holes.begin()->second == c->size);
+    if (!spare)
+        return;
+    sceGxmUnmapMemory(chunk->base);
+    sceKernelFreeMemBlock(chunk->uid);
+    m_totalBytes -= chunk->size;
+    m_full = false;
+    m_chunks.erase(std::find(m_chunks.begin(), m_chunks.end(), chunk));
+    logInfo("gxm: %s heap -%u KB, %u of %u KB in use", m_name, chunk->size / 1024, m_usedBytes / 1024,
+            m_totalBytes / 1024);
+    delete chunk;
+}
+
+void GpuHeap::trimEmpty()
+{
+    for (size_t i = m_chunks.size(); m_shrink && i-- > 0;)
+    {
+        Chunk* c = m_chunks[i];
+        if (c->holes.size() != 1 || c->holes.begin()->second != c->size)
+            continue;
+        sceGxmUnmapMemory(c->base);
+        sceKernelFreeMemBlock(c->uid);
+        m_totalBytes -= c->size;
+        m_full = false;
+        m_chunks.erase(m_chunks.begin() + i);
+        logInfo("gxm: %s heap -%u KB, %u of %u KB in use", m_name, c->size / 1024, m_usedBytes / 1024,
+                m_totalBytes / 1024);
+        delete c;
+    }
 }
 
 // ---- Initialisation ------------------------------------------------------------------------------------------------
@@ -435,6 +513,16 @@ bool FrameRenderer::init(SceGxmContext* context, SceGxmShaderPatcher* patcher, v
             m_drawSort ? "sorted" : "game");
     m_textureHeap = new GpuHeap("gxm_textures", SCE_KERNEL_MEMBLOCK_TYPE_USER_CDRAM_RW, 16 * 1024 * 1024,
                                 SCE_GXM_MEMORY_ATTRIB_RW);
+    m_heapLock = new LwMutex("gxm_texture_heap");
+    m_instantFree = Config::getBool("texture_instant_free", true);
+    const int heapMb = std::min(std::max(Config::getInt("texture_heap_mb", 0), 0), 1024);
+    m_textureHeap->setLimit(uint32_t(heapMb) * 1024 * 1024);
+    // Only with instant frees is a freed block known to be out of the GPU's hands.
+    m_textureHeap->setShrink(m_instantFree && Config::getBool("texture_heap_shrink", true));
+    logInfo("gxm: released textures freed %s (texture_instant_free=%s); texture heap in 16 MB chunks, then smaller "
+            "ones down to 1 MB for what CDRAM has left, capped at %d MB (texture_heap_mb, 0: no cap)", m_instantFree
+            ? "at once when their frames are finished, and finished ones before an allocation fails"
+            : "at a frame start after the next frame", m_instantFree ? "on" : "off", heapMb);
     m_bufferHeap = new GpuHeap("gxm_buffers", SCE_KERNEL_MEMBLOCK_TYPE_USER_MAIN_NC_RW, 8 * 1024 * 1024,
                                SCE_GXM_MEMORY_ATTRIB_READ);
 
@@ -575,6 +663,7 @@ void FrameRenderer::shutdown()
                 sceGxmShaderPatcherUnregisterProgram(m_patcher, m_fragmentPrograms[f][v].id);
     delete m_textureHeap;
     delete m_bufferHeap;
+    delete m_heapLock;
     delete m_uploadDone;
     delete m_uploadLock;
     if (m_arenaUid >= 0)
@@ -624,7 +713,10 @@ render::Frame* FrameRenderer::beginFrame(uint32_t width, uint32_t height)
         m_completed = std::max(m_completed, s.frame.index);
     }
     completedFrame();
-    freePending();
+    {
+        LwLockGuard guard(*m_heapLock);
+        freePending();
+    }
 
     // Back buffers of another size than the display are drawn offscreen and scaled when shown.
     const bool direct = width == 960 && height == 544;
@@ -687,7 +779,11 @@ void FrameRenderer::freePending()
         // A texture is freed once no queued upload touches it either.
         if (m_pending[i].after <= m_completed
             && (m_pending[i].kind != 0 || uploadDone(static_cast<Texture*>(m_pending[i].object)->lastTicket)))
+        {
+            if (m_pending[i].kind != 2)
+                m_pendingBytes -= m_pending[i].bytes;
             destroy(m_pending[i].kind, m_pending[i].object);
+        }
         else
             m_pending[kept++] = m_pending[i];
     }
@@ -717,22 +813,142 @@ void FrameRenderer::destroy(int kind, void* object)
     }
 }
 
+void FrameRenderer::queueRelease(int kind, void* object, uint32_t after, uint32_t bytes)
+{
+    m_pending.push_back(Pending{ kind, object, after, bytes });
+    if (kind != 2)
+    {
+        m_pendingBytes += bytes;
+        m_peakPending = std::max(m_peakPending, m_pendingBytes);
+        ++m_queuedFrees;
+    }
+}
+
 void FrameRenderer::release(render::TextureStorage* texture)
 {
-    if (texture)
-        m_pending.push_back(Pending{ 0, texture, m_lastIndex + 1 });
+    if (!texture)
+        return;
+    Texture* t = static_cast<Texture*>(texture);
+    LwLockGuard guard(*m_heapLock);
+    if (!m_instantFree)
+    {
+        queueRelease(0, t, m_lastIndex + 1, t->bytes);
+        return;
+    }
+    // lastUse is 0 for a texture never drawn; the frame being recorded is never finished yet.
+    if (t->lastUse <= completedFrame() && uploadDone(t->lastTicket))
+    {
+        destroy(0, t);
+        ++m_instantFrees;
+        return;
+    }
+    queueRelease(0, t, t->lastUse, t->bytes);
 }
 
 void FrameRenderer::release(render::DepthStorage* depth)
 {
-    if (depth)
-        m_pending.push_back(Pending{ 1, depth, m_lastIndex + 1 });
+    if (!depth)
+        return;
+    Depth* d = static_cast<Depth*>(depth);
+    LwLockGuard guard(*m_heapLock);
+    const uint32_t bytes = m_textureHeap->sizeOf(d->data) + (d->stencil ? m_textureHeap->sizeOf(d->stencil) : 0);
+    if (!m_instantFree)
+    {
+        queueRelease(1, d, m_lastIndex + 1, bytes);
+        return;
+    }
+    if (d->lastUse <= completedFrame())
+    {
+        destroy(1, d);
+        ++m_instantFrees;
+        return;
+    }
+    queueRelease(1, d, d->lastUse, bytes);
 }
 
 void FrameRenderer::release(render::BufferStorage* buffer)
 {
-    if (buffer)
-        m_pending.push_back(Pending{ 2, buffer, m_lastIndex + 1 });
+    if (!buffer)
+        return;
+    LwLockGuard guard(*m_heapLock);
+    queueRelease(2, buffer, m_lastIndex + 1, 0);
+}
+
+void* FrameRenderer::allocateTexture(uint32_t bytes, uint32_t alignment)
+{
+    LwLockGuard guard(*m_heapLock);
+    void* p = m_textureHeap->allocate(bytes, alignment, true);
+    if (!p && m_instantFree && !m_pending.empty())
+    {
+        completedFrame();
+        freePending();
+        p = m_textureHeap->allocate(bytes, alignment, true);
+        if (!p && waitForPending())
+        {
+            freePending();
+            p = m_textureHeap->allocate(bytes, alignment, true);
+        }
+        if (p)
+            ++m_rescued;
+    }
+    if (!p)
+    {
+        m_textureHeap->failed(bytes);
+        ++m_textureFailures;
+        return nullptr;
+    }
+    m_peakUsed = std::max(m_peakUsed, m_textureHeap->usedBytes());
+    return p;
+}
+
+void FrameRenderer::collectTextures()
+{
+    LwLockGuard guard(*m_heapLock);
+    completedFrame();
+    freePending();
+    if (waitForPending())
+        freePending();
+    m_textureHeap->trimEmpty();
+}
+
+bool FrameRenderer::waitForPending()
+{
+    // The newest frame pending textures wait for that is submitted; the frame being recorded cannot finish.
+    uint32_t frame = 0;
+    for (const Pending& p : m_pending)
+        if (p.kind != 2 && p.after > m_completed && p.after <= m_lastSubmitted)
+            frame = std::max(frame, p.after);
+    if (!frame)
+        return false;
+    // Polled with the heap unlocked and for at most 100 ms: the caller may hold the execution lock.
+    m_heapLock->unlock();
+    for (int i = 0; i < 100 && !finished(this, frame); ++i)
+        sceKernelDelayThread(1000);
+    m_heapLock->lock();
+    return completedFrame() >= frame;
+}
+
+TextureMemory FrameRenderer::textureMemory()
+{
+    TextureMemory m = {};
+    if (!m_heapLock)
+        return m;
+    LwLockGuard guard(*m_heapLock);
+    m.totalBytes = m_textureHeap->totalBytes();
+    m.usedBytes = m_textureHeap->usedBytes();
+    m.pendingBytes = m_pendingBytes;
+    for (const Pending& p : m_pending)
+        m.pendingCount += p.kind != 2 ? 1 : 0;
+    m.largestHole = m_textureHeap->largestHole();
+    m.failures = m_textureFailures;
+    m.instantFrees = m_instantFrees;
+    m.queuedFrees = m_queuedFrees;
+    m.rescued = m_rescued;
+    m.peakUsedBytes = std::max(m_peakUsed, m.usedBytes);
+    m.peakPendingBytes = std::max(m_peakPending, m.pendingBytes);
+    m_peakUsed = m.usedBytes;
+    m_peakPending = m.pendingBytes;
+    return m;
 }
 
 // ---- Resources (game thread) ---------------------------------------------------------------------------------------
@@ -749,7 +965,7 @@ render::TextureStorage* FrameRenderer::createTexture(const render::TextureDesc& 
         t->stride = strideInPixels * 4;
         t->bytes = t->stride * desc.height;
         t->faceStride = t->bytes;
-        t->data = m_textureHeap->allocate(t->bytes, 256);
+        t->data = allocateTexture(t->bytes, 256);
         if (!t->data)
         {
             delete t;
@@ -768,7 +984,7 @@ render::TextureStorage* FrameRenderer::createTexture(const render::TextureDesc& 
         t->stride = alignUp(desc.width, 8) * texture::unitBytes(desc.format);
         t->bytes = t->stride * desc.height;
         t->faceStride = t->bytes;
-        t->data = m_textureHeap->allocate(t->bytes, 256);
+        t->data = allocateTexture(t->bytes, 256);
         if (!t->data)
         {
             delete t;
@@ -780,7 +996,7 @@ render::TextureStorage* FrameRenderer::createTexture(const render::TextureDesc& 
     t->stride = 0;
     t->faceStride = texture::faceStride(desc.format, desc.width, desc.height, desc.levels);
     t->bytes = texture::totalBytes(desc.format, desc.width, desc.height, desc.levels, desc.cube);
-    t->data = m_textureHeap->allocate(t->bytes, 256);
+    t->data = allocateTexture(t->bytes, 256);
     if (!t->data)
     {
         delete t;
@@ -1085,7 +1301,7 @@ render::DepthStorage* FrameRenderer::createDepth(uint32_t width, uint32_t height
     d->width = uint16_t(width);
     d->height = uint16_t(height);
     // Depth plane only, no stencil plane.
-    d->data = m_textureHeap->allocate(w * h * 4, SCE_GXM_DEPTHSTENCIL_SURFACE_ALIGNMENT);
+    d->data = allocateTexture(w * h * 4, SCE_GXM_DEPTHSTENCIL_SURFACE_ALIGNMENT);
     d->stencil = nullptr;
     if (!d->data)
     {
@@ -1101,7 +1317,10 @@ render::BufferStorage* FrameRenderer::createBuffer(uint32_t size)
 {
     Buffer* b = new Buffer();
     b->size = size;
-    b->data = m_bufferHeap->allocate(size, 16);
+    {
+        LwLockGuard guard(*m_heapLock);
+        b->data = m_bufferHeap->allocate(size, 16);
+    }
     if (!b->data)
     {
         delete b;

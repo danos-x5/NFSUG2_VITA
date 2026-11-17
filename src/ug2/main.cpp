@@ -9,6 +9,7 @@
 #include "default_cfg.h"
 #include "frontend.h"
 #include "hitch.h"
+#include "textures.h"
 #include <lib/memlog.h>
 #include "scenery.h"
 #include "padbind.h"
@@ -254,6 +255,7 @@ int main(int argc, char** argv)
         ug2::textentry::configure(app);
         ug2::padbind::configure(app);
         ug2::hitch::configure(app);
+        ug2::textures::configure(app);
         win32::memlog::configure(ug2::frontend::frameCounter);
         ug2::scenery::configure();
         ug2::movies::configure(app);

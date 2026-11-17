@@ -2,6 +2,7 @@
 
 #include "hitch.h"
 #include "bench.h"
+#include "textures.h"
 
 #include <platform/config.h>
 #include <platform/gxm.h>
@@ -661,6 +662,7 @@ void sub_574670(win32::WinApplication* app, x86::CPU& cpu)
 void sub_5ce170(win32::WinApplication* app, x86::CPU& cpu)
 {
     static const bool batch = pf::Config::getBool("texture_batch", true);
+    textures::creating();
     if (batch)
         pf::gxm::Device::get().beginUploads();
     hitch::timed<pf::perf::EventTextureCreates>([&] { sub_5ce170_guest(app, cpu); });

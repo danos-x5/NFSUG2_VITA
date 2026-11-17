@@ -1,4 +1,4 @@
-// Memory usage log: guest arena areas, port heap, kernel free sizes and texture memory in one line.
+// Memory usage log: guest arena areas, port heap, kernel free sizes and texture heap use in one line.
 
 #include <lib/memlog.h>
 #include <lib/memmap.h>
@@ -70,15 +70,21 @@ void event(const char* why)
         phycontFree = uint32_t(std::max(0, info.size_phycont)) / 1024;
     }
 #endif
+    const pf::gxm::TextureMemory t = pf::gxm::Device::get().textureMemory();
     const unsigned seconds = unsigned(pf::ticksUs() / 1000000u);
     const unsigned frame = s_frameCounter ? s_frameCounter() : 0;
     pf::logInfo("memory: t=%u frame=%u why=%s guest_used=%u guest_free=%u guest_largest=%u guest_ranges=%u "
                 "runtime_used=%u runtime_free=%u runtime_largest=%u blocks=%u heap=%u user_free=%u cdram_free=%u "
-                "phycont_free=%u textures=%u tex_cache=%u", seconds, frame, why, unsigned(u.guestUsed),
-                unsigned(u.guestFree), unsigned(u.guestLargest), unsigned(u.guestRanges), unsigned(u.runtimeUsed),
+                "phycont_free=%u textures=%u tex_cache=%u tex_total=%u tex_live=%u tex_pending=%u tex_pending_n=%u "
+                "tex_hole=%u tex_failed=%u tex_instant=%u tex_queued=%u tex_rescued=%u tex_peak=%u tex_pending_peak=%u",
+                seconds, frame, why, unsigned(u.guestUsed), unsigned(u.guestFree), unsigned(u.guestLargest), unsigned(u.guestRanges), unsigned(u.runtimeUsed),
                 unsigned(u.runtimeFree), unsigned(u.runtimeLargest), unsigned(u.blocks), unsigned(heapKb()),
                 unsigned(userFree), unsigned(cdramFree), unsigned(phycontFree),
-                unsigned(pf::gxm::Device::get().textureBytesInUse() / 1024), unsigned(pf::perf::cacheBytes() / 1024));
+                unsigned(t.usedBytes / 1024), unsigned(pf::perf::cacheBytes() / 1024), unsigned(t.totalBytes / 1024),
+                unsigned((t.usedBytes - t.pendingBytes) / 1024), unsigned(t.pendingBytes / 1024),
+                unsigned(t.pendingCount), unsigned(t.largestHole / 1024), unsigned(t.failures),
+                unsigned(t.instantFrees), unsigned(t.queuedFrees), unsigned(t.rescued),
+                unsigned(t.peakUsedBytes / 1024), unsigned(t.peakPendingBytes / 1024));
 }
 
 void tick()

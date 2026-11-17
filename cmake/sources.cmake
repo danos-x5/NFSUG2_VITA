@@ -4,6 +4,7 @@
 set(NFSU_RENDER_SOURCES
   src/platform/render.cpp
   src/platform/render_plan.cpp
+  src/platform/smoke.cpp
   src/platform/texture.cpp
 )
 # Direct3D 9 and D3DX layer.

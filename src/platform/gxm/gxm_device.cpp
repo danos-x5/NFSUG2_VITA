@@ -643,7 +643,10 @@ void Device::Impl::run()
         if (check)
             planCheckFirst(*frame);
         if (frame)
+        {
             render::optimizeFrame(*frame);
+            render::smoke(*frame);
+        }
         if (limited && frame)
             limiter::add(limiter::RenderResolve, perf::now() - start);
         uint32_t calls = 0, triangles = 0;

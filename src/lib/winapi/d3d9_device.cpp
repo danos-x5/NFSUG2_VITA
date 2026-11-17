@@ -486,6 +486,7 @@ __attribute__((always_inline)) inline HRESULT Device::draw(
     d.indices = indices;
     d.count = inputs;
     d.vertexCount = count;
+    d.tag = render::g_drawTag ? render::g_drawTag() : 0;
     if (__builtin_expect(s_dumping.load(std::memory_order_relaxed), 0))
     {
         const Object* t = m_state.textures[0];

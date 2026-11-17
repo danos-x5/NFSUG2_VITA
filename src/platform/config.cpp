@@ -45,7 +45,7 @@ const char* const Known[] =
     "alpha_draw_order", "skip_unused_alpha_test", "matrices_on_render_thread", "texture_cache_mb", "guest_memory_split", "texture_async", "texture_batch",
     "gxm_precomputed", "gxm_lists", "gxm_core2", "gxm_program_list", "cull_swap", "debug_frame_dump", "debug_hold_frame",
     "debug_skip_vp", "debug_skip_fp", "debug_max_draws", "debug_scene_scale", "debug_scene_dump", "debug_merge_limit", "debug_plan_check", "debug_shot_frames", "scene_merge", "blend_op_exact", "copy_elide", "dead_passes",
-    "effect_stats", "effect_trace", "effect_check",
+    "effect_stats", "effect_trace", "effect_check", "optimised_particles", "smoke_log", "smoke_skip", "smoke_fade", "smoke_near", "smoke_mip",
     // Native versions of guest code and their shadow compares.
     "audio_log", "audio_block_ms", "audio_mixer", "audio_defer", "audio_defer_log", "audio_defer_notify", "audio_defer_hook", "audio_inline_with_hooks", "audio_hook_release", "audio_hook_wait_ms", "audio_snd_yield", "audio_mixer_stay", "audio_dump", "audio_engine_inline", "ea_timer_unlocked", "yield_relock_spin_us", "audio_inline_notifications", "audio_library_audit", "audio_native_kernels", "audio_neon_kernels", "audio_selftest", "audio_hash", "bank_native", "shadow_bank", "bank_cache_check", "coll_native", "shadow_coll", "cull_native", "cull_parallel", "shadow_cull",
     "sampler", "sampler_interval_us", "sampler_copies", "sampler_thread",

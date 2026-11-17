@@ -5,6 +5,9 @@
 #include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
+#include <platform/render.h>
+#include <algorithm>
+#include <cmath>
 
 namespace ug2
 {
@@ -74,6 +77,29 @@ inline void vertex(x86::reg32 v, Real x, Real y, Real z, x86::reg32 colour, x86:
     rc::st32(v + 0x14, t);
 }
 
+// Particles kept, in 256ths.
+uint32_t thinKeep()
+{
+    static const uint32_t keep = uint32_t(pf::render::particleOptions().thinPercent * 256 / 100);
+    return keep;
+}
+
+// Drops a stable share of particles, compensating alpha.
+x86::reg32 thin(x86::reg32 colour, x86::reg32 record)
+{
+    const uint32_t keep = thinKeep();
+    // The record is on 0x48C290's stack; its next node is at record - 0x230 + 0xE8.
+    const x86::reg32 next = rc::ld32(record - 0x230 + 0xe8);
+    const x86::reg32 node = next ? rc::ld32(next + 4) : 0;
+    if (!node || rc::ld32(node) != next || (colour >> 24) <= 0x14)
+        return colour;
+    if ((node >> 4) * 2654435761u >> 24 >= keep)
+        return colour & 0x00ffffffu;
+    const float a = float(colour >> 24) / 255.0f;
+    const uint32_t alpha = uint32_t(std::min(255.0f, 255.0f * (1.0f - powf(1.0f - a, 256.0f / float(keep))) + 0.5f));
+    return (colour & 0x00ffffffu) | alpha << 24;
+}
+
 // Batch start: the guest's frame and registers, for its three callees.
 [[gnu::noinline]] bool begin(win32::WinApplication* app, x86::CPU& cpu, x86::reg32 p)
 {
@@ -138,6 +164,8 @@ void body(win32::WinApplication* app, x86::CPU& cpu)
     colour = (colour | ftol2(ld(p + 0x20))) << 8;
     colour = (colour | ftol2(ld(p + 0x24))) << 8;
     colour |= ftol2(ld(p + 0x28));
+    if (thinKeep() < 256)
+        colour = thin(colour, p);
     const x86::reg32 s0 = rc::ld32(p + 0x48), t0 = rc::ld32(p + 0x4c);
     const x86::reg32 s1 = rc::ld32(p + 0x40), t1 = rc::ld32(p + 0x44);
 

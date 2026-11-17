@@ -8,6 +8,7 @@
 
 #include <platform/config.h>
 #include <platform/log.h>
+#include <platform/render.h>
 #include <platform/sync.h>
 #include <platform/time.h>
 #if defined(__vita__)
@@ -634,8 +635,16 @@ void uncappedClockHook(win32::WinApplication* app, x86::CPU& cpu)
     rc::stf32(FrameMaxSixtieths, 1.0e6f);
 }
 
+// 1 while a particle batch is open (0x87074c).
+uint8_t particleTag()
+{
+    return rc::ld32(0x87074c) ? 1 : 0;
+}
+
 void configure(win32::WinApplication& app)
 {
+    if (pf::render::particleTagNeeded())
+        pf::render::g_drawTag = particleTag;
     if (pf::Config::getBool("virtual_clock", false))
     {
         const reg32 import = rc::ld32(QueryPerformanceCounterSlot);

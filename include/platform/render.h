@@ -451,6 +451,7 @@ struct DrawCall
     uint32_t        count;              // indices or vertices
     uint32_t        vertexCount;        // vertices the indices reach (min index 0)
     uint16_t        viewport;           // index into Frame::viewports
+    uint8_t         tag;                // drawTag() at the draw: 1 particle batch
 };
 
 // A render target: a target texture (a cube face) or the back buffer (null), and a depth surface or none.
@@ -494,6 +495,23 @@ struct Frame
     uint32_t    commandCount;                       // words
     bool        uploads;                            // a texture it reads had uploads when it was recorded
 };
+
+// Game hook: tag for the draw being recorded; null: 0.
+extern uint8_t (*g_drawTag)();
+
+// What optimised_particles switches.
+struct ParticleOptions
+{
+    int     crop;           // minimum alpha in 15ths of the texels a quad keeps; 0 off
+    int     thinPercent;    // share of particles kept; 100 all
+};
+const ParticleOptions& particleOptions();
+
+// True when g_drawTag is needed for the particle settings.
+bool particleTagNeeded();
+
+// Particle draws: crop and smoke_* diagnostics; render thread.
+void smoke(Frame& frame);
 
 // Smallest alpha a sampler reads from a texture (all levels): 0 when unknown or while writes are queued.
 uint8_t minAlpha(const TextureStorage& texture);

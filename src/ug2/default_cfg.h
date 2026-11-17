@@ -37,6 +37,9 @@ const char DefaultSettingsFile[] =
     "# on skips the menus and starts a test race.\n"
     "#boot_race=off\n"
     "\n"
+    "# Cheaper tyre smoke and other particles, close to the original picture: on or off (off is as the original).\n"
+    "#optimised_particles=on\n"
+    "\n"
     "# on writes a detailed log to NeedForSpeedUnderground2.log, useful when reporting a problem. Errors\n"
     "# are logged either way.\n"
     "#log_info=off\n";

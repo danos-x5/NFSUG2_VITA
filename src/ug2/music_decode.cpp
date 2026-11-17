@@ -190,9 +190,9 @@ void logCheck(const Stream& s)
     if (!c.granules)
         return;
     const double samples = double(c.granules) * GranuleSamples * 2;
-    pf::logInfo("music check 0x%08x: %u granules, max difference %.2f, rms %.4f, %u samples over 2 LSB in %u granules, %u past "
-                "16 bits in the game's (left out), %u granule size mismatches, %u of %u PCM inserts in place, "
-                "%u lone granules",
+    pf::logInfo("music check 0x%08x: %u granules, max difference %.2f, rms %.4f, %u samples over 2 LSB in %u "
+                "granules, %u past 16 bits in the game's (left out), %u granule size mismatches, %u of %u PCM inserts "
+                "in place, %u lone granules",
                 unsigned(s.object), unsigned(c.granules), double(c.maxDiff), std::sqrt(c.sumSquares / samples),
                 unsigned(c.over2), unsigned(c.apart), unsigned(c.clipped), unsigned(c.sizeMismatches),
                 unsigned(c.insertsFound), unsigned(c.inserts), unsigned(s.lone));

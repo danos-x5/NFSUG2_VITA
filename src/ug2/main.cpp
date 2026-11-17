@@ -6,6 +6,7 @@
 #include "bankcode.h"
 #include "boot.h"
 #include "movies.h"
+#include "music_decode.h"
 #include "default_cfg.h"
 #include "frontend.h"
 #include "hitch.h"
@@ -250,6 +251,7 @@ int main(int argc, char** argv)
         std::vector<uint8_t>().swap(image);
         ug2::mixer::configure(app);
         ug2::sndq::configure(app);
+        ug2::music::configure(app);
         ug2::boot::configure(app);
         ug2::textentry::configure(app);
         ug2::padbind::configure(app);

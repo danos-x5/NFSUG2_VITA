@@ -40,6 +40,10 @@ const char DefaultSettingsFile[] =
     "# Cheaper tyre smoke and other particles, close to the original picture: on or off (off is as the original).\n"
     "#optimised_particles=on\n"
     "\n"
+    "# Music decoded by the Vita's hardware MP3 decoder instead of the game's own decoder, which frees the CPU:\n"
+    "# on or off. It sounds the same; if the hardware decoder cannot start, the game's decoder plays it.\n"
+    "#music_hw_decode=off\n"
+    "\n"
     "# on writes a detailed log to NeedForSpeedUnderground2.log, useful when reporting a problem. Errors\n"
     "# are logged either way.\n"
     "#log_info=off\n";

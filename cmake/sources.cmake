@@ -27,6 +27,7 @@ set(NFSU_PLATFORM_SOURCES
   src/platform/ime.cpp
   src/platform/log.cpp
   src/platform/memfuncs.cpp
+  src/platform/mp3dec.cpp
   src/platform/mp4.cpp
   src/platform/limiter.cpp
   src/platform/perf.cpp

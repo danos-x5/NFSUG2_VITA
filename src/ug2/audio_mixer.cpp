@@ -2,6 +2,7 @@
 // kernels, bit-identical to the guest's.
 
 #include "audio_mixer.h"
+#include "audio_cull.h"
 #include "audio_defer.h"
 #include "audio_kernels.h"
 
@@ -964,6 +965,7 @@ void sub_72382f(win32::WinApplication* app, x86::CPU& cpu)
 // Voice render (&output pointer, frames).
 void sub_729574(win32::WinApplication* app, x86::CPU& cpu)
 {
+    const cull::Voices silent(cpu);
     const bool timed = pf::perf::enabled();
     const uint32_t start = timed ? pf::perf::now() : 0;
     Audit audit;
@@ -1152,6 +1154,11 @@ void sub_72c480(win32::WinApplication* app, x86::CPU& cpu)
 // Linear resampler (n, src, dst, &position, &fraction, step, step fraction).
 void sub_733700(win32::WinApplication* app, x86::CPU& cpu)
 {
+    if (cull::skipKernel(cpu))
+    {
+        cull::advanceLinear(cpu);
+        return;
+    }
     if (!mixer::s_nativeKernels)
     {
         sub_733700_guest(app, cpu);

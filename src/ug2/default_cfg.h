@@ -40,6 +40,10 @@ const char DefaultSettingsFile[] =
     "# Cheaper tyre smoke and other particles, close to the original picture: on or off (off is as the original).\n"
     "#optimised_particles=on\n"
     "\n"
+    "# Sounds quieter than this many dB below full scale are not mixed, which saves processor time; off mixes\n"
+    "# every sound. -60 is inaudible; louder values such as -40 save more.\n"
+    "#audio_silence_db=-60\n"
+    "\n"
     "# on writes a detailed log to NeedForSpeedUnderground2.log, useful when reporting a problem. Errors\n"
     "# are logged either way.\n"
     "#log_info=off\n";

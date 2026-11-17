@@ -307,9 +307,6 @@ bool fastLayer()
     return NFSU_RENDER_FAST_CACHED("d3d_fast_layer");
 }
 
-// Bumped when a parameter's texture changes: recorded passes read their textures again.
-uint32_t s_textureBindings = 0;
-
 struct Values;
 // Value blocks by id (the render thread mirrors their floats), and the blocks to send whole.
 std::vector<Values*>    s_blocks;
@@ -513,7 +510,7 @@ public:
         {
             Values& v = values(int(p));
             const bool isFloat = (s_kinds[kind].fast[p] & FastFloat) && m_fast
-                                 && device == bridge::g_hot.streamDevice;
+                                 && device == g_streamDevice;
             m_slots[p] = Slot{ &v, v.floats.data() + s_offsets[p], uint16_t(s_offsets[p]),
                                uint16_t(isFloat ? fx::s_params[p].floats : 0) };
         }
@@ -667,18 +664,18 @@ private:
     bool            m_fast = false;         // d3d_fast_effects
     uint8_t         m_always = 0;           // technique 0 passes whose draws are never dropped, a bit each
     PassInfo*       m_info = nullptr;       // of the current pass; null: recordSlow
+    bool            m_reuseRecord = false;  // d3d_fast_layer: record() reuses its last result
+    mutable bool    m_recorded = false;     // m_record* hold it, valid while no texture binding or storage changed
+    mutable uint8_t m_recordSlots = 0;
+    mutable uint32_t m_recordEpoch = 0;     // bridge::g_hot.textureEpoch of m_record*
+    mutable EffectDraw m_recordEffect = {};
+    mutable const render::TextureStorage* m_recordTextures[render::MaxSamplers] = {};
     uint32_t        m_passCount = 0;        // of the current technique
     uint32_t        m_technique = 0;
     uint32_t        m_pass = 0;
     mutable uint8_t m_textureStages = 0;    // stages whose texture parameter changed in this pass (CommitChanges)
     bool            m_saved = false;        // Begin saved the states technique 0 sets
     DWORD           m_restore[MaxRestore];
-    bool            m_reuseRecord = false;  // d3d_fast_layer: record() reuses its last result
-    mutable bool    m_recorded = false;     // m_record* hold it, valid while no texture binding or storage changed
-    mutable uint8_t m_recordSlots = 0;
-    mutable uint32_t m_recordBindings = 0, m_recordEpoch = 0;   // s_textureBindings, g_textureEpoch
-    mutable EffectDraw m_recordEffect = {};
-    mutable const render::TextureStorage* m_recordTextures[render::MaxSamplers] = {};
 };
 
 }}
@@ -1007,7 +1004,7 @@ void Effect::record(EffectDraw& effect, const render::TextureStorage* textures[r
         recordSlow(effect, textures, deviceSlots);
         return;
     }
-    if (m_recorded && m_recordBindings == s_textureBindings && m_recordEpoch == g_textureEpoch)
+    if (m_recorded && m_recordEpoch == bridge::g_hot.textureEpoch)
     {
         effect = m_recordEffect;
         deviceSlots = m_recordSlots;
@@ -1032,8 +1029,7 @@ void Effect::record(EffectDraw& effect, const render::TextureStorage* textures[r
     if (m_reuseRecord)
     {
         m_recorded = true;
-        m_recordBindings = s_textureBindings;
-        m_recordEpoch = g_textureEpoch;
+        m_recordEpoch = bridge::g_hot.textureEpoch;
         m_recordEffect = effect;
         m_recordSlots = deviceSlots;
         for (uint32_t i = 0; i < render::MaxSamplers; ++i)
@@ -1882,7 +1878,7 @@ HRESULT Effect::SetTexture(WinApplication* app, x86::CPU& cpu, x86::reg32 handle
         return D3DERR_INVALIDCALL;
     if (texture && texture->kind() != KindTexture && texture->kind() != KindCubeTexture)
         return D3DERR_INVALIDCALL;
-    Object*& slot = values(p).textures[p];
+    Object*& slot = m_slots[p].values->textures[p];
     if (slot != texture || !m_reuseRecord || !bridge::quiet())
     {
         if (texture)
@@ -1890,7 +1886,7 @@ HRESULT Effect::SetTexture(WinApplication* app, x86::CPU& cpu, x86::reg32 handle
         if (slot)
             slot->unbind();
         slot = texture;
-        ++s_textureBindings;
+        ++bridge::g_hot.textureEpoch;
     }
     // Applied at the active pass's CommitChanges, as in D3DX 9.0c.
     if (const EffectPass* active = m_device->effectPass())
@@ -2264,6 +2260,66 @@ HRESULT end(WinApplication* app, x86::CPU& cpu, reg32 effect)
 }
 
 }}
+
+namespace bridge
+{
+
+// Quiet calls run here, one function each; the others go through d3d9_native.cpp.
+
+HRESULT effectSetFloat(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 handle, float value)
+{
+    if (__builtin_expect(quiet(), 1))
+        return effectObject(guest)->setFloat(handle, value);
+    return effectSetFloatSlow(app, cpu, guest, handle, value);
+}
+
+HRESULT effectSetVector(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 handle, const float* vector)
+{
+    if (__builtin_expect(quiet(), 1))
+        return effectObject(guest)->setVector(handle, vector);
+    return effectSetVectorSlow(app, cpu, guest, handle, vector);
+}
+
+HRESULT effectSetVectorArray(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 handle, const float* vectors,
+                             UINT count)
+{
+    if (__builtin_expect(quiet(), 1))
+        return effectObject(guest)->setVectors(handle, vectors, count);
+    return effectSetVectorArraySlow(app, cpu, guest, handle, vectors, count);
+}
+
+HRESULT effectSetMatrix(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 handle, const float* matrix)
+{
+    if (__builtin_expect(quiet(), 1))
+        return effectObject(guest)->setMatrix(handle, matrix);
+    return effectSetMatrixSlow(app, cpu, guest, handle, matrix);
+}
+
+HRESULT effectSetTexture(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 handle, reg32 texture)
+{
+    if (__builtin_expect(quiet(), 1))
+        return effectObject(guest)->SetTexture(app, cpu, handle, lookup(texture));
+    return effectSetTextureSlow(app, cpu, guest, handle, texture);
+}
+
+HRESULT effectPass(WinApplication* app, x86::CPU& cpu, reg32 guest, UINT pass)
+{
+    if (__builtin_expect(quiet(), 1))
+        return effectObject(guest)->beginPass(pass);
+    return effectPassSlow(app, cpu, guest, pass);
+}
+
+bool effectCommitChanges(WinApplication* app, x86::CPU& cpu, reg32 guest)
+{
+    RC_USE(app);
+    RC_USE(cpu);
+    if (__builtin_expect(!quiet(), 0))
+        return false;
+    effectObject(guest)->commit();
+    return true;
+}
+
+}
 
 // ---- Entry points --------------------------------------------------------------------------------------------------
 

@@ -40,18 +40,9 @@ const char* const s_methodNames[MethodCount] = {
     "Effect::End", "Effect::SetIntArray", "guest call",
 };
 
-// lookup, caching the last device until objects change.
 inline Device* device(reg32 guest)
 {
-    if (__builtin_expect(guest == g_hot.deviceGuest, 1))
-        return static_cast<Device*>(g_hot.device);
-    Device* d = static_cast<Device*>(lookup(guest));
-    if (d)
-    {
-        g_hot.deviceGuest = guest;
-        g_hot.device = d;
-    }
-    return d;
+    return deviceObject(guest);
 }
 
 inline uint32_t bits(float value)
@@ -1353,6 +1344,17 @@ void countBoundOnly(int delta)
     s_defer.boundOnly += uint32_t(delta);
 }
 
+Device* deviceLookup(reg32 guest)
+{
+    Device* d = static_cast<Device*>(lookup(guest));
+    if (d)
+    {
+        g_hot.deviceGuest = guest;
+        g_hot.device = d;
+    }
+    return d;
+}
+
 // ---- Device ----
 
 // The calls that are not queued, of the methods called most.
@@ -1506,7 +1508,7 @@ static __attribute__((noinline)) HRESULT setRenderStateQueued(WinApplication* ap
     return setRenderStateDirect(app, cpu, guest, state, value);
 }
 
-HRESULT setRenderState(WinApplication* app, x86::CPU& cpu, reg32 guest, DWORD state, DWORD value)
+HRESULT setRenderStateSlow(WinApplication* app, x86::CPU& cpu, reg32 guest, DWORD state, DWORD value)
 {
     if (__builtin_expect(quiet(), 1))
         return device(guest)->SetRenderState(app, cpu, state, value);
@@ -1876,7 +1878,7 @@ HRESULT setTextureDirect(WinApplication* app, x86::CPU& cpu, reg32 guest, DWORD 
     return device(guest)->SetTexture(app, cpu, stage, lookup(texture));
 }
 
-HRESULT setVertexDeclaration(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 declaration)
+HRESULT setVertexDeclarationSlow(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 declaration)
 {
     if (deferringBinding(cpu, guest))
     {
@@ -1909,7 +1911,7 @@ HRESULT setVertexDeclaration(WinApplication* app, x86::CPU& cpu, reg32 guest, re
     return h;
 }
 
-HRESULT setStreamSource(WinApplication* app, x86::CPU& cpu, reg32 guest, UINT stream, reg32 buffer, UINT offset,
+HRESULT setStreamSourceSlow(WinApplication* app, x86::CPU& cpu, reg32 guest, UINT stream, reg32 buffer, UINT offset,
                         UINT stride)
 {
     if (deferringBinding(cpu, guest))
@@ -1949,7 +1951,7 @@ HRESULT setStreamSource(WinApplication* app, x86::CPU& cpu, reg32 guest, UINT st
     return h;
 }
 
-HRESULT setIndices(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 buffer)
+HRESULT setIndicesSlow(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 buffer)
 {
     if (deferringBinding(cpu, guest))
     {
@@ -2000,7 +2002,7 @@ static __attribute__((noinline)) HRESULT drawIndexedPrimitiveQueued(WinApplicati
     return drawIndexedPrimitiveDirect(app, cpu, guest, type, baseVertex, minIndex, vertices, startIndex, count);
 }
 
-HRESULT drawIndexedPrimitive(WinApplication* app, x86::CPU& cpu, reg32 guest, DWORD type, LONG baseVertex,
+HRESULT drawIndexedPrimitiveSlow(WinApplication* app, x86::CPU& cpu, reg32 guest, DWORD type, LONG baseVertex,
                              UINT minIndex, UINT vertices, UINT startIndex, UINT count)
 {
     // No deferral device: no bindings to refresh after the draw.
@@ -2048,7 +2050,7 @@ HRESULT drawIndexedPrimitiveDirect(WinApplication* app, x86::CPU& cpu, reg32 gue
     return h;
 }
 
-HRESULT drawPrimitiveUP(WinApplication* app, x86::CPU& cpu, reg32 guest, DWORD type, UINT count, const void* data,
+HRESULT drawPrimitiveUPSlow(WinApplication* app, x86::CPU& cpu, reg32 guest, DWORD type, UINT count, const void* data,
                         UINT stride)
 {
     const uint32_t bytes = primitiveVertices(type, count) * stride;
@@ -2171,7 +2173,7 @@ static __attribute__((noinline)) HRESULT effectSetFloatQueued(WinApplication* ap
     return effectSetFloatDirect(app, cpu, guest, handle, value);
 }
 
-HRESULT effectSetFloat(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 handle, float value)
+HRESULT effectSetFloatSlow(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 handle, float value)
 {
     if (__builtin_expect(quiet(), 1))
         return effect::setFloat(app, cpu, guest, handle, value);
@@ -2218,7 +2220,7 @@ static __attribute__((noinline)) HRESULT effectSetVectorQueued(WinApplication* a
     return effectSetVectorDirect(app, cpu, guest, handle, vector);
 }
 
-HRESULT effectSetVector(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 handle, const float* vector)
+HRESULT effectSetVectorSlow(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 handle, const float* vector)
 {
     if (__builtin_expect(quiet(), 1))
         return effect::setVector(app, cpu, guest, handle, vector);
@@ -2268,7 +2270,7 @@ static __attribute__((noinline)) HRESULT effectSetVectorArrayQueued(WinApplicati
     return effectSetVectorArrayDirect(app, cpu, guest, handle, vectors, count);
 }
 
-HRESULT effectSetVectorArray(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 handle, const float* vectors,
+HRESULT effectSetVectorArraySlow(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 handle, const float* vectors,
                              UINT count)
 {
     if (__builtin_expect(quiet(), 1))
@@ -2318,7 +2320,7 @@ static __attribute__((noinline)) HRESULT effectSetMatrixQueued(WinApplication* a
     return effectSetMatrixDirect(app, cpu, guest, handle, matrix);
 }
 
-HRESULT effectSetMatrix(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 handle, const float* matrix)
+HRESULT effectSetMatrixSlow(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 handle, const float* matrix)
 {
     if (__builtin_expect(quiet(), 1))
         return effect::setMatrix(app, cpu, guest, handle, matrix);
@@ -2426,7 +2428,7 @@ HRESULT effectSetMatrixProductDirect(WinApplication* app, x86::CPU& cpu, reg32 g
     return effect::setProduct(guest, handle, matrices, count, readFpscr());
 }
 
-HRESULT effectSetTexture(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 handle, reg32 texture)
+HRESULT effectSetTextureSlow(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 handle, reg32 texture)
 {
     if (deferringEffect(cpu, handle) && s_defer.boundOnly == 0)
     {
@@ -2509,7 +2511,7 @@ static __attribute__((noinline)) HRESULT effectPassQueued(WinApplication* app, x
     return effectPassDirect(app, cpu, guest, pass);
 }
 
-HRESULT effectPass(WinApplication* app, x86::CPU& cpu, reg32 guest, UINT pass)
+HRESULT effectPassSlow(WinApplication* app, x86::CPU& cpu, reg32 guest, UINT pass)
 {
     if (__builtin_expect(quiet(), 1))
         return effect::pass(app, cpu, guest, pass);
@@ -2536,15 +2538,6 @@ HRESULT effectPassDirect(WinApplication* app, x86::CPU& cpu, reg32 guest, UINT p
         return h;
     }
     return effect::pass(app, cpu, guest, pass);
-}
-
-bool effectCommitChanges(WinApplication* app, x86::CPU& cpu, reg32 guest)
-{
-    RC_USE(app);
-    RC_USE(cpu);
-    if (__builtin_expect(!quiet(), 0))
-        return false;
-    return effect::commitChanges(guest);
 }
 
 bool effectEndPass(WinApplication* app, x86::CPU& cpu, reg32 guest)

@@ -16,8 +16,6 @@
 namespace win32 { namespace d3d9
 {
 
-uint32_t g_textureEpoch = 0;
-
 namespace
 {
 
@@ -449,7 +447,7 @@ HRESULT Texture::unlock(uint32_t face, uint32_t level)
     }
     if (!(m_lockFlags[index] & D3DLOCK_READONLY))
     {
-        ++g_textureEpoch;
+        ++bridge::g_hot.textureEpoch;
         const bool powerOfTwo = !(m_desc.width & (m_desc.width - 1)) && !(m_desc.height & (m_desc.height - 1));
         if (m_lockCounts[index] >= 2 && !m_desc.linear && m_locks.size() == 1 && !m_desc.target
             && !texture::isBlock(m_desc.format) && powerOfTwo)

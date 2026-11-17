@@ -76,6 +76,35 @@ HRESULT present(WinApplication* app, x86::CPU& cpu, reg32 device, const void* so
 HRESULT passDrawIndexed(WinApplication* app, x86::CPU& cpu, reg32 effect, UINT pass, reg32 device, DWORD type,
                         LONG baseVertex, UINT minIndex, UINT vertices, UINT startIndex, UINT count);
 
+// ---- ID3DXEffect ----
+
+HRESULT effectSetInt(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, x86::sreg32 value);
+HRESULT effectSetFloat(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, float value);
+// Made at once (a window is flushed first); a capture records it.
+HRESULT effectSetIntArray(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, const x86::sreg32* values,
+                          UINT count);
+HRESULT effectSetVector(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, const float* vector);
+HRESULT effectSetVectorArray(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, const float* vectors,
+                             UINT count);
+HRESULT effectSetMatrix(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, const float* matrix);
+HRESULT effectSetMatrixArray(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, const float* matrices,
+                             UINT count);
+// SetMatrix of a * b (* c when c is not null), multiplied as matrixMultiply does. Outside a capture the product is
+// recorded unmultiplied and the render thread multiplies it with the caller's FPSCR (the same floats); under a
+// capture it is multiplied here and recorded as a SetMatrix.
+HRESULT effectSetMatrixProduct(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, const float* a,
+                               const float* b, const float* c);
+HRESULT effectSetTexture(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, reg32 texture);
+HRESULT effectBegin(WinApplication* app, x86::CPU& cpu, reg32 effect, UINT* passes, DWORD flags);
+HRESULT effectPass(WinApplication* app, x86::CPU& cpu, reg32 effect, UINT pass);
+HRESULT effectEnd(WinApplication* app, x86::CPU& cpu, reg32 effect);
+// CommitChanges run at once; false: call the vtable slot.
+bool effectCommitChanges(WinApplication* app, x86::CPU& cpu, reg32 effect);
+// EndPass run at once; false: call the vtable slot.
+bool effectEndPass(WinApplication* app, x86::CPU& cpu, reg32 effect);
+
+// ---- Call groups ----
+
 // Device and effect calls in order: inside a window collected and queued as one record (queue(), or when a call has
 // to be made at once), returning D3D_OK; else made at once, returning their results. Calls made another way while a
 // group has collected calls must follow a queue().
@@ -89,6 +118,8 @@ public:
 
     HRESULT setInt(reg32 effect, reg32 handle, x86::sreg32 value)
     {
+        if (__builtin_expect(!m_queued, 1))
+            return effectSetInt(m_app, m_cpu, effect, handle, value);
         if (uint32_t* e = effectEntry(KindInt, effect, handle, 1))
         {
             e[0] = reg32(value);
@@ -98,6 +129,8 @@ public:
     }
     HRESULT setFloat(reg32 effect, reg32 handle, float value)
     {
+        if (__builtin_expect(!m_queued, 1))
+            return effectSetFloat(m_app, m_cpu, effect, handle, value);
         if (uint32_t* e = effectEntry(KindFloat, effect, handle, 1))
         {
             memcpy(e, &value, 4);
@@ -107,6 +140,8 @@ public:
     }
     HRESULT setVector(reg32 effect, reg32 handle, const float* vector)
     {
+        if (__builtin_expect(!m_queued, 1))
+            return effectSetVector(m_app, m_cpu, effect, handle, vector);
         if (uint32_t* e = vector ? effectEntry(KindVector, effect, handle, 4) : nullptr)
         {
             memcpy(e, vector, 16);
@@ -116,6 +151,8 @@ public:
     }
     HRESULT setVectorArray(reg32 effect, reg32 handle, const float* vectors, UINT count)
     {
+        if (__builtin_expect(!m_queued, 1))
+            return effectSetVectorArray(m_app, m_cpu, effect, handle, vectors, count);
         if (uint32_t* e = vectors && count <= 64 ? effectEntry(KindVectorArray, effect, handle, count * 4) : nullptr)
         {
             memcpy(e, vectors, count * 16);
@@ -125,6 +162,8 @@ public:
     }
     HRESULT setMatrix(reg32 effect, reg32 handle, const float* matrix)
     {
+        if (__builtin_expect(!m_queued, 1))
+            return effectSetMatrix(m_app, m_cpu, effect, handle, matrix);
         if (uint32_t* e = matrix ? effectEntry(KindMatrix, effect, handle, 16) : nullptr)
         {
             memcpy(e, matrix, 64);
@@ -148,6 +187,8 @@ public:
     }
     HRESULT setEffectTexture(reg32 effect, reg32 handle, reg32 texture)
     {
+        if (__builtin_expect(!m_queued, 1))
+            return effectSetTexture(m_app, m_cpu, effect, handle, texture);
         if (uint32_t* e = m_bindings ? effectEntry(KindEffectTexture, effect, handle, 1) : nullptr)
         {
             e[0] = texture;
@@ -157,6 +198,8 @@ public:
     }
     HRESULT setRenderState(reg32 device, DWORD state, DWORD value)
     {
+        if (__builtin_expect(!m_queued, 1))
+            return bridge::setRenderState(m_app, m_cpu, device, state, value);
         if (uint32_t* e = device == m_device ? entry(KindRenderState, device, state, 1) : nullptr)
         {
             e[0] = value;
@@ -238,33 +281,6 @@ private:
     uint32_t m_count = 0;   // entries
     uint32_t m_words[MaxWords];
 };
-
-// ---- ID3DXEffect ----
-
-HRESULT effectSetInt(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, x86::sreg32 value);
-HRESULT effectSetFloat(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, float value);
-// Made at once (a window is flushed first); a capture records it.
-HRESULT effectSetIntArray(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, const x86::sreg32* values,
-                          UINT count);
-HRESULT effectSetVector(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, const float* vector);
-HRESULT effectSetVectorArray(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, const float* vectors,
-                             UINT count);
-HRESULT effectSetMatrix(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, const float* matrix);
-HRESULT effectSetMatrixArray(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, const float* matrices,
-                             UINT count);
-// SetMatrix of a * b (* c when c is not null), multiplied as matrixMultiply does. Outside a capture the product is
-// recorded unmultiplied and the render thread multiplies it with the caller's FPSCR (the same floats); under a
-// capture it is multiplied here and recorded as a SetMatrix.
-HRESULT effectSetMatrixProduct(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, const float* a,
-                               const float* b, const float* c);
-HRESULT effectSetTexture(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, reg32 texture);
-HRESULT effectBegin(WinApplication* app, x86::CPU& cpu, reg32 effect, UINT* passes, DWORD flags);
-HRESULT effectPass(WinApplication* app, x86::CPU& cpu, reg32 effect, UINT pass);
-HRESULT effectEnd(WinApplication* app, x86::CPU& cpu, reg32 effect);
-// CommitChanges run at once; false: call the vtable slot.
-bool effectCommitChanges(WinApplication* app, x86::CPU& cpu, reg32 effect);
-// EndPass run at once; false: call the vtable slot.
-bool effectEndPass(WinApplication* app, x86::CPU& cpu, reg32 effect);
 
 // ---- Guest code ----
 
@@ -366,8 +382,8 @@ struct alignas(32) Hot
     void*       device = nullptr;
     reg32       effectGuest = 0;        // effect lookup cache; cleared when objects change
     void*       effect = nullptr;
-    void*       streamDevice = nullptr; // the device whose frame stream is mirrored
-    void*       stream = nullptr;       // its Stream of the frame being recorded; null between frames
+    void*       stream = nullptr;       // Stream of the frame g_streamDevice records; null between frames
+    uint32_t    textureEpoch = 0;       // bumped by texture writes and effect texture changes
 };
 extern Hot g_hot;
 

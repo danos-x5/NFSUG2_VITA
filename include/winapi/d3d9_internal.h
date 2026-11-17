@@ -251,6 +251,15 @@ public:
     // indices; effect textures), counted apart as well.
     virtual void bind()             { ++m_bindings; addRef(); }
     virtual ULONG unbind()          { --m_bindings; return release(); }
+    // bind() and unbind() without virtual calls, for kinds that override no counting method (final classes).
+    void bindPlain()                { ++m_bindings; ++m_refs; }
+    ULONG unbindPlain()
+    {
+        --m_bindings;
+        if (m_refs > 1 && (m_refs - 1 != m_bindings || m_boundOnly))
+            return --m_refs;
+        return Object::release();
+    }
     // The object whose counts addRef and release change.
     virtual Object* counter()       { return this; }
     // Device-held reference on implicit surfaces; guest Release cannot drop it.
@@ -294,12 +303,40 @@ void countBoundOnly(int delta);
 // A device is deleted.
 void deviceGone(const Device* device);
 
+// The device of a guest COM pointer, cached in g_hot until objects change.
+Device* deviceLookup(reg32 guest);
+inline Device* deviceObject(reg32 guest)
+{
+    if (__builtin_expect(guest == g_hot.deviceGuest, 1))
+        return static_cast<Device*>(g_hot.device);
+    return deviceLookup(guest);
+}
+
+// The bridge methods whose quiet case runs beside the method (d3d9_device.cpp, d3dx9.cpp): every case, with deferral
+// and capture (d3d9_native.cpp).
+HRESULT setRenderStateSlow(WinApplication* app, x86::CPU& cpu, reg32 device, DWORD state, DWORD value);
+HRESULT setVertexDeclarationSlow(WinApplication* app, x86::CPU& cpu, reg32 device, reg32 declaration);
+HRESULT setStreamSourceSlow(WinApplication* app, x86::CPU& cpu, reg32 device, UINT stream, reg32 buffer, UINT offset,
+                            UINT stride);
+HRESULT setIndicesSlow(WinApplication* app, x86::CPU& cpu, reg32 device, reg32 buffer);
+HRESULT drawIndexedPrimitiveSlow(WinApplication* app, x86::CPU& cpu, reg32 device, DWORD type, LONG baseVertex,
+                                 UINT minIndex, UINT vertices, UINT startIndex, UINT count);
+HRESULT drawPrimitiveUPSlow(WinApplication* app, x86::CPU& cpu, reg32 device, DWORD type, UINT count, const void* data,
+                            UINT stride);
+HRESULT effectSetFloatSlow(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, float value);
+HRESULT effectSetVectorSlow(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, const float* vector);
+HRESULT effectSetVectorArraySlow(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, const float* vectors,
+                                 UINT count);
+HRESULT effectSetMatrixSlow(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, const float* matrix);
+HRESULT effectSetTextureSlow(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, reg32 texture);
+HRESULT effectPassSlow(WinApplication* app, x86::CPU& cpu, reg32 effect, UINT pass);
+
 }
 
 // Counts object publications and deletions.
 extern uint32_t g_objectGeneration;
-// Game thread: bumped by texture writes, which may replace a texture's storage or queue uploads into it.
-extern uint32_t g_textureEpoch;
+// The device whose frame stream bridge::g_hot.stream mirrors (the first one created).
+extern Device* g_streamDevice;
 // An object was published or deleted: bumps the generation and clears the bridge's lookup caches.
 void objectsChanged();
 
@@ -541,7 +578,7 @@ private:
 
 // Vertex and index buffers: the guest writes a shadow copy in guest memory; unlocks copy into the GPU buffer,
 // a new one when the current is still read by frames in flight (unless NOOVERWRITE).
-class Buffer : public Object
+class Buffer final : public Object
 {
 public:
     Buffer(Device* device, Kind kind, UINT size, DWORD usage, DWORD pool, DWORD format);
@@ -588,7 +625,7 @@ private:
     bool                    m_stale = false;        // the GPU copy lacks the frame copy's bytes
 };
 
-class VertexDeclaration : public Object
+class VertexDeclaration final : public Object
 {
 public:
     VertexDeclaration(Device* device, const D3DVERTEXELEMENT9* elements, uint32_t count, DWORD fvf);
@@ -1017,6 +1054,9 @@ private:
         Buffer*             stream;
         UINT                streamOffset, streamStride;
         Buffer*             indices;
+        uint32_t            layoutStride;   // the draw layout below is of the declaration (or FVF) at this stride
+        uint8_t             layoutId, layoutTexComponents;
+        bool                layoutPositionT, layoutValid;   // layoutValid: reset when a declaration or FVF is set
         Surface*            target;
         Surface*            depth;
     };
@@ -1078,11 +1118,7 @@ private:
     bool                    m_viewportChanged = true;   // m_state.viewport written since drawViewport
     uint32_t                m_viewportFrame = 0, m_viewportCount = 0;   // frame and table size at drawViewport
 
-    bool                    m_fastLayer = false;        // d3d_fast_layer: the caches below are used
-    VertexDeclaration*      m_layoutDeclaration = nullptr;  // layout cache key; reset when a declaration or FVF is set
-    uint32_t                m_layoutStride = 0;
-    uint8_t                 m_layoutId = 0, m_layoutTexComponents = 0;
-    bool                    m_layoutPositionT = false;
+    bool                    m_fastLayer = false;        // d3d_fast_layer: the caches below and State's layout
     bool                    m_sceneCached = false;      // the last scene is still the one of the bound targets
     uint32_t                m_sceneFrame = 0, m_sceneCount = 0, m_sceneEpoch = 0;   // frame, scene count, texture epoch
     uint32_t                m_markFrame = 0, m_markEpoch = 0;   // m_marked holds what this frame marked at this epoch

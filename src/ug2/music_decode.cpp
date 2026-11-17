@@ -5,12 +5,15 @@
 #include "ealayer3.h"
 
 #include <platform/config.h>
+#include <platform/cores.h>
 #include <platform/log.h>
 #include <platform/mp3dec.h>
 #include <platform/perf.h>
+#include <platform/sync.h>
 #include <recomp.h>
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -38,6 +41,7 @@ const uint32_t StealAfter   = 8000;         // granules decoded since a stream's
 const uint32_t CheckGranules = 48;          // left channel kept for the delay search (music_hw_check)
 const int   MaxLag          = 1152;
 const uint32_t CheckLogEvery = 500;
+const int   WorkerPriority  = 70;           // just above the mixer (72)
 
 struct Check
 {
@@ -83,8 +87,34 @@ bool s_failLogged = false;
 struct Timing
 {
     uint32_t frames = 0, us = 0, maxUs = 0, gameGranules = 0, since = 0;
+    uint32_t ahead = 0, misses = 0, waits = 0, waitUs = 0;
 };
 Timing s_timing;
+
+enum JobState
+{
+    JobIdle,
+    JobQueued,
+    JobDone,
+};
+
+// The next frame of a stream, decoded by the worker while the mixer plays the current one.
+struct Job
+{
+    std::atomic<int> state{JobIdle};
+    pf::mp3::Decoder* decoder = nullptr;
+    reg32 at = 0;                           // its first granule
+    uint32_t size = 0;
+    int samples = 0;
+    uint32_t us = 0;
+    uint8_t frame[ealayer3::MaxFrameBytes];
+    int16_t pcm[ealayer3::FrameSamples * 2];
+};
+
+Job s_jobs[MaxStreams];                     // one per entry of s_streams
+pf::Semaphore* s_work = nullptr;
+pf::Semaphore* s_done = nullptr;
+bool s_ahead = true;                        // music_hw_ahead (dev): decode the next frame on the worker
 
 Stream* find(reg32 object)
 {
@@ -94,6 +124,45 @@ Stream* find(reg32 object)
             return &s;
     }
     return nullptr;
+}
+
+Job& job(const Stream& s)
+{
+    return s_jobs[&s - s_streams];
+}
+
+// Waits for the stream's queued frame.
+void settle(Stream& s)
+{
+    Job& j = job(s);
+    if (j.state.load(std::memory_order_acquire) != JobQueued)
+        return;
+    const uint32_t start = pf::perf::now();
+    while (j.state.load(std::memory_order_acquire) == JobQueued)
+        s_done->waitForUs(2000);
+    ++s_timing.waits;
+    s_timing.waitUs += pf::perf::now() - start;
+}
+
+int worker(void*)
+{
+    if (pf::perf::enabled())
+        pf::perf::trackThread("music_decode");
+    for (;;)
+    {
+        s_work->wait();
+        for (Job& j : s_jobs)
+        {
+            if (j.state.load(std::memory_order_acquire) != JobQueued)
+                continue;
+            const uint32_t start = pf::perf::now();
+            j.samples = pf::mp3::decode(j.decoder, j.frame, j.size, j.pcm);
+            j.us = pf::perf::now() - start;
+            j.state.store(JobDone, std::memory_order_release);
+            s_done->post();
+        }
+    }
+    return 0;
 }
 
 pf::mp3::Decoder* acquire()
@@ -108,6 +177,8 @@ pf::mp3::Decoder* acquire()
     }
     if (!idle)
         return nullptr;
+    settle(*idle);
+    s_jobs[idle - s_streams].state.store(JobIdle, std::memory_order_relaxed);
     pf::mp3::Decoder* decoder = idle->decoder;
     idle->decoder = nullptr;
     return decoder;
@@ -136,6 +207,8 @@ void release(Stream& s)
         logCheck(s);
         delete s.check;
     }
+    settle(s);
+    job(s).state.store(JobIdle, std::memory_order_relaxed);
     if (s.decoder)
         pf::mp3::destroy(s.decoder);
     s = Stream();
@@ -166,9 +239,18 @@ bool sameShape(const Granule& a, const Granule& b)
     return a.version == b.version && a.rateIndex == b.rateIndex && a.channels == b.channels;
 }
 
-// Decodes frame (first, second) and keeps both halves; false on a decoder error.
-bool decodeFrame(Stream& s, const Granule* first, const Granule* second, int16_t* pcm)
+void countDecode(uint32_t us)
 {
+    Timing& t = s_timing;
+    ++t.frames;
+    t.us += us;
+    t.maxUs = std::max(t.maxUs, us);
+}
+
+// Decodes frame (first at guest address at, second), from the worker's result when it decoded the same frame.
+bool decodeFrame(Stream& s, reg32 at, const Granule* first, const Granule* second, int16_t* pcm)
+{
+    settle(s);
     if (!s.decoder)
     {
         s.decoder = acquire();
@@ -177,18 +259,68 @@ bool decodeFrame(Stream& s, const Granule* first, const Granule* second, int16_t
     }
     uint8_t frame[ealayer3::MaxFrameBytes];
     const uint32_t size = ealayer3::frame(first, second, frame);
-    const bool timed = pf::perf::enabled();
-    const uint32_t start = timed ? pf::perf::now() : 0;
-    const int samples = size ? pf::mp3::decode(s.decoder, frame, size, pcm) : -1;
-    if (timed)
+    if (!size)
+        return false;
+    Job& j = job(s);
+    if (j.state.load(std::memory_order_acquire) == JobDone)
     {
-        const uint32_t us = pf::perf::now() - start;
-        Timing& t = s_timing;
-        ++t.frames;
-        t.us += us;
-        t.maxUs = std::max(t.maxUs, us);
+        j.state.store(JobIdle, std::memory_order_relaxed);
+        if (j.at == at && j.size == size && memcmp(j.frame, frame, size) == 0)
+        {
+            ++s_timing.ahead;
+            countDecode(j.us);
+            memcpy(pcm, j.pcm, sizeof(j.pcm));
+            return j.samples == int(ealayer3::FrameSamples);
+        }
+        ++s_timing.misses;
+        if (!pf::mp3::reset(s.decoder))
+            return false;
     }
+    const uint32_t start = pf::perf::now();
+    const int samples = pf::mp3::decode(s.decoder, frame, size, pcm);
+    countDecode(pf::perf::now() - start);
     return samples == int(ealayer3::FrameSamples);
+}
+
+// First granule of the frame after the pair ending at second: in its block, or the next SCDl block's first.
+const uint8_t* following(const Granule& second)
+{
+    if (const uint8_t* p = ealayer3::next(second))
+        return p;
+    const uint8_t* p = second.data + second.bytes;
+    if (p[0] != 0 || p[1] != 0)
+        return nullptr;
+    p += 2;
+    for (int i = 0; i < 64 && *p == 0; ++i)
+        ++p;
+    if (memcmp(p, "SCDl", 4) != 0)
+        return nullptr;
+    const uint32_t size = p[4] | (p[5] << 8) | (p[6] << 16) | (uint32_t(p[7]) << 24);
+    if (size < 32 || size > 0x10000)
+        return nullptr;
+    p += 8 + 4 + 4 * second.channels;
+    return p[0] == 0 && p[1] != 0 ? p + 1 : nullptr;
+}
+
+// Queues the frame after the pair (first at, second) for the worker.
+void queueNext(Stream& s, reg32 at, const Granule& first, const Granule& second)
+{
+    Job& j = job(s);
+    if (!s_ahead || !s.decoder || j.state.load(std::memory_order_acquire) != JobIdle)
+        return;
+    const uint8_t* data = following(second);
+    Granule a, b;
+    if (!data || !ealayer3::parse(data, a) || a.index != 0 || !sameShape(first, a))
+        return;
+    const uint8_t* bData = ealayer3::next(a);
+    const bool pair = bData && ealayer3::parse(bData, b) && b.index == 1 && sameShape(a, b);
+    j.size = ealayer3::frame(&a, pair ? &b : nullptr, j.frame);
+    if (!j.size)
+        return;
+    j.at = at + reg32(data - first.data);
+    j.decoder = s.decoder;
+    j.state.store(JobQueued, std::memory_order_release);
+    s_work->post();
 }
 
 // The granule's samples from the hardware decoder into out (576 per channel).
@@ -200,10 +332,12 @@ bool hardwareGranule(Stream& s, reg32 at, const Granule& g, float* out)
         const uint8_t* nextData = ealayer3::next(g);
         Granule second;
         const bool pair = nextData && ealayer3::parse(nextData, second) && second.index == 1 && sameShape(g, second);
-        if (!decodeFrame(s, &g, pair ? &second : nullptr, pcm))
+        if (!decodeFrame(s, at, &g, pair ? &second : nullptr, pcm))
             return false;
         store(pcm, out);
         memcpy(s.pending, pcm + GranuleSamples * 2, sizeof(s.pending));
+        if (pair)
+            queueNext(s, at, g, second);
         s.pendingAt = pair ? at + reg32(nextData - g.data) : 0;
         s.paired = pair;
         s.lone += !pair;
@@ -216,7 +350,7 @@ bool hardwareGranule(Stream& s, reg32 at, const Granule& g, float* out)
         s.paired = true;
         return true;
     }
-    if (!decodeFrame(s, nullptr, &g, pcm))
+    if (!decodeFrame(s, 0, nullptr, &g, pcm))
         return false;
     store(pcm + GranuleSamples * 2, out);
     s.pendingAt = 0;
@@ -353,9 +487,10 @@ void logTiming()
     if (int32_t(now - t.since) < 5000000)
         return;
     if (t.frames || t.gameGranules)
-        pf::logInfo("music hw 5s: %u frames, %u us average, %u us max; %u granules on the game's decoder",
-                    unsigned(t.frames), unsigned(t.frames ? t.us / t.frames : 0), unsigned(t.maxUs),
-                    unsigned(t.gameGranules));
+        pf::logInfo("music hw 5s: %u frames (%u decoded ahead, %u predictions missed), %u us average, %u us max; "
+                    "mixer waited %u times, %u us; %u granules on the game's decoder", unsigned(t.frames),
+                    unsigned(t.ahead), unsigned(t.misses), unsigned(t.frames ? t.us / t.frames : 0),
+                    unsigned(t.maxUs), unsigned(t.waits), unsigned(t.waitUs), unsigned(t.gameGranules));
     t = Timing();
     t.since = now;
 }
@@ -478,6 +613,8 @@ void startHook(win32::WinApplication* app, x86::CPU& cpu)
         delete s->check;
         s->check = nullptr;
     }
+    settle(*s);
+    job(*s).state.store(JobIdle, std::memory_order_relaxed);
     if (!s->decoder)
         s->decoder = acquire();
     s->hardware = s->decoder && pf::mp3::reset(s->decoder);
@@ -539,6 +676,12 @@ void configure(win32::WinApplication& app)
         return;
     }
     s_check = pf::Config::getBool("music_hw_check", false);
+    s_ahead = pf::Config::getBool("music_hw_ahead", true);
+    s_work = new pf::Semaphore("music_work", 0);
+    s_done = new pf::Semaphore("music_done", 0);
+    pf::Thread* thread = new pf::Thread("music_decode", &worker, nullptr, WorkerPriority, 32 * 1024,
+                                        pf::cores::mask(pf::cores::Helper));
+    thread->start();
     s_dumpPath = pf::Config::getString("music_hw_check_dump", "");
     s_decode = app.replaceMethod(DecodeGranule, &decodeHook);
     s_start = app.replaceMethod(StartStream, &startHook);

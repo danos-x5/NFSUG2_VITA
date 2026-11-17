@@ -7,7 +7,7 @@
 namespace ug2 { namespace music
 {
 
-// Reads music_hw_decode and hooks the game's MPEG decoder methods; before guest code runs.
+// Hooks the MPEG decoder when music_hw_decode=on; before guest code runs.
 void configure(win32::WinApplication& app);
 
 }}

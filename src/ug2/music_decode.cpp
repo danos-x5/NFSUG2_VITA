@@ -247,7 +247,7 @@ void countDecode(uint32_t us)
     t.maxUs = std::max(t.maxUs, us);
 }
 
-// Decodes frame (first at guest address at, second), from the worker's result when it decoded the same frame.
+// Decodes the frame, taking the worker's result when bytes match.
 bool decodeFrame(Stream& s, reg32 at, const Granule* first, const Granule* second, int16_t* pcm)
 {
     settle(s);
@@ -287,8 +287,7 @@ uint32_t le32(const uint8_t* p)
     return p[0] | (p[1] << 8) | (p[2] << 16) | (uint32_t(p[3]) << 24);
 }
 
-// First granule of the frame after the pair ending at second: in its block, or the next block's first. In the
-// game's stream buffer a block follows the last one's frames (after up to 4 end bytes) with its tag set to 0x100.
+// Next frame's first granule, in this block or the next.
 const uint8_t* following(const Granule& second)
 {
     Granule g;
@@ -300,6 +299,7 @@ const uint8_t* following(const Granule& second)
     const uint8_t* end = second.data + second.bytes;
     for (const uint8_t* p = end; p <= end + 4; ++p)
     {
+        // In the game's stream buffer a block's tag reads 0x100, not SCDl.
         if (memcmp(p, "SCDl", 4) != 0 && le32(p) != 0x100)
             continue;
         const uint32_t size = le32(p + 4), samples = le32(p + 8);
@@ -311,7 +311,7 @@ const uint8_t* following(const Granule& second)
     return nullptr;
 }
 
-// Queues the frame after the pair (first at, second) for the worker.
+// Queues the frame after this pair for the worker.
 void queueNext(Stream& s, reg32 at, const Granule& first, const Granule& second)
 {
     Job& j = job(s);
@@ -343,7 +343,7 @@ void queueNext(Stream& s, reg32 at, const Granule& first, const Granule& second)
     s_work->post();
 }
 
-// The granule's samples from the hardware decoder into out (576 per channel).
+// Hardware-decoded samples of granule g into out.
 bool hardwareGranule(Stream& s, reg32 at, const Granule& g, float* out)
 {
     int16_t pcm[ealayer3::FrameSamples * 2];
@@ -420,7 +420,7 @@ void searchDelay(Stream& s)
                 best / count, atZero / count);
 }
 
-// Keeps the PCM insert at p (0xEE, offset, count, big-endian pairs) for checkInsert.
+// Copies the PCM insert at p for checkInsert.
 void keepInsert(Check& c, const uint8_t* p)
 {
     ++c.inserts;
@@ -433,7 +433,7 @@ void keepInsert(Check& c, const uint8_t* p)
         c.insertPcm[i] = int16_t((p[5 + 2 * i] << 8) | p[6 + 2 * i]);
 }
 
-// The game wrote the kept insert into the last granule's samples at 576 - offset.
+// Counts the kept insert when the game spliced it into out.
 void checkInsert(Check& c, const float* out)
 {
     bool same = true;
@@ -597,7 +597,7 @@ Stream& add(reg32 object)
     return *slot;
 }
 
-// Checks a PCM insert the stream ended with, before the samples go.
+// Checks the PCM insert a stream ended with.
 void lastInsert(Stream* s)
 {
     if (s && s->check && s->check->insertCount)
@@ -659,7 +659,7 @@ void destroyHook(win32::WinApplication* app, x86::CPU& cpu)
     s_destroy(app, cpu);
 }
 
-// Decodes an empty frame: the decoder works and gives 1152 samples.
+// Decodes two empty frames: the decoder works, 1152 samples each.
 bool selfTest()
 {
     pf::mp3::Decoder* decoder = pf::mp3::create();

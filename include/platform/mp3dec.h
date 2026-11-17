@@ -12,14 +12,14 @@ class Decoder;
 
 const int MaxDecoders = 6;
 
-// Sets up the library once; false (logged) when the hardware decoder is unavailable.
+// Sets up the library once; false (logged) when unavailable.
 bool init();
 // A stereo decoder, or null when all are in use.
 Decoder* create();
 void destroy(Decoder* decoder);
 // Forgets the previous frames, as at a stream start.
 bool reset(Decoder* decoder);
-// Decodes one frame into interleaved 16-bit stereo; samples per channel written, or -1 on an error.
+// Frame to interleaved stereo; samples per channel, or -1 on error.
 int decode(Decoder* decoder, const uint8_t* frame, uint32_t size, int16_t* pcm);
 // The last decoder error code, for the log.
 int lastError();

@@ -29,13 +29,13 @@ const uint32_t MaxFrameBytes = 1441;    // 320 kbit/s at 32 kHz, padded
 const uint32_t FrameSamples = 1152;
 const uint32_t GranuleSamples = 576;
 
-// Parses the granule whose header byte is at data; false when it is not a valid MPEG-1/2 granule.
+// Parses the granule at data (its header byte); false if invalid.
 bool parse(const uint8_t* data, Granule& granule);
 
-// The header byte of the granule after this one (past one PCM insert), or null at a block end.
+// Next granule past a PCM insert, or null at block end.
 const uint8_t* next(const Granule& granule);
 
-// MPEG-1 frame of two granules (either may be null: an empty one); its size, or 0 when none fits.
+// Builds an MPEG-1 frame (null granules empty); 0 when too big.
 uint32_t frame(const Granule* first, const Granule* second, uint8_t* out);
 
 }}

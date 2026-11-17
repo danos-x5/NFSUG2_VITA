@@ -2,6 +2,9 @@
 // kind, voice chains and loudness, kernel element counts.
 
 #include "audio_stats.h"
+#include "audio_kernels.h"
+
+#include <lib/heap.h>
 
 #include <platform/config.h>
 #include <platform/log.h>
@@ -295,6 +298,34 @@ void report(uint32_t elapsed)
     t = Second();
 }
 
+// Mix kernel throughput on one voice block: buffers in cache, then spread over 4 MB.
+void benchKernels()
+{
+    const reg32 Size = 0x400000;
+    const reg32 base = win32::heap::allocate(Size, true);
+    if (!base)
+        return;
+    for (reg32 i = 0; i < Size; i += 4)
+        rc::stf32(base + i, float(i % 997) * 0.25f);
+    uint8_t* const m = rc::host(0);
+    const reg32 n = 297;
+    const reg32 Rounds = 4000;
+    const reg32 Block = 0x980;
+    const uint32_t t0 = pf::perf::now();
+    for (reg32 k = 0; k < Rounds; ++k)
+        kernels::mix(m, n, 0.5f, base, base + Block / 2);
+    const uint32_t t1 = pf::perf::now();
+    for (reg32 k = 0; k < Rounds; ++k)
+    {
+        const reg32 at = base + (k * Block) % (Size - Block);
+        kernels::mix(m, n, 0.5f, at, at + Block / 2);
+    }
+    const uint32_t t2 = pf::perf::now();
+    pf::logInfo("mixstats: mix kernel, %u floats: %.2f ns per element cached, %.2f ns spread over 4 MB (%u calls each)",
+                unsigned(n), (t1 - t0) * 1000.0 / (Rounds * n), (t2 - t1) * 1000.0 / (Rounds * n), unsigned(Rounds));
+    win32::heap::release(base);
+}
+
 }
 
 void configure(win32::WinApplication& app)
@@ -310,6 +341,7 @@ void configure(win32::WinApplication& app)
         last = pf::perf::now();
     pf::logInfo("mixstats: clock read %.0f ns (%u reads in %u us)", (last - start) * 1000.0 / Reads, unsigned(Reads),
                 unsigned(last - start));
+    benchKernels();
     pf::perf::setSndObserver(&sndEdge);
     pf::logInfo("mixstats: counting the mixer thread (dev_mixer_stats), %d module kinds wrapped", KindCount);
 }

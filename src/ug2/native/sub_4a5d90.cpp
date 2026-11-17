@@ -40,6 +40,20 @@ const GarageStick& settings()
     return s;
 }
 
+// One camera step as a middle-button drag of (moveX, moveY).
+void dragStep(win32::WinApplication* app, x86::CPU& cpu, long moveX, long moveY)
+{
+    const x86::reg32 middle = rc::ld8(MouseMiddle), dx = rc::ld32(MouseDx), dy = rc::ld32(MouseDy);
+    // The camera reads the mouse state only inside this call, so the real values are put back after it.
+    rc::st8(MouseMiddle, 1);
+    rc::st32(MouseDx, x86::reg32(x86::sreg32(moveX)));
+    rc::st32(MouseDy, x86::reg32(x86::sreg32(moveY)));
+    sub_4a5d90_guest(app, cpu);
+    rc::st8(MouseMiddle, middle);
+    rc::st32(MouseDx, dx);
+    rc::st32(MouseDy, dy);
+}
+
 }
 
 void sub_4a5d90(win32::WinApplication* app, x86::CPU& cpu)
@@ -50,26 +64,25 @@ void sub_4a5d90(win32::WinApplication* app, x86::CPU& cpu)
         win32::Gamepad::getRightStick(&x, &y);
     const float length = std::hypot(x, y);
     static float s_carry[2];
+    static bool s_dragging;
     if (length <= g.deadZone)
     {
         s_carry[0] = s_carry[1] = 0.0f;
-        sub_4a5d90_guest(app, cpu);
+        // The camera keeps its last orbit rate after release, so end on a still frame as a mouse would.
+        if (s_dragging)
+            dragStep(app, cpu, 0, 0);
+        else
+            sub_4a5d90_guest(app, cpu);
+        s_dragging = false;
         return;
     }
     const float push = std::min((length - g.deadZone) / (1.0f - g.deadZone), 1.0f) * g.speed / length;
-    const x86::reg32 middle = rc::ld8(MouseMiddle), dx = rc::ld32(MouseDx), dy = rc::ld32(MouseDy);
-    // The camera reads the mouse state only inside this call, so the real values are put back after it.
-    rc::st8(MouseMiddle, 1);
     const float wantX = x * push + s_carry[0], wantY = y * push + s_carry[1];
     const long moveX = std::lround(wantX), moveY = std::lround(wantY);
     s_carry[0] = wantX - float(moveX);
     s_carry[1] = wantY - float(moveY);
-    rc::st32(MouseDx, x86::reg32(x86::sreg32(moveX)));
-    rc::st32(MouseDy, x86::reg32(x86::sreg32(moveY)));
-    sub_4a5d90_guest(app, cpu);
-    rc::st8(MouseMiddle, middle);
-    rc::st32(MouseDx, dx);
-    rc::st32(MouseDy, dy);
+    dragStep(app, cpu, moveX, moveY);
+    s_dragging = true;
 }
 
 }

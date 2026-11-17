@@ -331,6 +331,20 @@ void Device::submit()
         Texture::trimKept();
 }
 
+bool Device::showEarly(WinApplication* app, x86::CPU& cpu, uint32_t* frameIndex)
+{
+    RC_USE(app);
+    RC_USE(cpu);
+    if (!m_frame)
+        return false;
+    *frameIndex = m_frame->index;
+    submit();
+    m_sceneOpen = false;
+    drawFrameDone();
+    m_shownEarly = true;
+    return true;
+}
+
 void Device::record(uint32_t header, DWORD value)
 {
     if (!m_stream)
@@ -706,6 +720,12 @@ HRESULT Device::Present(WinApplication* app, x86::CPU& cpu, const RECT* source, 
     RC_USE(dirtyRegion);
     if (source || dest)
         D3D_LOG_ONCE("d3d9: Present rectangles ignored");
+    if (m_shownEarly)
+    {
+        m_shownEarly = false;
+        if (!m_frame)
+            return D3D_OK;
+    }
     // A frame without draws still shows (black), so the pacing stays the same.
     frame(app, cpu);
     if (__builtin_expect(s_dumping.load(std::memory_order_relaxed), 0))
@@ -841,7 +861,10 @@ HRESULT Device::CreateTexture(WinApplication* app, x86::CPU& cpu, UINT width, UI
     Texture* t = new Texture(this, desc, format, usage, pool);
     if (!t->valid())
     {
-        pf::logError("d3d9: out of texture memory for %ux%u format 0x%x", width, height, format);
+        static uint32_t s_failures = 0;
+        if (++s_failures <= 4 || s_failures % 64 == 0)
+            pf::logError("d3d9: out of texture memory for %ux%u format 0x%x (failure %u)", width, height, format,
+                         unsigned(s_failures));
         delete t;
         return D3DERR_OUTOFVIDEOMEMORY;
     }
@@ -1031,6 +1054,8 @@ HRESULT Device::StretchRect(WinApplication* app, x86::CPU& cpu, Surface* source,
     if (dest->role() == Surface::RoleLevel && dest->container() && dest->container()->desc().target)
     {
         target.color = dest->container()->storage();
+        if (source->role() == Surface::RoleBackBuffer)
+            dest->container()->setOpaque();
         target.face = uint8_t(dest->face());
         to = target.color != nullptr;
     }

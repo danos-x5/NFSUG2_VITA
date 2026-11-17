@@ -435,6 +435,7 @@ public:
     DWORD format() const                        { return m_format; }
     Device* device() const                      { return m_device; }
     bool valid() const                          { return m_storage != nullptr; }
+    void setOpaque()                            { m_opaque = true; }
     void fillDesc(UINT level, D3DSURFACE_DESC* desc) const;
     // The surface of a level (and face), kept while the texture lives; one reference added for the caller.
     Surface* surface(WinApplication* app, uint32_t face, uint32_t level);
@@ -464,6 +465,8 @@ public:
 private:
     HRESULT lock(uint32_t face, uint32_t level, D3DLOCKED_RECT* locked, const RECT* rect, DWORD flags);
     HRESULT unlock(uint32_t face, uint32_t level);
+    // Read-only copy of a render target as drawn so far.
+    HRESULT lockTarget(WinApplication* app, x86::CPU& cpu, D3DLOCKED_RECT* locked, const RECT* rect);
     // The level's kept linear copy, taken out of the cache; null when there is none.
     MemMap* takeKept(uint32_t index, uint32_t* ticket);
     void keep(uint32_t index, MemMap* memory, uint32_t ticket);
@@ -481,6 +484,7 @@ private:
     std::vector<uint8_t>    m_lockCounts;   // locks so far, saturating at 2
     std::vector<KeptLevel*> m_kept;         // the linear copy kept after the last unlock (KeptLevels lock)
     std::vector<Surface*>   m_surfaces;
+    bool                    m_opaque = false;   // copied from the back buffer, which has no alpha
 };
 
 class Surface : public Object
@@ -1027,6 +1031,10 @@ private:
     void record(uint32_t header, DWORD value);
     void recordWords(uint32_t header, const void* payload, uint32_t words);
     void submit();
+public:
+    // Shows the frame recorded so far; false when there is none.
+    bool showEarly(WinApplication* app, x86::CPU& cpu, uint32_t* frameIndex);
+private:
     HRESULT draw(WinApplication* app, x86::CPU& cpu, DWORD type, UINT primitives, const void* vertices,
                  const uint16_t* indices, uint32_t vertexCount, uint8_t layout, uint32_t texComponents,
                  bool positionT, render::BufferStorage* vertexStorage, render::BufferStorage* indexStorage);
@@ -1051,6 +1059,7 @@ private:
     // Recording
     render::Frame*          m_frame = nullptr;
     bool                    m_sceneOpen = false;    // m_frame's last scene is the current target
+    bool                    m_shownEarly = false;   // showEarly submitted the frame the next Present is for
     uint32_t                m_vblanks;
     bool                    m_frameFull = false;
     Stream*                 m_stream = nullptr;

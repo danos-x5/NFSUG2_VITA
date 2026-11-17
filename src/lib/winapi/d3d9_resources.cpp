@@ -10,6 +10,7 @@
 #include <platform/log.h>
 #include <platform/perf.h>
 #include <platform/sync.h>
+#include <platform/time.h>
 #include <algorithm>
 
 namespace win32 { namespace d3d9
@@ -438,6 +439,12 @@ HRESULT Texture::unlock(uint32_t face, uint32_t level)
     MemMap* memory = m_locks[index];
     if (!memory)
         return D3DERR_INVALIDCALL;
+    if (m_desc.target)
+    {
+        delete memory;
+        m_locks[index] = nullptr;
+        return D3D_OK;
+    }
     if (!(m_lockFlags[index] & D3DLOCK_READONLY))
     {
         const bool powerOfTwo = !(m_desc.width & (m_desc.width - 1)) && !(m_desc.height & (m_desc.height - 1));
@@ -495,9 +502,37 @@ HRESULT Texture::unlock(uint32_t face, uint32_t level)
 HRESULT Texture::LockRect(WinApplication* app, x86::CPU& cpu, UINT level, D3DLOCKED_RECT* locked, const RECT* rect,
                           DWORD flags)
 {
-    RC_USE(app);
-    RC_USE(cpu);
+    if (m_desc.target && !m_desc.cube && level == 0)
+        return lockTarget(app, cpu, locked, rect);
     return m_desc.cube ? D3DERR_INVALIDCALL : lock(0, level, locked, rect, flags);
+}
+
+HRESULT Texture::lockTarget(WinApplication* app, x86::CPU& cpu, D3DLOCKED_RECT* locked, const RECT* rect)
+{
+    if (!m_storage || !locked || m_locks[0])
+        return D3DERR_INVALIDCALL;
+    // The draws into the target are still in the recorded frame: it is shown now and Present skips its turn.
+    uint32_t frame = 0;
+    if (m_device->showEarly(app, cpu, &frame))
+    {
+        app->unlockContext(cpu);
+        for (int i = 0; i < 2000 && gpu().completedFrame() < frame; ++i)
+            pf::sleepMs(1);
+        app->lockContext(cpu);
+    }
+    const uint32_t pitch = m_desc.width * 4;
+    MemMap* memory = new MemMap(pitch * m_desc.height, MemMap::High, pf::perf::AllocTextureLock);
+    uint8_t* pixels = static_cast<uint8_t*>(host(memory->getBlockStart()));
+    gpu().readTexture(m_storage, 0, 0, pixels, pitch);
+    for (uint32_t i = 3; m_opaque && i < pitch * m_desc.height; i += 4)
+        pixels[i] = 0xff;
+    pf::logInfo("d3d9: render target %ux%u read back after frame %u", unsigned(m_desc.width), unsigned(m_desc.height),
+                unsigned(frame));
+    m_locks[0] = memory;
+    m_lockFlags[0] = D3DLOCK_READONLY;
+    locked->Pitch = LONG(pitch);
+    locked->pBits = memory->getBlockStart() + (rect ? uint32_t(rect->top) * pitch + uint32_t(rect->left) * 4 : 0);
+    return D3D_OK;
 }
 
 HRESULT Texture::UnlockRect(WinApplication* app, x86::CPU& cpu, UINT level)
@@ -666,7 +701,7 @@ HRESULT Surface::GetDesc(WinApplication* app, x86::CPU& cpu, D3DSURFACE_DESC* de
 
 HRESULT Surface::LockRect(WinApplication* app, x86::CPU& cpu, D3DLOCKED_RECT* locked, const RECT* rect, DWORD flags)
 {
-    if (m_container && !m_container->desc().target)
+    if (m_container && (!m_container->desc().target || !m_container->desc().cube))
     {
         return m_container->desc().cube
              ? m_container->LockRectCube(app, cpu, m_face, m_level, locked, rect, flags)
@@ -678,7 +713,7 @@ HRESULT Surface::LockRect(WinApplication* app, x86::CPU& cpu, D3DLOCKED_RECT* lo
 
 HRESULT Surface::UnlockRect(WinApplication* app, x86::CPU& cpu)
 {
-    if (m_container && !m_container->desc().target)
+    if (m_container && (!m_container->desc().target || !m_container->desc().cube))
     {
         return m_container->desc().cube ? m_container->UnlockRectCube(app, cpu, m_face, m_level)
                                          : m_container->UnlockRect(app, cpu, m_level);

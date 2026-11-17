@@ -2,6 +2,7 @@
 
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 
@@ -43,7 +44,7 @@ x86::reg32 callPlain(win32::WinApplication* app, x86::CPU& cpu, void (*fn)(win32
 
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("light_gather_native", true); }))
+    if (!NFSU_NATIVE("light_gather_native"))
     {
         sub_5dbb00_guest(app, cpu);
         return;

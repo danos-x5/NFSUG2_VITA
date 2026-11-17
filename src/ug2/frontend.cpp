@@ -5,6 +5,7 @@
 #include <lib/controls.h>
 #include <lib/file.h>
 #include <lib/gamepad.h>
+#include <lib/memlog.h>
 #include <lib/memmap.h>
 #include <lib/window.h>
 #include <platform/config.h>
@@ -173,6 +174,27 @@ std::string bootFlowScreen()
     return node ? guestString(rc::ld32(node + 0xC)) : "-";
 }
 
+bool memLogOn()
+{
+    return pf::Config::getBool("memory_log", false);
+}
+
+bool isWorldLoad(const std::string& path)
+{
+    const size_t slash = path.find_last_of("/\\");
+    const std::string name = slash == std::string::npos ? path : path.substr(slash + 1);
+    std::string dir = slash == std::string::npos ? "" : path.substr(0, slash);
+    for (char& c : dir)
+        c = char(toupper(static_cast<unsigned char>(c)));
+    std::string upper = name;
+    for (char& c : upper)
+        c = char(toupper(static_cast<unsigned char>(c)));
+    if (upper == "INGAMEMEMORYFILE.BIN")
+        return dir.size() >= 6 && dir.compare(dir.size() - 6, 6, "GLOBAL") == 0;
+    return upper.size() >= 8 && upper.compare(0, 3, "L4R") == 0 && upper.compare(upper.size() - 4, 4, ".BUN") == 0
+        && dir.size() >= 6 && dir.compare(dir.size() - 6, 6, "TRACKS") == 0;
+}
+
 void createFileHook(win32::WinApplication* app, x86::CPU& cpu)
 {
     const std::string path = guestString(rc::ld32(cpu.esp + 4));
@@ -183,6 +205,8 @@ void createFileHook(win32::WinApplication* app, x86::CPU& cpu)
             s_opened += path + "|";
     }
     pf::logInfo("fe: open %s at frame %u", path.c_str(), unsigned(rc::ld32(FramesRendered)));
+    if (win32::memlog::g_enabled.load(std::memory_order_relaxed) && isWorldLoad(path))
+        win32::memlog::event("world load");
     s_createFile(app, cpu);
 }
 
@@ -858,6 +882,17 @@ void frameHook(win32::WinApplication* app, x86::CPU& cpu)
 
 }
 
+uint32_t frameCounter()
+{
+    return rc::ld32(FramesRendered);
+}
+
+void hookFileOpens(win32::WinApplication& app)
+{
+    if (!s_createFile)
+        s_createFile = app.replaceMethod(rc::ld32(CreateFileASlot), createFileHook);
+}
+
 void configure(win32::WinApplication& app)
 {
     const std::string script = pf::Config::getString("boot_script", "");
@@ -876,8 +911,8 @@ void configure(win32::WinApplication& app)
     s_mainThread = pf::Thread::currentId();
     const reg32 import = rc::ld32(QueryPerformanceCounterSlot);
     s_queryPerformanceCounter = app.replaceMethod(import, frameHook);
-    if ((s_logState && pf::Config::getBool("fe_files", true)) || !s_steps.empty())
-        s_createFile = app.replaceMethod(rc::ld32(CreateFileASlot), createFileHook);
+    if ((s_logState && pf::Config::getBool("fe_files", true)) || !s_steps.empty() || memLogOn())
+        hookFileOpens(app);
     pf::logInfo("frontend: per-frame hook on QueryPerformanceCounter 0x%08X, state log %s, game state at 0x%08X", unsigned(import),
                 s_logState ? "on (fe_log)" : "off", unsigned(GameState));
 }

@@ -7,6 +7,7 @@
 #include <winapi/d3d9_fxtables.h>
 #include <winapi/kernel32.h>
 #include <lib/heap.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 #include <platform/gxm.h>
@@ -298,7 +299,7 @@ inline const PassInfo& passInfo(PassInfo& info, uint32_t kind, uint32_t pass)
 
 bool fastEffects()
 {
-    return pf::cachedStatic([] { return pf::Config::getBool("d3d_fast_effects", true); });
+    return NFSU_RENDER_FAST_CACHED("d3d_fast_effects");
 }
 
 struct Values;

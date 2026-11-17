@@ -31,7 +31,7 @@ const char* const Known[] =
     "shadow_hull_native", "particles_native", "particle_update_native", "headlight_pass_native", "scenery_stuff_native",
     "shadow_points_native", "vec_helpers_native", "view_visible_native", "light_gather_native", "light_flare_native",
     // Cores, logs and the benchmark.
-    "use_core3", "core3_tasks", "timing_log", "timing_phases", "hitch_log", "console_log", "log_info", "log_async", "stall_report",
+    "use_core3", "core3_tasks", "timing_log", "timing_phases", "hitch_log", "console_log", "log_info", "memory_log", "memory_log_seconds", "log_async", "stall_report",
     "stall_seconds", "stall_direct", "stall_heartbeat", "stall_priority",
     "stall_crash", "stall_cpu", "stall_power_tick",
     "benchmark", "benchmark_exit", "benchmark_seconds", "benchmark_laps", "benchmark_opponents", "benchmark_track",

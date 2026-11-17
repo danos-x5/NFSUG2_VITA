@@ -2,6 +2,7 @@
 
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 
@@ -124,7 +125,7 @@ void multiply(const uint8_t* pa, const uint8_t* pb, uint8_t* out)
 
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("matrix4_native", true); }))
+    if (!NFSU_NATIVE("matrix4_native"))
     {
         sub_4013f0_guest(app, cpu);
         return;

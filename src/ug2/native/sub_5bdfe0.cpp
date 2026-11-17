@@ -2,6 +2,7 @@
 
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 
@@ -23,7 +24,7 @@ const x86::reg32 Matrix = 0x872bc0;
 
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("shadow_points_native", true); }))
+    if (!NFSU_NATIVE("shadow_points_native"))
     {
         sub_5bdfe0_guest(app, cpu);
         return;

@@ -796,6 +796,11 @@ void uploadCache(uint32_t bytes, uint32_t levels)
     s_cacheLevels.store(levels, std::memory_order_relaxed);
 }
 
+uint32_t cacheBytes()
+{
+    return s_cacheBytes.load(std::memory_order_relaxed);
+}
+
 void timerFired(uint32_t callback, uint32_t microseconds)
 {
     for (TimerStats& timer : s_timers)

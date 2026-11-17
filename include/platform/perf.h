@@ -308,6 +308,8 @@ void deferDepth(uint32_t depth);
 void deferLatency(uint32_t microseconds);
 // Game thread: kept linear texture copies at the moment.
 void uploadCache(uint32_t bytes, uint32_t levels);
+// Bytes of kept texture levels as last reported by uploadCache; any thread.
+uint32_t cacheBytes();
 // Render thread, after each game frame it queued, with the timing or hitch log on or a frame observer set: frame is
 // the render::Frame index (0 for a layer present), renderUs and queueUs its render thread and display queue times
 // (measured when timed()). Calls the observer, queues a slow present for the hitch log and, with the timing log on,

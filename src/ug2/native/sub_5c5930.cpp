@@ -1,6 +1,7 @@
 // Native sub_5c5930: draw-list walker (cull, material pick, one 5ceb30 submit per item). Mirrors guest registers and stack words; children run through entry points.
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 
@@ -20,7 +21,7 @@ using x86::reg32;
 
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("ug2_draw_walk_native", true); }))
+    if (!NFSU_NATIVE("ug2_draw_walk_native"))
     {
         sub_5c5930_guest(app, cpu);
         return;

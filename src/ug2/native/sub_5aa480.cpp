@@ -2,6 +2,7 @@
 
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 
@@ -31,7 +32,7 @@ void accumulate(x86::reg32 scale, x86::reg32 dst, x86::reg32 src)
 
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("mixer_accumulate_native", true); }))
+    if (!NFSU_NATIVE("mixer_accumulate_native"))
     {
         sub_5aa480_guest(app, cpu);
         return;

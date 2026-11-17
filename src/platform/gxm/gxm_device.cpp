@@ -1271,6 +1271,11 @@ uint32_t Device::lastBegunFrame() const
     return m_impl->frames.lastIndex();
 }
 
+uint32_t Device::textureBytesInUse() const
+{
+    return m_impl->frames.textureBytesInUse();
+}
+
 uint32_t Device::lastSubmittedFrame() const
 {
     return m_impl->frames.lastSubmitted();

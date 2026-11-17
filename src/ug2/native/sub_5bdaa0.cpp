@@ -3,6 +3,7 @@
 
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 #include <winapi/d3d9_native.h>
@@ -26,7 +27,7 @@ const float* matrixAt(x86::reg32 address)
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
     const x86::reg32 group = rc::ld32(0x870910);
-    if (rc::ld8(group + 0x18) == 0 || !pf::cachedStatic([] { return pf::Config::getBool("headlight_pass_native", true); }))
+    if (rc::ld8(group + 0x18) == 0 || !NFSU_NATIVE("headlight_pass_native"))
     {
         sub_5bdaa0_guest(app, cpu);
         return;

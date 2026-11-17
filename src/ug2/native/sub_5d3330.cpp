@@ -2,6 +2,7 @@
 
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 
@@ -30,7 +31,7 @@ Real cross(x86::reg32 quad, x86::reg32 point, x86::reg32 slot, x86::reg32 a, x86
 
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("point_in_quad_native", true); }))
+    if (!NFSU_NATIVE("point_in_quad_native"))
     {
         sub_5d3330_guest(app, cpu);
         return;

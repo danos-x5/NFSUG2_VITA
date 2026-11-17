@@ -1,6 +1,7 @@
 // Direct3D frames on SceGxm: GPU heaps, resources, frame slots and scene drawing (gxm_render.h).
 
 #include "gxm_render.h"
+#include <platform/switches.h>
 #include <platform/config.h>
 #include <platform/cores.h>
 #include <platform/jobs.h>
@@ -413,7 +414,7 @@ bool FrameRenderer::init(SceGxmContext* context, SceGxmShaderPatcher* patcher, v
     m_main.context = context;
     m_uploadLock = new Mutex("gxm_uploads");
     m_uploadDone = new CondVar("gxm_uploads", *m_uploadLock);
-    m_precomputed = Config::getBool("gxm_precomputed", true);
+    m_precomputed = NFSU_RENDER_FAST("gxm_precomputed");
     logInfo("gxm: %s draws", m_precomputed ? "precomputed" : "immediate");
     m_cullSwap = Config::getBool("cull_swap", false);
     if (m_cullSwap)

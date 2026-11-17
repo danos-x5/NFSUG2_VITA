@@ -2,6 +2,7 @@
 
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 #include <scenery.h>
@@ -58,7 +59,7 @@ void stageBox(x86::reg8* f, x86::reg32 node)
 
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("tree_cull_native", true); }))
+    if (!NFSU_NATIVE("tree_cull_native"))
     {
         sub_5d69b0_guest(app, cpu);
         return;

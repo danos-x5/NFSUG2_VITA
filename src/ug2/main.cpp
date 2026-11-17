@@ -7,7 +7,9 @@
 #include "boot.h"
 #include "movies.h"
 #include "default_cfg.h"
+#include "frontend.h"
 #include "hitch.h"
+#include <lib/memlog.h>
 #include "scenery.h"
 #include "padbind.h"
 #include "textentry.h"
@@ -206,6 +208,13 @@ int main(int argc, char** argv)
     pf::logSetInfo(pf::Config::getBool("log_info", true));
 #endif
     pf::logSetDeferred(pf::Config::getBool("log_async", true));
+#ifdef DEV_SETTINGS
+    pf::logInfo("build switches: native functions %d, audio fast paths %d, render fast paths %d, each key can be set "
+                "in the settings file (DEV_SETTINGS)", NATIVE_FUNCTIONS, AUDIO_FAST_PATHS, RENDER_FAST_PATHS);
+#else
+    pf::logInfo("build switches: native functions %d, audio fast paths %d, render fast paths %d, fixed in this build",
+                NATIVE_FUNCTIONS, AUDIO_FAST_PATHS, RENDER_FAST_PATHS);
+#endif
     pf::cores::init();
     pf::perf::init(pf::Config::getBool("timing_log", false), pf::Config::getBool("hitch_log", false));
     pf::limiter::init();
@@ -245,6 +254,7 @@ int main(int argc, char** argv)
         ug2::textentry::configure(app);
         ug2::padbind::configure(app);
         ug2::hitch::configure(app);
+        win32::memlog::configure(ug2::frontend::frameCounter);
         ug2::scenery::configure();
         ug2::movies::configure(app);
         if (!win32::File::setCurrentDirectory(GuestGameFolder))

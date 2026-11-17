@@ -2,6 +2,7 @@
 
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 
@@ -224,7 +225,7 @@ const shadow::Spec spec = {"sub_61b670", shadow::Eax | shadow::Ecx | shadow::Edx
 
 void sub_61b670(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("sub_61b670_native", true); }))
+    if (!NFSU_NATIVE("sub_61b670_native"))
     {
         sub_61b670_guest(app, cpu);
         return;

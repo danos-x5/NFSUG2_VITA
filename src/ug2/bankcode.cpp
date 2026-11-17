@@ -9,6 +9,7 @@
 
 #include <lib/foreigncode.h>
 #include <lib/memmap.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 #include <platform/log.h>
@@ -61,7 +62,7 @@ const Settings& settings()
 {
     return pf::cachedStatic([]
     {
-        const Settings r = { pf::Config::getBool("bank_native", true), pf::Config::getBool("shadow_bank", false),
+        const Settings r = { NFSU_NATIVE_SETTING("bank_native"), pf::Config::getBool("shadow_bank", false),
                              pf::Config::getBool("bank_cache_check", false) };
         pf::logInfo("bank code: %u translated routines, %s%s%s", unsigned(g_translationCount),
                     r.native ? "native" : "interpreted", r.native && r.shadow ? ", shadow compare" : "",

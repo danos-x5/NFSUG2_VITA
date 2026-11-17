@@ -2,6 +2,7 @@
 
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 #include <winapi/d3d9_native.h>
@@ -159,7 +160,7 @@ alignas(16) const x86::reg32 identity[16] = {0x3f800000u, 0, 0, 0, 0, 0x3f800000
 
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("texture_step_native", true); }))
+    if (!NFSU_NATIVE("texture_step_native"))
     {
         sub_5bcc30_guest(app, cpu);
         return;

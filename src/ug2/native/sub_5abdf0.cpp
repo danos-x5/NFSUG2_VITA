@@ -1,6 +1,7 @@
 // Native sub_5abdf0 (thiscall): five refinement passes over the four view objects' +0x124 values; helpers run through entry points.
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 
@@ -164,7 +165,7 @@ reg32 passUnaligned(reg8* g, reg32 self, reg32 L, reg32& w0)
 
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("view_adjust_native", true); }))
+    if (!NFSU_NATIVE("view_adjust_native"))
     {
         sub_5abdf0_guest(app, cpu);
         return;

@@ -3,6 +3,7 @@
 
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 
@@ -27,7 +28,7 @@ const x86::reg32 MatrixMissed = 0x82da70;
 
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("scenery_stuff_native", true); }))
+    if (!NFSU_NATIVE("scenery_stuff_native"))
     {
         sub_5d6ad0_guest(app, cpu);
         return;

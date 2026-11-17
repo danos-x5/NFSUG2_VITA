@@ -2,6 +2,7 @@
 // drag, gravity, wind and age, with dead particles and empty groups freed. Small callees are inline.
 
 #include <native/common.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 
@@ -157,7 +158,7 @@ inline void advance(x86::CPU& cpu, reg32 p, sreg32 life, const Pass& s)
 
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("particle_update_native", true); }))
+    if (!NFSU_NATIVE("particle_update_native"))
     {
         sub_492e10_guest(app, cpu);
         return;

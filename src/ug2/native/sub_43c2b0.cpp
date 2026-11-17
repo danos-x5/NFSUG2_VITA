@@ -2,6 +2,7 @@
 
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 
@@ -18,7 +19,7 @@ namespace
 
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("sine_poly_native", true); }))
+    if (!NFSU_NATIVE("sine_poly_native"))
     {
         sub_43c2b0_guest(app, cpu);
         return;

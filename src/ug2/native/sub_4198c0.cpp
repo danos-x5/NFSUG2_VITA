@@ -3,6 +3,7 @@
 #include <lib/guest.h>
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 
@@ -43,7 +44,7 @@ __attribute__((noinline, cold)) reg32 wideTrunc(Real v)
 
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("entry_pick_native", true); }))
+    if (!NFSU_NATIVE("entry_pick_native"))
     {
         sub_4198c0_guest(app, cpu);
         return;

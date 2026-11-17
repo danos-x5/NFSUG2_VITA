@@ -3,6 +3,8 @@
 
 #include <winapi/d3d9_internal.h>
 #include <winapi/support.h>
+#include <lib/memlog.h>
+#include <platform/switches.h>
 #include <platform/config.h>
 #include <platform/gxm.h>
 #include <platform/log.h>
@@ -45,7 +47,11 @@ enum : DWORD
 const D3DMATRIX s_identity = { { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 } };
 
 // d3d_fast_draw=off: every draw looks its viewport up again.
+#ifdef DEV_SETTINGS
 bool s_fastDraw = true;
+#else
+const bool s_fastDraw = RENDER_FAST_PATHS != 0;
+#endif
 
 // debug_frame_dump=on (development): one frame in 150, 40 frames in all, is written to the log call by call.
 std::atomic<bool> s_dumping{false};
@@ -142,7 +148,9 @@ Device::Device(WinApplication* app, Direct3D* d3d, const D3DPRESENT_PARAMETERS& 
 {
     d3d->addRef();
     memset(&m_state, 0, sizeof(m_state));
-    s_fastDraw = pf::Config::getBool("d3d_fast_draw", true);
+#ifdef DEV_SETTINGS
+    s_fastDraw = NFSU_RENDER_FAST("d3d_fast_draw");
+#endif
     // frame_rate=0 (unlocked) and 60 show each frame for one vblank; 30 (default) shows each for two.
     const int frameRate = pf::Config::getInt("frame_rate", 30);
     m_vblanks = frameRate == 0 || frameRate >= 60 ? 1 : 2;
@@ -706,6 +714,7 @@ HRESULT Device::Present(WinApplication* app, x86::CPU& cpu, const RECT* source, 
     submit();
     m_sceneOpen = false;
     drawFrameDone();
+    memlog::frame();
     return D3D_OK;
 }
 

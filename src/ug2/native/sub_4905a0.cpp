@@ -2,6 +2,7 @@
 
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 
@@ -47,7 +48,7 @@ using x86::reg32;
 
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("entry_resolve_native", true); }))
+    if (!NFSU_NATIVE("entry_resolve_native"))
     {
         sub_4905a0_guest(app, cpu);
         return;

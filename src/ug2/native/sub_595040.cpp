@@ -2,6 +2,7 @@
 
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 
@@ -5834,7 +5835,7 @@ L_0x0059810a:
 
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("closest_feature_native", true); }))
+    if (!NFSU_NATIVE("closest_feature_native"))
     {
         ug2::sub_595040_guest(app, cpu);
         return;

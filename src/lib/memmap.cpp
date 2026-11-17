@@ -468,6 +468,26 @@ void MemMap::report(x86::reg32 requested, pf::perf::Alloc requestKind, Placement
     }
 }
 
+MemMap::Usage MemMap::usage()
+{
+    s_lock->lock();
+    const x86::reg32 split = s_split ? s_runtimeStart : s_blockCount;
+    const FreeRanges guest = freeRanges(0, split);
+    const FreeRanges runtime = freeRanges(split, s_blockCount);
+    Usage u;
+    u.blocks = s_liveCount;
+    s_lock->unlock();
+    u.guestUsed = (split - guest.blocks) * 4;
+    u.guestFree = guest.blocks * 4;
+    u.guestLargest = guest.largest * 4;
+    u.guestRanges = guest.count;
+    u.runtimeUsed = (s_blockCount - split - runtime.blocks) * 4;
+    u.runtimeFree = runtime.blocks * 4;
+    u.runtimeLargest = runtime.largest * 4;
+    u.runtimeRanges = runtime.count;
+    return u;
+}
+
 // Null for an address outside every block.
 MemMap* MemMap::findBlock(x86::reg32 memIndex)
 {

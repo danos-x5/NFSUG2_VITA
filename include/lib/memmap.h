@@ -65,6 +65,15 @@ public:
     // Logs the request, free ranges, kinds, a usage map and the added reports.
     static void report(x86::reg32 requested, pf::perf::Alloc kind, Placement placement);
 
+    struct Usage
+    {
+        x86::reg32 guestUsed, guestFree, guestLargest, guestRanges;         // KB, KB, KB, count
+        x86::reg32 runtimeUsed, runtimeFree, runtimeLargest, runtimeRanges;
+        x86::reg32 blocks;
+    };
+    // The two areas of the split placement (all guest when split is off); takes the allocator lock briefly.
+    static Usage usage();
+
     static void fillDebugGraph(x86::reg16* graph);
     static void fillDebugGraph(x86::reg32* graph);
 private:

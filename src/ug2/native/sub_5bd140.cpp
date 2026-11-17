@@ -2,6 +2,7 @@
 
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 #include <winapi/d3d9_native.h>
@@ -24,7 +25,7 @@ const float* floatsAt(x86::reg32 address)
 
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("light_upload_native", true); }))
+    if (!NFSU_NATIVE("light_upload_native"))
     {
         sub_5bd140_guest(app, cpu);
         return;

@@ -1,6 +1,7 @@
 // Frame plan (render thread, after resolve): the same image from fewer scenes. Merges scenes of one target, drops
 // whole back buffer copies and draws nothing reads.
 
+#include <platform/switches.h>
 #include <platform/render.h>
 #include <platform/cached.h>
 #include <platform/config.h>
@@ -582,8 +583,8 @@ void optimizeFrame(Frame& frame)
     {
         bool merge, copies, dead;
     };
-    static const Options s_options = { Config::getBool("scene_merge", true), Config::getBool("copy_elide", true),
-                                       Config::getBool("dead_passes", true) };
+    static const Options s_options = { NFSU_RENDER_FAST("scene_merge"), NFSU_RENDER_FAST("copy_elide"),
+                                       NFSU_RENDER_FAST("dead_passes") };
     const uint32_t MaxScenes = 64;
     if ((!s_options.merge && !s_options.copies && !s_options.dead) || frame.sceneCount < 2
         || frame.sceneCount > MaxScenes)

@@ -3,6 +3,7 @@
 #include <native/box_frustum.h>
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 
@@ -52,7 +53,7 @@ inline void store2(uint8_t* p, float32x2_t v)
 
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("box_cull_native", true); }))
+    if (!NFSU_NATIVE("box_cull_native"))
     {
         sub_5bc210_guest(app, cpu);
         return;

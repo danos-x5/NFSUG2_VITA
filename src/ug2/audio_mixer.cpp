@@ -10,6 +10,7 @@
 #include <lib/mutex.h>
 #include <lib/teb.h>
 #include <lib/winapp.h>
+#include <platform/switches.h>
 #include <platform/config.h>
 #include <platform/log.h>
 #include <platform/perf.h>
@@ -54,8 +55,13 @@ std::atomic<x86::reg32> s_thread{0};    // thread block (fs) in the render loop 
 win32::Mutex* s_lock = nullptr;         // the execution lock that thread gave up
 bool s_changed = true;                  // SND state may have changed under the lock since the driver audit
 bool s_unlocked = false;                // audio_mixer=unlocked
+#ifdef DEV_SETTINGS
 bool s_nativeKernels = true;            // audio_native_kernels
 bool s_neonKernels = false;            // audio_neon_kernels
+#else
+const bool s_nativeKernels = AUDIO_FAST_PATHS != 0;
+const bool s_neonKernels = AUDIO_FAST_PATHS != 0;
+#endif
 bool s_hash = false;                    // audio_hash
 bool s_sndYield = false;                // audio_snd_yield
 bool s_stay = false;                    // audio_mixer_stay
@@ -1659,8 +1665,10 @@ void configure(win32::WinApplication& app)
     runSelftest(app);
     const char* const mode = pf::Config::getString("audio_mixer", "unlocked");
     s_unlocked = strcmp(mode, "unlocked") == 0;
-    s_nativeKernels = pf::Config::getBool("audio_native_kernels", true);
-    s_neonKernels = pf::Config::getBool("audio_neon_kernels", true);
+#ifdef DEV_SETTINGS
+    s_nativeKernels = NFSU_AUDIO_FAST("audio_native_kernels");
+    s_neonKernels = NFSU_AUDIO_FAST("audio_neon_kernels");
+#endif
     s_hash = pf::Config::getBool("audio_hash", false);
     s_sndYield = s_unlocked && pf::Config::getBool("audio_snd_yield", false);
     s_stay = s_unlocked && pf::Config::getBool("audio_mixer_stay", true);

@@ -24,6 +24,7 @@ public:
     ~GpuHeap();
     void* allocate(uint32_t size, uint32_t alignment);   // null when no block can be added
     void free(void* pointer);
+    uint32_t usedBytes() const { return m_usedBytes; }
 
 private:
     struct Chunk
@@ -158,6 +159,7 @@ public:
 
     // Any thread. Ticket 0 is always done.
     bool uploadDone(uint32_t ticket);
+    uint32_t textureBytesInUse() const { return m_textureHeap ? m_textureHeap->usedBytes() : 0; }
     void waitUpload(uint32_t ticket);
     // Until the queued writes into the texture are finished.
     void waitWrites(const render::TextureStorage* texture);

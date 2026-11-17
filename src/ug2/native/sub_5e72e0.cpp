@@ -4,6 +4,7 @@
 
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 
@@ -105,7 +106,7 @@ Real height(x86::reg32 patch, Real px, Real py)
 
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("ground_query_native", true); }))
+    if (!NFSU_NATIVE("ground_query_native"))
     {
         ug2::sub_5e72e0_guest(app, cpu);
         return;

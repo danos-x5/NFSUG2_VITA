@@ -54,6 +54,7 @@ set(NFSU_LIB_SOURCES
   src/lib/heap.cpp
   src/lib/jump.cpp
   src/lib/library.cpp
+  src/lib/memlog.cpp
   src/lib/mutex.cpp
   src/lib/palette.cpp
   src/lib/registry.cpp

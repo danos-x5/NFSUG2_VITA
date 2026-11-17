@@ -2,6 +2,7 @@
 
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 #include <winapi/d3d9_native.h>
@@ -182,7 +183,7 @@ const shadow::Spec spec = {"sub_4122c0", shadow::Eax | shadow::Ecx | shadow::Edx
 
 void sub_4122c0(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("ui_pos_native", true); }))
+    if (!NFSU_NATIVE("ui_pos_native"))
     {
         sub_4122c0_guest(app, cpu);
         return;

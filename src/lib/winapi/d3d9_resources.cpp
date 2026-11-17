@@ -158,8 +158,7 @@ struct KeptLevels
 
     void report()
     {
-        if (pf::perf::enabled())
-            pf::perf::uploadCache(bytes, count);
+        pf::perf::uploadCache(bytes, count);
     }
 
     static bool reclaim()

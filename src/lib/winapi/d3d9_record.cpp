@@ -3,6 +3,7 @@
 // (programs, fixed function, alpha test, blend factor, constants) before the frame is drawn.
 
 #include <winapi/d3d9_internal.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 #include <platform/log.h>
@@ -335,7 +336,7 @@ bool Resolver::fillState(render::Frame& f, const DrawRecord& record, render::Dra
     float test[2] = { 0.0f, 0.0f };
     state.alphaTest = alphaEnabled && alphaTest(rs[D3DRS_ALPHAFUNC], alphaRef, test) ? 1 : 0;
     // A test that discards nothing: the program without it (the draw becomes opaque to the GPU).
-    const bool s_elide = pf::cachedStatic([] { return pf::Config::getBool("skip_unused_alpha_test", true); });
+    const bool s_elide = NFSU_RENDER_FAST_CACHED("skip_unused_alpha_test");
     if (state.alphaTest && (s_elide || pf::perf::enabled()))
     {
         const AlphaResult result = alphaTestResult(record, draw, test, own, shared, b);

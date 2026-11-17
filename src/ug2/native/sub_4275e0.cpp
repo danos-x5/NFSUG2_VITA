@@ -1,5 +1,6 @@
 // Native replacement of sub_4275e0: walks two corner lists in lockstep, writes the travelled distance to arg4 and returns success.
 
+#include <platform/switches.h>
 #include <native/common.h>
 #include <native/shadow.h>
 
@@ -147,7 +148,7 @@ Real contact(reg32 P, reg32 Q, Real v0, Real v1, Real w0, Real w1, const Consts&
 
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("corner_walk_native", true); }))
+    if (!NFSU_NATIVE("corner_walk_native"))
     {
         sub_4275e0_guest(app, cpu);
         return;

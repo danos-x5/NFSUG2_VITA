@@ -2,6 +2,7 @@
 
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 
@@ -53,7 +54,7 @@ x86::Float mulAdd(x86::Float t, x86::Float dir, x86::Float base)
 // Two sub_43d0c0 vector multiply-adds kept in registers.
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("vec_blend_native", true); }))
+    if (!NFSU_NATIVE("vec_blend_native"))
     {
         sub_5dd360_guest(app, cpu);
         return;

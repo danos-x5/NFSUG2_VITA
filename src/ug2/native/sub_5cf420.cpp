@@ -1,6 +1,7 @@
 // Native sub_5cf420: draw-queue flush over the 16 x 23 list heads. Guest frame kept, registers live in the CPU; children run through entry points, CommitChanges and EndPass through the bridge.
 
 #include <native/common.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 #include <scenery.h>
@@ -489,12 +490,12 @@ inline bool guestStep(State& s)
 
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("flush_native", true); }))
+    if (!NFSU_NATIVE("flush_native"))
     {
         sub_5cf420_guest(app, cpu);
         return;
     }
-    s_direct = pf::cachedStatic([] { return pf::Config::getBool("flush_direct", true); });
+    s_direct = NFSU_RENDER_FAST_CACHED("flush_direct");
     State s = {cpu.ebx, cpu.ebp, cpu.esi, cpu.edi, cpu.esp - 0x34};
     rc::st32(s.frame + 0xc, s.ebx);
     rc::st32(s.frame + 8, s.ebp);

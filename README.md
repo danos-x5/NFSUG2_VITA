@@ -244,6 +244,23 @@ ninja -C build-vita                                    # -> build-vita/NFSU2VITA
 | `shaders/` | Cg shaders and compiled binaries |
 | `tools/` | recompiler and build scripts |
 
+### Build options
+
+These are CMake options. A normal build sets none of them; to change one, add it to the `cmake` line of step 4, for
+example `-DDEV_SETTINGS=ON`.
+
+| Option | Default | What it does |
+|--------|---------|--------------|
+| `NATIVE_FUNCTIONS` | `ON` | Uses the port's hand-written native versions of game functions. `OFF` uses their translated originals |
+| `AUDIO_FAST_PATHS` | `ON` | Uses the native and NEON routines in the audio mixer. `OFF` uses the plain ones |
+| `RENDER_FAST_PATHS` | `ON` | Uses the fast paths of the Direct3D layer and the renderer. `OFF` uses the straightforward ones |
+| `DEV_SETTINGS` | `OFF` | For development: the settings file can switch each of these choices one by one, without a rebuild |
+
+With `DEV_SETTINGS=OFF` the three choices are fixed when the program is compiled, and settings for them in the
+settings file are ignored. With `DEV_SETTINGS=ON` each choice has its own key there, for example `matrix4_native=off`,
+and the option above is only its default. The first lines of the log say which kind of build is running when
+`log_info=on`.
+
 ## Credits
 
 - [UG1VITA](https://github.com/NDRWhun/UG1VITA): the Need for Speed Underground port this project grew out of

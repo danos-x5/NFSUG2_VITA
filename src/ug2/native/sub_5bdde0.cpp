@@ -2,6 +2,7 @@
 
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 #include <winapi/d3d9_native.h>
@@ -25,7 +26,7 @@ const float* matrixAt(x86::reg32 address)
 // Bridge calls never write guest memory: reads stay valid.
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("world_upload_native", true); }))
+    if (!NFSU_NATIVE("world_upload_native"))
     {
         sub_5bdde0_guest(app, cpu);
         return;

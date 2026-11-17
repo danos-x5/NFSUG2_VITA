@@ -2,6 +2,7 @@
 
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 #include <scenery.h>
@@ -73,7 +74,7 @@ inline bool worthLowering(const scenery::Settings& set, x86::reg32 info, x86::re
 // Callees keep ebx..ebp and x87 depth; trivial ones inlined.
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("draw_scenery_native", true); }))
+    if (!NFSU_NATIVE("draw_scenery_native"))
     {
         ug2::sub_5d6570_guest(app, cpu);
         return;

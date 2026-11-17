@@ -2,6 +2,7 @@
 // texture and locks the buffer. The quad of sub_5bb430 is built inline.
 
 #include <native/common.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 
@@ -114,7 +115,7 @@ inline void vertex(x86::reg32 v, Real x, Real y, Real z, x86::reg32 colour, x86:
 
 void body(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (!pf::cachedStatic([] { return pf::Config::getBool("particles_native", true); }))
+    if (!NFSU_NATIVE("particles_native"))
     {
         sub_5c0e10_guest(app, cpu);
         return;

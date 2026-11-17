@@ -3,6 +3,7 @@
 #include <native/box_frustum.h>
 #include <native/common.h>
 #include <native/shadow.h>
+#include <platform/switches.h>
 #include <platform/cached.h>
 #include <platform/config.h>
 
@@ -141,10 +142,10 @@ int testNeon(x86::reg32 boxA, x86::reg32 boxB, x86::reg32 matrix, x86::reg32 pla
 
 int mode()
 {
-    if (!pf::Config::getBool("box_cull_native", true))
+    if (!NFSU_NATIVE_SETTING("box_cull_native"))
         return Guest;
 #ifdef UG2_BOX_NEON
-    if (pf::Config::getBool("box_neon", true))
+    if (NFSU_NATIVE_SETTING("box_neon"))
         return Neon;
 #endif
     return Scalar;

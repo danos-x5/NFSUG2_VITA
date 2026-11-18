@@ -29,7 +29,7 @@ const char DefaultSettingsFile[] =
     "# Right stick turns the car in the garage and the customisation menus: on or off. The dead zone is a\n"
     "# percentage of the stick's range; the speed is the camera movement at full deflection (mouse counts per frame).\n"
     "#garage_stick=on\n"
-    "#garage_stick_deadzone=15\n"
+    "#garage_stick_deadzone=20\n"
     "#garage_stick_speed=4\n"
     "\n"
     "# Scenery narrower than this many pixels on screen uses its simpler model. 0 is off; 128 gives more\n"

@@ -33,7 +33,7 @@ const GarageStick& settings()
     static const GarageStick s = [] {
         GarageStick g;
         g.enabled = pf::Config::getBool("garage_stick", true);
-        g.deadZone = std::min(std::max(pf::Config::getInt("garage_stick_deadzone", 15), 0), 99) / 100.0f;
+        g.deadZone = std::min(std::max(pf::Config::getInt("garage_stick_deadzone", 20), 0), 99) / 100.0f;
         g.speed = float(pf::Config::getInt("garage_stick_speed", 4));
         return g;
     }();

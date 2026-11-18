@@ -1339,11 +1339,10 @@ def separate_stack(frame):
             groups[-1][2].append(a)
         else:
             groups.append([a.base, a.k + a.size, [a]])
-    for base, end, accs in groups:
-        if not all(a.supported for a in accs):
-            continue
-        if frame.escaped and end > frame.floor.get(base, 0):
-            continue
+    chosen = [accs for base, end, accs in groups if not (frame.escaped and end > frame.floor.get(base, 0))]
+    if not all(a.supported for accs in chosen for a in accs):
+        return
+    for accs in chosen:
         for a in accs:
             frame.stack_sites.add((a.index, a.key))
 

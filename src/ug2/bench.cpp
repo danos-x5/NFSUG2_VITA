@@ -1,5 +1,6 @@
 #include "bench.h"
 
+#include <native/check.h>
 #include <platform/config.h>
 #include <platform/limiter.h>
 #include <platform/log.h>
@@ -80,6 +81,7 @@ void logSummary()
                 unsigned(over42), frames ? 100.0 * over42 / frames : 0.0,
                 unsigned(over50), frames ? 100.0 * over50 / frames : 0.0);
     pf::limiter::report(s_frames.data(), frames);
+    ug2::native::check::report();
     if (s_frameCount == s_frames.size())
         pf::logInfo("bench: frame buffer full, later frames not counted");
 }

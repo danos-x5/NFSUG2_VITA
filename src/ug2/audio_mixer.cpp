@@ -5,6 +5,7 @@
 #include "audio_cull.h"
 #include "audio_defer.h"
 #include "audio_kernels.h"
+#include "audio_stats.h"
 
 #include <lib/event.h>
 #include <lib/heap.h>
@@ -45,6 +46,7 @@ void sub_733700_guest(win32::WinApplication* app, x86::CPU& cpu);
 void sub_734bf4_guest(win32::WinApplication* app, x86::CPU& cpu);
 void sub_72cac7_guest(win32::WinApplication* app, x86::CPU& cpu);
 void sub_734a81(win32::WinApplication* app, x86::CPU& cpu);
+void sub_7216c6_guest(win32::WinApplication* app, x86::CPU& cpu);
 
 namespace mixer
 {
@@ -797,8 +799,52 @@ const reg32 OutputChannelsB = 0x8b44e0;
 const reg32 LoopHookBefore  = 0x8b46c0;     // mixer thread loop hooks, unset in this game
 const reg32 LoopHookAfter   = 0x8b46c4;
 
+static void renderLoop(win32::WinApplication* app, x86::CPU& cpu);
+
+// audio_mix_rate: the SND mix rate in Hz, or 0 for the game's (0x47ABA9: 22050 or 44100 by g_PerformanceLevel).
+static reg32 mixRate()
+{
+    static const reg32 s_rate = []
+    {
+        const int rate = pf::Config::getInt("audio_mix_rate", 0);
+        const int allowed[] = { 0, 22050, 24000, 32000, 44100, 48000 };
+        if (std::find(std::begin(allowed), std::end(allowed), rate) != std::end(allowed))
+            return reg32(rate);
+        pf::logError("audio_mix_rate=%d: not 22050, 24000, 32000, 44100 or 48000; the game's rate is used", rate);
+        return reg32(0);
+    }();
+    return s_rate;
+}
+
+// SND output rate (device, rate), set twice at sound start-up (0x47AB8A, 0x47AC0F).
+void sub_7216c6(win32::WinApplication* app, x86::CPU& cpu)
+{
+    const reg32 GameRate = 0x7ecbd8;
+    const reg32 rate = mixRate();
+    if (rate)
+    {
+        pf::logInfo("audio mix rate: %u Hz instead of %u (audio_mix_rate)", unsigned(rate),
+                    unsigned(argument(cpu, 1)));
+        rc::st32(cpu.esp + 8, rate);
+        rc::st32(GameRate, rate);
+    }
+    sub_7216c6_guest(app, cpu);
+}
+
 // Render loop (&output pointer, frames); audio_mixer_stay keeps the thread unlocked.
 void sub_725c8e(win32::WinApplication* app, x86::CPU& cpu)
+{
+    if (!mixstats::on())
+    {
+        renderLoop(app, cpu);
+        return;
+    }
+    mixstats::loopEnter(cpu, argument(cpu, 1));
+    renderLoop(app, cpu);
+    mixstats::loopLeave(cpu);
+}
+
+static void renderLoop(win32::WinApplication* app, x86::CPU& cpu)
 {
 #ifdef __vita__
     static std::atomic<int> s_tracked{0};
@@ -863,6 +909,7 @@ void sub_725c8e(win32::WinApplication* app, x86::CPU& cpu)
 
 void sub_721e13(win32::WinApplication* app, x86::CPU& cpu)
 {
+    const mixstats::Scoped scope(cpu, mixstats::Tick);
     Audit audit;
     if (sndq::hookDeferred() && mixer::unlocked(cpu) && rc::ld8(TickHookCount) == 1 && rc::ld32(TickHooks) == DeferredHook)
     {
@@ -895,6 +942,7 @@ void sub_721e13(win32::WinApplication* app, x86::CPU& cpu)
 
 void sub_721de6(win32::WinApplication* app, x86::CPU& cpu)
 {
+    const mixstats::Scoped scope(cpu, mixstats::Callbacks);
     Audit audit;
     if (!mixer::unlocked(cpu) || callbacksAudited(app, audit))
     {
@@ -956,14 +1004,29 @@ void notificationsBody(win32::WinApplication* app, x86::CPU& cpu)
 
 void sub_72382f(win32::WinApplication* app, x86::CPU& cpu)
 {
+    const mixstats::Scoped scope(cpu, mixstats::Notifications);
     notificationsBody(app, cpu);
     // The render loop's edi holds the frames still to render in this slot.
     if (mixer::s_sndYield && mixer::unlocked(cpu) && sreg32(cpu.edi) > 0 && !cpu.terminate)
         mixer::yieldSnd(app, cpu);
 }
 
+static void voiceRender(win32::WinApplication* app, x86::CPU& cpu);
+
 // Voice render (&output pointer, frames).
 void sub_729574(win32::WinApplication* app, x86::CPU& cpu)
+{
+    if (!mixstats::on())
+    {
+        voiceRender(app, cpu);
+        return;
+    }
+    mixstats::voicesEnter(cpu, argument(cpu, 1));
+    voiceRender(app, cpu);
+    mixstats::voicesLeave(cpu);
+}
+
+static void voiceRender(win32::WinApplication* app, x86::CPU& cpu)
 {
     const cull::Voices silent(cpu);
     const bool timed = pf::perf::enabled();
@@ -1049,6 +1112,14 @@ void sub_72c360(win32::WinApplication* app, x86::CPU& cpu)
 {
     if (cull::checking())
         cull::checkMix(cpu);
+    const mixstats::Scoped scope(cpu, mixstats::Mix);
+    if (mixstats::on())
+    {
+        float gain;
+        const reg32 bits = argument(cpu, 1);
+        memcpy(&gain, &bits, sizeof(gain));
+        mixstats::mixCall(cpu, argument(cpu, 0), gain, argument(cpu, 2));
+    }
     if (mixer::s_sndMutex && mixer::unlocked(cpu) && argument(cpu, 2) == rc::ld32(VoiceScratch))
         voiceYield(app, cpu);
     if (!mixer::s_nativeKernels)
@@ -1109,6 +1180,8 @@ void sub_72c360(win32::WinApplication* app, x86::CPU& cpu)
 // Convert kernel: 16-bit to float (n, src, dst).
 void sub_72c480(win32::WinApplication* app, x86::CPU& cpu)
 {
+    const mixstats::Scoped scope(cpu, mixstats::Convert);
+    mixstats::work(cpu, mixstats::Convert, argument(cpu, 0));
     if (!mixer::s_nativeKernels)
     {
         sub_72c480_guest(app, cpu);
@@ -1153,10 +1226,26 @@ void sub_72c480(win32::WinApplication* app, x86::CPU& cpu)
     }
 }
 
+static void resampleCulled(win32::WinApplication* app, x86::CPU& cpu);
 void resampleLinear(win32::WinApplication* app, x86::CPU& cpu);
 
 // Linear resampler (n, src, dst, &position, &fraction, step, step fraction).
 void sub_733700(win32::WinApplication* app, x86::CPU& cpu)
+{
+    if (!mixstats::on())
+    {
+        resampleCulled(app, cpu);
+        return;
+    }
+    const mixstats::Scoped scope(cpu, mixstats::Resample);
+    const reg32 n = argument(cpu, 0);
+    const reg32 positionAddress = argument(cpu, 3);
+    const reg32 before = rc::ld32(positionAddress);
+    resampleCulled(app, cpu);
+    mixstats::work(cpu, mixstats::Resample, n, rc::ld32(positionAddress) - before);
+}
+
+static void resampleCulled(win32::WinApplication* app, x86::CPU& cpu)
 {
     if (cull::skipKernel(cpu))
     {
@@ -1304,8 +1393,24 @@ bool eaxaFast(win32::WinApplication* app, x86::CPU& cpu, reg32 state)
     return true;
 }
 
+static void eaxa(win32::WinApplication* app, x86::CPU& cpu);
+
 // EA-XA decoder (state); 0xEE frames go to 0x734A81.
 void sub_734bf4(win32::WinApplication* app, x86::CPU& cpu)
+{
+    if (!mixstats::on())
+    {
+        eaxa(app, cpu);
+        return;
+    }
+    const mixstats::Scoped scope(cpu, mixstats::Eaxa);
+    const reg32 state = argument(cpu, 0);
+    const reg32 before = rc::ld32(state);
+    eaxa(app, cpu);
+    mixstats::work(cpu, mixstats::Eaxa, (before - rc::ld32(state)) / 0x1c);
+}
+
+static void eaxa(win32::WinApplication* app, x86::CPU& cpu)
 {
     if (!mixer::s_nativeKernels)
     {

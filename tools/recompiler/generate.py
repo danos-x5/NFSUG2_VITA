@@ -302,7 +302,8 @@ def main():
         writer.Writer(module, program, stage).write()
         if GAME.BANK_LIBRARY_TABLE is not None:
             bankcode.write(args.binaries, image, capstone.Cs(capstone.CS_ARCH_X86, capstone.CS_MODE_32), stage,
-                           GAME.BANK_LIBRARY_TABLE, GAME.BANK_DIR, GAME.MODULE)
+                           GAME.BANK_LIBRARY_TABLE, GAME.BANK_DIR, GAME.MODULE,
+                           getattr(GAME, 'BANK_DIRECT_LIBRARY', ()), getattr(GAME, 'BANK_NATIVE_LIBRARY', ()))
         sync_output(stage, args.out)
     if args.analysis:
         write_analysis(args.analysis, program, module, discovery)

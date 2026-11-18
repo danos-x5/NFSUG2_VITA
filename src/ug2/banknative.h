@@ -4,8 +4,10 @@
 // Audio bank routines translated at build time (tools/recompiler/bankcode.py, generated/ug2_bank.cpp) and the
 // pieces they run with (bankcode.cpp). A translation does what the bank code interpreter does, step for step:
 // the same loads and stores in the same order, registers and flags in cpu at every call and at the return.
+// Calls of g_directLibrary run in place (natives: banklib.cpp) unless Memory::Segmented.
 
 #include <cpu.h>
+#include <lib/winapp.h>
 #include <recomp.h>
 #include <x86.h>
 
@@ -19,6 +21,8 @@ using x86::reg32;
 // Stores straight to guest memory.
 struct Direct
 {
+    static constexpr bool Segmented = false;
+
     void st32(reg32 address, reg32 value) { rc::st32(address, value); }
     void st8(reg32 address, x86::reg8 value) { rc::st8(address, value); }
 };
@@ -33,6 +37,8 @@ struct Recording
         reg32   previous;
         uint8_t size;
     };
+
+    static constexpr bool Segmented = true;   // every call returns, as the interpreter stops at each
 
     std::vector<Store> stores;
 
@@ -140,7 +146,8 @@ const uint32_t Returned = 0xffffffffu;
 // after that call; or to its return, with the registers and flags in cpu, and returns Returned. begin is the
 // routine's address, bank the address of the bank that holds it.
 template <typename Memory>
-using Run = uint32_t (*)(x86::CPU& cpu, Memory& memory, reg32 begin, reg32 bank, uint32_t resume);
+using Run = uint32_t (*)(win32::WinApplication* app, x86::CPU& cpu, Memory& memory, reg32 begin, reg32 bank,
+                         uint32_t resume);
 
 enum RelocationKind : uint8_t
 {
@@ -181,6 +188,17 @@ struct Translation
 
 extern const Translation* const g_translations;
 extern const uint32_t g_translationCount;
+// Library functions the translations call in place: pure ones (mixer::libraryPure), sorted.
+extern const reg32 g_directLibrary[];
+extern const uint32_t g_directLibraryCount;
+
+namespace lib
+{
+
+// Reads bank_lib_check (banklib.cpp); before the first routine runs.
+void configure(win32::WinApplication* app);
+
+}
 
 }}
 

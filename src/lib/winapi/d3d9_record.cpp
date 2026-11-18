@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdio>
+#include <cstddef>
 #include <cstdlib>
 
 namespace win32 { namespace d3d9
@@ -74,6 +75,67 @@ enum AlphaResult : uint8_t
 const char* const s_alphaNames[AlphaResultCount] = {
     "elided", "program", "function", "texture", "vertex", "car constants", "threshold"
 };
+
+// debug_draw_hash: what each draw hands the GPU, hashed per frame and logged 32 frames a line.
+class DrawHash
+{
+public:
+    void frame(const render::Frame& f)
+    {
+        uint32_t h = 2166136261u;
+        for (uint32_t i = 0; i < f.drawCount; ++i)
+        {
+            const render::DrawCall& d = f.draws[i];
+            const render::DrawState& s = d.state;
+            for (const render::TextureStorage* t : s.textures)
+            {
+                const uint32_t id = t ? 1u + t->desc.width + (uint32_t(t->desc.height) << 16) : 0u;
+                h = mix(h, &id, 4);
+            }
+            render::DrawState copy = s;
+            copy.layout = 0;
+            h = mix(h, copy.samplers, sizeof(copy) - offsetof(render::DrawState, samplers));
+            h = mix(h, &render::layout(s.layout), sizeof(render::VertexLayout));
+            h = mix(h, &d.count, 4);
+            h = mix(h, &d.vertexCount, 4);
+            if (!d.count)
+                continue;
+            const uint32_t vf = render::vertexProgram(render::VertexProgram(s.vertexProgram)).constantFloats;
+            const uint32_t ff = render::fragmentProgram(render::FragmentProgram(s.fragmentProgram)).constantFloats;
+            if (d.vertexConstants != render::NoConstants)
+                h = mix(h, f.constants + d.vertexConstants, vf * 4);
+            if (d.fragmentConstants != render::NoConstants)
+                h = mix(h, f.constants + d.fragmentConstants, ff * 4);
+        }
+        m_line[m_count++] = h;
+        if (m_count == 32)
+            flush();
+    }
+    void flush()
+    {
+        char text[32 * 9 + 64];
+        int length = snprintf(text, sizeof(text), "d3d9: draw hash %u:", m_first);
+        for (uint32_t i = 0; i < m_count && length > 0 && length < int(sizeof(text)); ++i)
+            length += snprintf(text + length, sizeof(text) - length, " %08x", unsigned(m_line[i]));
+        pf::logInfo("%s", text);
+        m_first += m_count;
+        m_count = 0;
+    }
+
+private:
+    static uint32_t mix(uint32_t h, const void* data, uint32_t bytes)
+    {
+        const uint8_t* p = static_cast<const uint8_t*>(data);
+        for (uint32_t i = 0; i < bytes; ++i)
+            h = (h ^ p[i]) * 16777619u;
+        return h;
+    }
+
+    uint32_t m_line[32];
+    uint32_t m_count = 0, m_first = 0;
+};
+
+DrawHash s_drawHash;
 
 // Render thread only.
 class Resolver
@@ -551,6 +613,9 @@ void Resolver::resolve(render::Frame& f)
         memset(m_alphaCounts, 0, sizeof(m_alphaCounts));
     }
     effectFrameStats();
+    static const bool s_hash = pf::Config::getBool("debug_draw_hash", false);
+    if (s_hash)
+        s_drawHash.frame(f);
     s_resolved.store(f.index, std::memory_order_release);
 }
 

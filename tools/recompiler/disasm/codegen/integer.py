@@ -66,11 +66,22 @@ cg_fnclex = cg_nop
 
 # ---- arithmetic -----------------------------------------------------------------------------------------------
 
+def zero_idiom(ctx, dst, src):
+    """xor/sub/sbb r, r: r is not read (native overrides excepted)."""
+    program = ctx.fn.program
+    return (program is not None and program.zero_idioms and ctx.fn.entry_address not in program.native_overrides
+            and dst.type == X.X86_OP_REG and src.type == X.X86_OP_REG and dst.reg == src.reg)
+
+
 def _binary(ctx, dst, src, kind, op, write=True):
     bits = dst.size * 8
     t = T(bits)
-    setup, cur, writer = ctx.bind(dst)
-    lines = setup + ['const %s a = %s;' % (t, cur), 'const %s b = %s;' % (t, ctx.sval(src, bits))]
+    if write and op in ('^', '-') and zero_idiom(ctx, dst, src):
+        setup, cur, writer = [], '0', lambda v: ctx.put(dst, v)
+        lines = ['const %s a = 0;' % t, 'const %s b = 0;' % t]
+    else:
+        setup, cur, writer = ctx.bind(dst)
+        lines = setup + ['const %s a = %s;' % (t, cur), 'const %s b = %s;' % (t, ctx.sval(src, bits))]
     if kind in ('add', 'sub'):
         lines.append('const %s r = %s(a %s b);' % (t, t, op))
         lines += ctx.set_flags({}, kind=kind, bits=bits, operands={'a': 'a', 'b': 'b'})
@@ -119,9 +130,14 @@ def cg_test(ctx, dst, src):
 def _carry(ctx, dst, src, subtract):
     bits = dst.size * 8
     t = T(bits)
-    setup, cur, writer = ctx.bind(dst)
     op = '-' if subtract else '+'
-    lines = setup + ['const %s a = %s;' % (t, cur), 'const %s b = %s;' % (t, ctx.sval(src, bits)),
+    if subtract and zero_idiom(ctx, dst, src):
+        setup, writer = [], lambda v: ctx.put(dst, v)
+        a = b = '0'
+    else:
+        setup, a, writer = ctx.bind(dst)
+        b = ctx.sval(src, bits)
+    lines = setup + ['const %s a = %s;' % (t, a), 'const %s b = %s;' % (t, b),
                      'const bool c = %s;' % ctx.flag('cf'),
                      'const %s r = %s(a %s b %s %s(c));' % (t, t, op, op, t)]
     sign = lambda e: '(%s(%s(%s)) < 0)' % (S(bits), t, e)

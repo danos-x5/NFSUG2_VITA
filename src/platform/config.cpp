@@ -29,7 +29,7 @@ const char* const Known[] =
     "entry_pick_native", "mixer_accumulate_native", "ground_query_native", "ug2_draw_walk_native", "corner_walk_native",
     "closest_feature_native", "view_adjust_native", "chase_cam_native",
     "shadow_hull_native", "particles_native", "particle_update_native", "headlight_pass_native", "scenery_stuff_native",
-    "shadow_points_native", "vec_helpers_native", "phys_native_check", "view_visible_native", "light_gather_native", "light_flare_native",
+    "shadow_points_native", "vec_helpers_native", "drivetrain_native", "phys_native_check", "view_visible_native", "light_gather_native", "light_flare_native",
     // Cores, logs and the benchmark.
     "use_core3", "core3_tasks", "timing_log", "timing_phases", "hitch_log", "console_log", "log_info", "memory_log", "memory_log_seconds", "log_async", "stall_report",
     "stall_seconds", "stall_direct", "stall_heartbeat", "stall_priority",

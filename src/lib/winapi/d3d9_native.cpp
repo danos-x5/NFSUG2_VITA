@@ -2135,8 +2135,8 @@ HRESULT effectSetIntDirect(WinApplication* app, x86::CPU& cpu, reg32 guest, reg3
     return effect::setInt(app, cpu, guest, handle, value);
 }
 
-HRESULT effectSetIntArray(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 handle, const x86::sreg32* values,
-                          UINT count)
+HRESULT effectSetIntArraySlow(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 handle,
+                              const x86::sreg32* values, UINT count)
 {
     if (deferring(cpu))
         fallback();

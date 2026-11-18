@@ -325,6 +325,8 @@ HRESULT drawPrimitiveUPSlow(WinApplication* app, x86::CPU& cpu, reg32 device, DW
                             UINT stride);
 HRESULT effectSetFloatSlow(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, float value);
 HRESULT effectSetVectorSlow(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, const float* vector);
+HRESULT effectSetIntArraySlow(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle,
+                              const x86::sreg32* values, UINT count);
 HRESULT effectSetVectorArraySlow(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, const float* vectors,
                                  UINT count);
 HRESULT effectSetMatrixSlow(WinApplication* app, x86::CPU& cpu, reg32 effect, reg32 handle, const float* matrix);

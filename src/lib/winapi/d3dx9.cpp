@@ -511,8 +511,10 @@ public:
             Values& v = values(int(p));
             const bool isFloat = (s_kinds[kind].fast[p] & FastFloat) && m_fast
                                  && device == g_streamDevice;
+            const bool isInt = (s_kinds[kind].fast[p] & FastInt) && m_fast && device == g_streamDevice;
             m_slots[p] = Slot{ &v, v.floats.data() + s_offsets[p], uint16_t(s_offsets[p]),
-                               uint16_t(isFloat ? fx::s_params[p].floats : 0) };
+                               uint16_t(isFloat ? fx::s_params[p].floats : 0),
+                               uint16_t(isInt ? fx::s_params[p].floats : 0) };
         }
         passChanged();
     }
@@ -591,6 +593,8 @@ public:
     HRESULT setVector(x86::reg32 handle, const float* vector);
     HRESULT setMatrix(x86::reg32 handle, const float* matrix);
     HRESULT setVectors(x86::reg32 handle, const float* vectors, uint32_t count);
+    // SetIntArray for bridge::effectSetIntArray.
+    HRESULT setInts(x86::reg32 handle, const x86::sreg32* data, uint32_t count);
     // CommitChanges without its arguments.
     void commit();
     // BeginPass without its arguments.
@@ -603,6 +607,7 @@ private:
         Values*     values;
         float*      to;
         uint16_t    offset, floats;
+        uint16_t    words;          // of an integer parameter of the effect, else 0
     };
 
     // After m_pass or m_technique changed.
@@ -618,6 +623,7 @@ private:
     template< uint32_t N >
     void storeSlot(const Slot& s, const void* data, uint32_t n);
     __attribute__((noinline)) HRESULT setFloatSlow(x86::reg32 handle, float value);
+    __attribute__((noinline)) HRESULT setIntsSlow(x86::reg32 handle, const x86::sreg32* data, uint32_t count);
 
     const fx::EffectInfo& info() const      { return fx::s_effects[m_kind]; }
     const fx::Technique& technique() const  { return info().techniques[m_technique]; }
@@ -841,7 +847,7 @@ __attribute__((always_inline)) inline void Effect::storeSlot(const Slot& s, cons
     uint32_t* w = stream->append(2 + n);
     w[0] = CmdValues | uint32_t(v.id) << 8;
     w[1] = s.offset | n << 16;
-    memcpy(w + 2, to, n * 4);
+    memcpy(w + 2, data, n * 4);
 }
 
 template< uint32_t N >
@@ -894,7 +900,7 @@ inline void Effect::storeWords(int p, const void* data, uint32_t n)
     uint32_t* w = stream->append(2 + n);
     w[0] = CmdValues | uint32_t(v.id) << 8;
     w[1] = s_offsets[p] | n << 16;
-    memcpy(w + 2, to, n * 4);
+    memcpy(w + 2, data, n * 4);
 }
 
 void Effect::store(int p, const void* data, uint32_t n)
@@ -941,6 +947,22 @@ __attribute__((always_inline)) inline HRESULT Effect::setVectors(x86::reg32 hand
         }
     }
     return setFloats("SetVectorArray", handle, vectors, count * 4);
+}
+
+__attribute__((always_inline)) inline HRESULT Effect::setInts(x86::reg32 handle, const x86::sreg32* data,
+                                                              uint32_t count)
+{
+    const uint32_t i = handle - HandleParam;
+    if (__builtin_expect(i < ParamCount && data && count, 1))
+    {
+        const Slot& s = m_slots[i];
+        if (__builtin_expect(s.words && !bridge::g_hot.trace && !s.values->pendingCount, 1))
+        {
+            storeSlot<0>(s, data, count < s.words ? count : s.words);
+            return D3D_OK;
+        }
+    }
+    return setIntsSlow(handle, data, count);
 }
 
 HRESULT Effect::setProduct(x86::reg32 handle, const float* const* matrices, uint32_t count, uint32_t fpscr)
@@ -1718,6 +1740,11 @@ HRESULT Effect::SetIntArray(WinApplication* app, x86::CPU& cpu, x86::reg32 handl
 {
     RC_USE(app);
     RC_USE(cpu);
+    return setIntsSlow(handle, data, count);
+}
+
+HRESULT Effect::setIntsSlow(x86::reg32 handle, const x86::sreg32* data, uint32_t count)
+{
     int p = fastParam(handle, FastFloat | FastInt);
     if (__builtin_expect(p < 0 || !data, 0))
     {
@@ -2278,6 +2305,14 @@ HRESULT effectSetVector(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 h
     if (__builtin_expect(quiet(), 1))
         return effectObject(guest)->setVector(handle, vector);
     return effectSetVectorSlow(app, cpu, guest, handle, vector);
+}
+
+HRESULT effectSetIntArray(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 handle, const x86::sreg32* values,
+                          UINT count)
+{
+    if (__builtin_expect(quiet(), 1))
+        return effectObject(guest)->setInts(handle, values, count);
+    return effectSetIntArraySlow(app, cpu, guest, handle, values, count);
 }
 
 HRESULT effectSetVectorArray(WinApplication* app, x86::CPU& cpu, reg32 guest, reg32 handle, const float* vectors,

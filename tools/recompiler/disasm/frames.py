@@ -1139,10 +1139,25 @@ class Analysis:
         return frames
 
 
+def moves_esp(fn, i):
+    """esp set from something other than itself and constants."""
+    ins = fn.instructions[i]
+    if not fn.effects[i].reg_def & C.REG_BIT['esp'] or ins.mnemonic.split()[-1] in ('push', 'pop', 'call', 'ret'):
+        return False
+    ops = ins.operands
+    if ins.mnemonic in ('add', 'sub', 'and') and len(ops) == 2 and ops[1].type == X.X86_OP_IMM:
+        return False
+    return not (ins.mnemonic == 'lea' and ops[1].mem.base and ins.reg_name(ops[1].mem.base) == 'esp'
+                and not ops[1].mem.index)
+
+
 def ret_pops(fn):
     """The ret immediate when every exit is one ret N."""
     values = set()
     for i in fn.reachable:
+        ins = fn.instructions[i]
+        if moves_esp(fn, i) or any(op.type == X.X86_OP_MEM and op.mem.segment for op in ins.operands):
+            return None
         for x in fn.exits[i]:
             if x.edge == 'call':
                 continue
@@ -1252,7 +1267,7 @@ def choose_slots(program, fn, frame, extents):
                 bad.add((b, k))
     for base, c in frame.continued:
         for (b, k), size in shapes.items():
-            if b == base and k + size > c:
+            if b != base or k + size > c:
                 bad.add((b, k))
     live = slot_liveness(fn, frame, by_slot)
     names = {}

@@ -3,6 +3,7 @@
 
 #include <native/check.h>
 #include <native/common.h>
+#include <native/physics.h>
 #include <native/shadow.h>
 #include <platform/switches.h>
 
@@ -22,69 +23,8 @@ namespace
 
 using x86::reg32;
 
-// _ftol2 outside the int32 range, as native::sub_75bed4.
-__attribute__((noinline, cold)) x86::reg64 wideTrunc(float value)
-{
-    asm volatile("" ::: "memory");
-    return x86::reg64(x86::truncInteger64(double(value)));
-}
-
-// eax, ecx and edx as sub_5764d0 leaves them.
-struct Registers
-{
-    reg32 eax, ecx, edx;
-};
-
-// sub_5764d0: piecewise-linear lookup of a curve at the scaled argument.
-inline Real lookup(reg32 curve, float argument, Registers& out)
-{
-    const reg32 count = rc::ld32(curve);
-    Real p = Real(argument);
-    p -= ld(curve + 4);
-    p *= ld(curve + 0xc);
-    const float stored = float(p);
-    reg32 idx, high;
-    if (__builtin_expect((bits(stored) & 0x7fffffffu) < 0x4f000000u, 1))
-    {
-        idx = reg32(x86::sreg32(p));
-        high = reg32(x86::sreg32(idx) >> 31);
-    }
-    else
-    {
-        const x86::reg64 wide = wideTrunc(stored);
-        idx = reg32(wide);
-        high = reg32(wide >> 32);
-        p = Real(stored);
-    }
-    out.ecx = idx;
-    const reg32 table = rc::ld32(curve + 0x10);
-    if (x86::sreg32(idx) < 0 || p < ld(0x7d7d3c))
-    {
-        out.eax = table;
-        out.edx = high;
-        return ld(table);
-    }
-    if (!(x86::sreg32(idx) < x86::sreg32(count - 1)))
-    {
-        out.eax = count - 1;
-        out.edx = high;
-        return ld(table + count * 4 - 4);
-    }
-    Real fi = Real(x86::sreg32(idx));
-    if (fi > p)
-        fi -= ld(0x784250);
-    fi = p - fi;
-    Real w = ld(0x784250);
-    w -= fi;
-    const reg32 q = table + idx * 4;
-    out.eax = q;
-    out.edx = table;
-    w *= ld(q);
-    fi *= ld(q + 4);
-    Real r = w;
-    r += fi;
-    return r;
-}
+using physics::Registers;
+using physics::lookup;
 
 inline float speedArgument(reg32 w)
 {

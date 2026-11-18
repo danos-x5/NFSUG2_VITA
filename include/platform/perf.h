@@ -295,7 +295,7 @@ void sndReleased(uint32_t handle, uint32_t thread);
 // Audio thread: called when SND mutex ownership starts and ends.
 typedef void (*SndObserver)(bool held);
 void setSndObserver(SndObserver observer);
-// Any thread: each SND mutex acquire (after waitUs blocked) and release, with the guest stack pointer.
+// Any thread: each SND mutex acquire and release.
 typedef void (*SndWatch)(bool acquired, uint32_t thread, uint32_t esp, uint32_t waitUs);
 void setSndWatch(SndWatch watch);
 void sndWatch(bool acquired, uint32_t handle, uint32_t thread, uint32_t esp, uint32_t waitUs);

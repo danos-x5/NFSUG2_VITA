@@ -1,6 +1,5 @@
-// EA SND voice render outside the SND mutex (audio_mixer_split): other threads may hold the mutex meanwhile, but wait in
-// the SND functions that touch voices, streams, aux effects or SND heap blocks until the render is done. Dev watch and
-// check (dev_snd_watch, audio_split_check) of what other threads' holds change.
+// EA SND voice render outside the SND mutex (audio_mixer_split); other threads wait in SND functions touching render
+// state. Dev watch and check of their holds.
 
 #include "audio_split.h"
 #include "audio_mixer.h"
@@ -241,7 +240,7 @@ bool renderLabel(uint64_t key)
     return label != LHandle && label != LDriver;
 }
 
-// Render-state fields that changed since the capture, leaving out those in skip.
+// Fields changed since the capture, except those in skip.
 void changedFields(const Footprint& before, const std::set<uint64_t>* skip, std::vector<uint64_t>& out)
 {
     out.clear();
@@ -423,7 +422,7 @@ void logCounts()
                 c.waited.exchange(0), c.waitedUs.exchange(0) / 1000.0, c.waitedMaxUs.exchange(0) / 1000.0);
 }
 
-// Mixer: lets waiting threads go, then takes the SND mutex back; true when another thread held it meanwhile.
+// Mixer: retakes the SND mutex; true if another thread held it.
 bool takeBack(x86::CPU& cpu)
 {
     const uint32_t holds = s_otherHolds;
@@ -467,7 +466,7 @@ void bump(reg32 voice)
 
 }
 
-// Other threads, in a gated SND function: wait while the mixer renders without the mutex.
+// Other threads: waits while the mixer renders unlocked.
 void gate(win32::WinApplication* app, const x86::CPU& cpu)
 {
     if (s_state.load(std::memory_order_seq_cst) == Closed || cpu.efs == s_mixer)
@@ -647,7 +646,7 @@ void sub_728fd2(win32::WinApplication* app, x86::CPU& cpu)
     sub_728fd2_guest(app, cpu);
 }
 
-// Voice gain (voice index, channel, gain), and the same with a ramp.
+// Voice gain setters (voice index, channel, gain).
 void sub_72905d(win32::WinApplication* app, x86::CPU& cpu)
 {
     split::gate(app, cpu);
@@ -666,7 +665,7 @@ void sub_729087(win32::WinApplication* app, x86::CPU& cpu)
     sub_729087_guest(app, cpu);
 }
 
-// Voice end in the render (voice index): takes the SND mutex back first; skipped when another thread stopped it then.
+// Render voice end (index): retakes the SND mutex first.
 void sub_7292ac(win32::WinApplication* app, x86::CPU& cpu)
 {
     if (split::s_mixer && split::s_mixer == cpu.efs)

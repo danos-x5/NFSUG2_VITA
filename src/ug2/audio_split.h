@@ -13,7 +13,7 @@ void configure(win32::WinApplication& app);
 
 bool on();
 
-// Other threads, at the start of an SND function that touches render state: waits until the render is done.
+// Other threads, entering a gated SND function: waits for the render.
 void gate(win32::WinApplication* app, const x86::CPU& cpu);
 
 // Gain changes of a voice (by index) so far.
@@ -33,7 +33,7 @@ private:
     bool        m_open;
 };
 
-// Mixer, around the render loop 0x725C8E (dev_snd_watch): learns the fields the mixer writes.
+// Around the render loop 0x725C8E: learns mixer-written fields (dev_snd_watch).
 void loopBegin(const x86::CPU& cpu);
 void loopEnd(const x86::CPU& cpu);
 

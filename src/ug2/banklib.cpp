@@ -17,6 +17,7 @@ namespace ug2
 void sub_71feef(win32::WinApplication* app, x86::CPU& cpu);
 void sub_71fefb(win32::WinApplication* app, x86::CPU& cpu);
 void sub_720340(win32::WinApplication* app, x86::CPU& cpu);
+void sub_7203bd(win32::WinApplication* app, x86::CPU& cpu);
 void sub_7203eb(win32::WinApplication* app, x86::CPU& cpu);
 void sub_7204f3(win32::WinApplication* app, x86::CPU& cpu);
 void sub_720684(win32::WinApplication* app, x86::CPU& cpu);
@@ -167,6 +168,28 @@ reg32 f7207bfBody(x86::CPU&, reg32, reg32& ecx, reg32& edx, reg32 esp)
     const rc::Division v = rc::divideSigned(reg32(sreg32(dividend) >> 31), dividend, ecx);
     edx = v.remainder;
     return v.quotient;
+}
+
+// The value (+4) set from the first of count flags that is set, kept when none is.
+reg32 f7203bdBody(x86::CPU&, reg32, reg32& ecx, reg32& edx, reg32 esp)
+{
+    const reg32 p = argument(esp);
+    ecx = rc::ld16(p) + p;
+    edx = 0;
+    if (rc::ld8(p + 2) != 0)
+    {
+        do
+        {
+            if (rc::ld32(ecx + 4 * edx) != 0)
+            {
+                ecx = rc::ld32(p + 4 * edx + 8);
+                rc::st32(p + 4, ecx);
+                break;
+            }
+            ++edx;
+        } while (sreg32(edx) < sreg32(reg32(rc::ld8(p + 2))));
+    }
+    return rc::ld32(p + 4);
 }
 
 // 1 when any of count dwords is set.
@@ -368,6 +391,7 @@ const Spec s_specs[] = {
     {0x720f32, &f720f32Body, &sub_720f32, 0x1c},
     {0x720fd1, &f720fd1Body, &sub_720fd1, 0},
     {0x720ff8, &f720ff8Body, &sub_720ff8, 0},
+    {0x7203bd, &f7203bdBody, &sub_7203bd, 8},
 };
 const int SpecCount = int(sizeof(s_specs) / sizeof(s_specs[0]));
 
@@ -521,6 +545,11 @@ reg32 f720340(x86::CPU& cpu, reg32* cd, reg32 eax, reg32 esp)
 reg32 f7203eb(x86::CPU& cpu, reg32* cd, reg32 eax, reg32 esp)
 {
     return run<3>(cpu, eax, cd[0], cd[1], esp);
+}
+
+reg32 f7203bd(x86::CPU& cpu, reg32* cd, reg32 eax, reg32 esp)
+{
+    return run<13>(cpu, eax, cd[0], cd[1], esp);
 }
 
 reg32 f7204f3(x86::CPU& cpu, reg32* cd, reg32 eax, reg32 esp)

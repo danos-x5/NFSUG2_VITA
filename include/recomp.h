@@ -224,6 +224,98 @@ inline void st64(x86::reg32 address, x86::reg64 value)  { store(address, value);
 inline void stf32(x86::reg32 address, float value)      { store(address, value); }
 inline void stf64(x86::reg32 address, double value)     { store(address, value); }
 
+// Bit casts for stack slots kept in C++ locals.
+inline x86::reg32 f32Bits(float value)      { x86::reg32 r; memcpy(&r, &value, 4); return r; }
+inline x86::reg64 f64Bits(double value)     { x86::reg64 r; memcpy(&r, &value, 8); return r; }
+inline float bitsF32(x86::reg32 value)      { float r; memcpy(&r, &value, 4); return r; }
+inline double bitsF64(x86::reg64 value)     { double r; memcpy(&r, &value, 8); return r; }
+
+// Guest base clang sees as a separate object (--separate-stack).
+#define RC_STACK_BASE(name) \
+    x86::reg8* name = win32::g_guestBase; \
+    asm("" : "+r"(name)); \
+    __builtin_assume_separate_storage(name, win32::g_guestBase)
+
+template< typename T >
+inline T sload(x86::reg8* base, x86::reg32 address)
+{
+    T value;
+    memcpy(&value, base + address, sizeof(T));
+    return value;
+}
+
+template< typename T >
+inline void sstore(x86::reg8* base, x86::reg32 address, T value)
+{
+    memcpy(base + address, &value, sizeof(T));
+}
+
+// --promote-bisect: guest functions from promote_lo up to promote_hi keep their stack slots in locals.
+extern x86::reg32 g_promoteLo, g_promoteSpan;
+#define RC_PROMOTED(address) (x86::reg32((address) - rc::g_promoteLo) < rc::g_promoteSpan)
+
+// --check-assumptions: logs where the generated code's facts fail.
+[[gnu::cold, gnu::noinline]] void slotMismatch(x86::reg32 site, x86::reg32 address, uint64_t memory, uint64_t local,
+                                               unsigned bytes);
+[[gnu::cold, gnu::noinline]] void heapInFrame(x86::reg32 site, x86::reg32 address, x86::reg32 esp, x86::reg32 limit);
+
+// The address, logged when inside separate stack bytes [esp, limit).
+inline x86::reg32 heapAddress(x86::reg32 address, unsigned size, x86::reg32 esp, x86::reg32 limit, x86::reg32 site)
+{
+    if (__builtin_expect(address + size > esp && address < limit, 0))
+        heapInFrame(site, address, esp, limit);
+    return address;
+}
+
+template< typename T >
+inline void checkConstant(x86::reg32 address, T expected, x86::reg32 site)
+{
+    if (__builtin_expect(load<T>(address) != expected, 0))
+        slotMismatch(site, address, uint64_t(load<T>(address)), uint64_t(expected), sizeof(T));
+}
+
+// --check-poison: a promoted slot's guest memory holds a pattern made from its address.
+template< typename T >
+inline T poison(x86::reg32 address)
+{
+    const uint64_t bits = 0x5eed5eed00000000ull | (address ^ 0xa5a5a5a5u);
+    T value;
+    memcpy(&value, &bits, sizeof(T));
+    return value;
+}
+
+template< typename T >
+inline void storePoison(x86::reg32 address)
+{
+    store<T>(address, poison<T>(address));
+}
+
+template< typename T >
+inline void checkPoison(x86::reg32 address, x86::reg32 site)
+{
+    const T memory = load<T>(address), expected = poison<T>(address);
+    if (__builtin_expect(memcmp(&memory, &expected, sizeof(T)) != 0, 0))
+    {
+        uint64_t m = 0, l = 0;
+        memcpy(&m, &memory, sizeof(T));
+        memcpy(&l, &expected, sizeof(T));
+        slotMismatch(site, address, m, l, sizeof(T));
+    }
+}
+
+template< typename T >
+inline void checkSlot(x86::reg32 address, T local, x86::reg32 site)
+{
+    const T memory = load<T>(address);
+    if (__builtin_expect(memcmp(&memory, &local, sizeof(T)) != 0, 0))
+    {
+        uint64_t m = 0, l = 0;
+        memcpy(&m, &memory, sizeof(T));
+        memcpy(&l, &local, sizeof(T));
+        slotMismatch(site, address, m, l, sizeof(T));
+    }
+}
+
 }
 
 #endif /* !RECOMP_H_ */

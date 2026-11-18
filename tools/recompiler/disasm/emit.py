@@ -19,6 +19,15 @@ def function_body(module, fn, function_names):
     ctx = C.Ctx(fn, function_names, record=False)
     sub = fn.sub
     lines = []
+    frame = getattr(fn, 'frame', None)
+    expected = {}
+    if frame is not None:
+        for (i, key) in list(frame.sites) + list(frame.stack_sites):
+            expected.setdefault(i, set()).add(key)
+        for slot in sorted(frame.slots.values(), key=lambda s: s.name):
+            if slot.entry_load:
+                offset = 'esp + 0x%xu' % slot.k if slot.k >= 0 else 'esp - 0x%xu' % -slot.k
+                lines.append('  %s = rc::load<%s>(%s);' % (slot.name, slot.ctype, offset))
     if sub.dynamic_labels:
         lines += ['  goto start;', 'dynamic_jump:', '  switch(cpu.ip)', '  {', 'start:']
     if fn.entry != 0:
@@ -44,6 +53,10 @@ def function_body(module, fn, function_names):
         else:
             ctx.begin(i)
             code = codegen.generate(ctx, ins)
+            if ctx.used_slots != expected.get(i, set()):
+                raise AssertionError('0x%x: promoted stack slot accesses %s, generated %s'
+                                     % (ins.address, expected.get(i), ctx.used_slots))
+            code = ctx.slot_checks + code
         lines += ['    ' + l for l in code]
         fallthrough = ins.mnemonic not in ('jmp', 'ret')
     last = fn.n - 1
@@ -81,6 +94,14 @@ def declarations(fn, body):
     for type_, name in fn.lazy_locals():
         if name in used:
             lines.append('  %s %s = 0;' % (type_, name))
+    frame = getattr(fn, 'frame', None)
+    if frame is not None:
+        for slot in sorted(frame.slots.values(), key=lambda s: s.name):
+            lines.append('  [[maybe_unused]] %s %s = 0;' % (slot.ctype, slot.name))
+    if re.search(r'\bsb\b', text):
+        lines.append('  RC_STACK_BASE(sb);')
+    if re.search(r'\besp0\b', text):
+        lines.append('  const x86::reg32 esp0 = cpu.esp;')
     return lines
 
 

@@ -21,6 +21,7 @@
 
 #include <lib/file.h>
 #include <lib/memmap.h>
+#include <recomp.h>
 #include <lib/registry.h>
 #include <platform/config.h>
 #include <platform/cores.h>
@@ -213,6 +214,8 @@ int main(int argc, char** argv)
     pf::logSetInfo(pf::Config::getBool("log_info", true));
 #endif
     pf::logSetDeferred(pf::Config::getBool("log_async", true));
+    rc::g_promoteLo = x86::reg32(pf::Config::getInt("promote_lo", 0));
+    rc::g_promoteSpan = x86::reg32(pf::Config::getInt("promote_hi", -1)) - rc::g_promoteLo;
 #ifdef DEV_SETTINGS
     pf::logInfo("build switches: native functions %d, audio fast paths %d, render fast paths %d, each key can be set "
                 "in the settings file (DEV_SETTINGS)", NATIVE_FUNCTIONS, AUDIO_FAST_PATHS, RENDER_FAST_PATHS);

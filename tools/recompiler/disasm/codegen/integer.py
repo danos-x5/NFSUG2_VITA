@@ -583,14 +583,24 @@ def stack_slot(ins):
 
 def cg_push(ctx, value):
     bits = value.size * 8
+    slot = ctx.slot(('push',))
+    if slot is not None:
+        store = ctx.slot_set(slot, 's', 'v', 'int')
+    else:
+        store = ctx.store(bits, 's', 'v', ctx.stack_access(('push',)))
     return block(['const %s v = %s;' % (T(bits), ctx.val(value)),
                   'const x86::reg32 s = %s - %d;' % (ctx.reg('esp'), stack_slot(ctx.ins))] +
-                 ctx.store(bits, 's', 'v') + ctx.set_reg('esp', 's'))
+                 store + ctx.set_reg('esp', 's'))
 
 
 def cg_pop(ctx, dst):
     bits = dst.size * 8
-    return block(['const %s v = %s;' % (T(bits), ctx.load(bits, ctx.reg('esp')))] +
+    slot = ctx.slot(('pop',))
+    if slot is not None:
+        value = ctx.slot_get(slot, ctx.reg('esp'), 'int')
+    else:
+        value = ctx.load(bits, ctx.reg('esp'), ctx.stack_access(('pop',)))
+    return block(['const %s v = %s;' % (T(bits), value)] +
                  ctx.set_reg('esp', '%s + %d' % (ctx.reg('esp'), stack_slot(ctx.ins))) + ctx.put(dst, 'v'))
 
 
@@ -623,7 +633,12 @@ def cg_enter(ctx, alloc, nesting):
 
 
 def cg_leave(ctx):
-    return block(['const x86::reg32 s = %s;' % ctx.reg('ebp')] + ctx.set_reg('ebp', ctx.load(32, 's')) +
+    slot = ctx.slot(('leave',))
+    if slot is not None:
+        value = ctx.slot_get(slot, ctx.reg('ebp'), 'int')
+    else:
+        value = ctx.load(32, 's', ctx.stack_access(('leave',)))
+    return block(['const x86::reg32 s = %s;' % ctx.reg('ebp')] + ctx.set_reg('ebp', value) +
                  ctx.set_reg('esp', 's + 4'))
 
 

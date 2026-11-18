@@ -60,6 +60,16 @@ def fval(ctx, op):
         return ctx.st(_index(ctx, op))
     if op.type == X.X86_OP_MEM:
         a = ctx.address(op)
+        s = ctx.mem_slot(op)
+        if s is not None:
+            return 'x86::Float(%s)' % ctx.slot_get(s, a, 'float')
+        constant = ctx.read_only_constant(op)
+        if constant is not None:
+            return 'x86::Float(%s)' % constant
+        stack = ctx.stack_access(ctx.mem_key(op))
+        if stack or ctx.heap_address(a, op.size) != a:
+            if op.size in (4, 8):
+                return 'x86::Float(%s)' % ctx.typed_load('float' if op.size == 4 else 'double', a, stack)
         if op.size == 4:
             return 'x86::Float(%s))' % _float_access(ctx, op, 'ldf32')
         if op.size == 8:
@@ -73,6 +83,13 @@ def fstore(ctx, op, value):
     if op.type == X.X86_OP_REG:
         return ['%s = x86::Float(%s);' % (ctx.st(_index(ctx, op)), value)]
     a = ctx.address(op)
+    s = ctx.mem_slot(op)
+    if s is not None:
+        return ctx.slot_set(s, a, value, 'float')
+    stack = ctx.stack_access(ctx.mem_key(op))
+    if (stack or ctx.heap_address(a, op.size) != a) and op.size in (4, 8):
+        ctype = 'float' if op.size == 4 else 'double'
+        return ctx.typed_store(ctype, a, '%s(%s)' % (ctype, value), stack)
     if op.size == 4:
         return ['%s, float(%s));' % (_float_access(ctx, op, 'stf32'), value)]
     if op.size == 8:

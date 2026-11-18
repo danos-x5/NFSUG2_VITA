@@ -27,7 +27,7 @@ import bootstrap  # noqa: E402
 bootstrap.ensure_capstone()
 import capstone  # noqa: E402
 import bankcode  # noqa: E402
-from disasm import analysis, codegen, discover, fpustack, image as pe_image, writer  # noqa: E402
+from disasm import analysis, codegen, discover, fpustack, frames, image as pe_image, writer  # noqa: E402
 
 GAME = None                             # the games/<name>.py module chosen with --game
 
@@ -146,6 +146,34 @@ def sync_output(stage, out_dir):
     print('generated %d files into %s (%d changed, %d removed)' % (len(names), out_dir, changed, removed))
 
 
+def promote_stack_slots(program, promote, separate):
+    started = time.time()
+    analysis_ = frames.Analysis(program)
+    result = analysis_.run(promote, separate)
+    reasons = collections.Counter()
+    accesses = promoted = saves = slots = functions = loads = separated = 0
+    for a, f in result.items():
+        if f.reason:
+            reasons[f.reason.split(' 0x')[0]] += 1
+            continue
+        accesses += len(f.accesses)
+        separated += len(f.stack_sites)
+        if f.slots or f.stack_sites:
+            program.functions[a].frame = f
+        if f.slots:
+            functions += 1
+            slots += len(f.slots)
+            loads += sum(s.entry_load for s in f.slots.values())
+            promoted += len(f.sites)
+            saves += sum(1 for s in f.sites.values() if s.save)
+    print('stack slots: %d functions, %d slots (%d loaded at entry), %d of %d resolved stack accesses (%d register '
+          'saves); %d shared esp changes solved, %d conflicting; %d indirect calls settled by choice (%.0f s)'
+          % (functions, slots, loads, promoted, accesses, saves, len(analysis_.known), len(analysis_.conflicts),
+             sum(len(v) for v in analysis_.chosen.values()), time.time() - started))
+    print('stack slots: %d accesses marked as not aliasing other guest memory' % separated)
+    print('stack slots: functions left as they are: %s' % ', '.join('%s %d' % kv for kv in reasons.most_common()))
+
+
 def report(discovery, module, program):
     """Statistics and every place the generated code traps. Returns the number of problems: unsupported
     instructions in reachable code, SIMD outside the gated ranges and sites breaking the flag convention."""
@@ -247,6 +275,18 @@ def main():
                         help='pass flags through calls and returns as any code may read them (for comparisons)')
     parser.add_argument('--reads-zeroed-registers', action='store_true',
                         help='count xor r, r and sub r, r as reads of r (for comparisons)')
+    parser.add_argument('--promote-stack-slots', action='store_true',
+                        help='keep stack slots no other code can see in C++ locals (disasm/frames.py)')
+    parser.add_argument('--separate-stack', action='store_true',
+                        help='tell clang that frame accesses and pushes never alias other guest accesses (disasm/frames.py)')
+    parser.add_argument('--fold-rdata', action='store_true',
+                        help='loads from .rdata (read-only on the PC) become constants')
+    parser.add_argument('--promote-bisect', action='store_true',
+                        help='keep slots in locals only in functions from promote_lo to promote_hi (settings file)')
+    parser.add_argument('--check-poison', action='store_true',
+                        help='with --check-assumptions: promoted slots write a poison pattern to guest memory instead')
+    parser.add_argument('--check-assumptions', action='store_true',
+                        help='log at run time where the facts behind --promote-stack-slots, --separate-stack and --fold-rdata fail')
     parser.add_argument('--flag-audit', action='store_true',
                         help='check at run time that every flag read from cpu was stored there (logs the reader)')
     parser.add_argument('--float-align', choices=('off', 'stack', 'all'), default='off',
@@ -293,6 +333,12 @@ def main():
                                pure_natives=getattr(GAME, 'PURE_NATIVES', ()) if args.pure_natives else (),
                                native_writes=args.native_writes)
     program.analyze()
+    program.check_assumptions = args.check_assumptions
+    program.fold_rdata = args.fold_rdata
+    program.promote_bisect = args.promote_bisect
+    program.check_poison = args.check_poison
+    if args.promote_stack_slots or args.separate_stack:
+        promote_stack_slots(program, args.promote_stack_slots, args.separate_stack)
     # Every direct call and tail call must reach a generated function.
     missing = sorted(set(x.target for fn in program.functions.values() for i in fn.reachable for x in fn.exits[i]
                          if x.kind in ('call', 'tail') and x.target not in program.functions))

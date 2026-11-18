@@ -65,9 +65,14 @@ const Settings& settings()
     {
         const Settings r = { NFSU_NATIVE_SETTING("bank_native"), pf::Config::getBool("shadow_bank", false),
                              pf::Config::getBool("bank_cache_check", false) };
-        pf::logInfo("bank code: %u translated routines, %s%s%s", unsigned(g_translationCount),
-                    r.native ? "native" : "interpreted", r.native && r.shadow ? ", shadow compare" : "",
-                    r.check ? ", cache check" : "");
+        pf::logInfo("bank code: %u translated routines, %s%s%s, %u library functions called in place",
+                    unsigned(g_translationCount), r.native ? "native" : "interpreted",
+                    r.native && r.shadow ? ", shadow compare" : "", r.check ? ", cache check" : "",
+                    unsigned(g_directLibraryCount));
+        for (uint32_t i = 0; i < g_directLibraryCount; ++i)
+            if (!mixer::libraryPure(g_directLibrary[i]))
+                pf::logError("bank code: 0x%08x is called in place but is not a pure library function",
+                             unsigned(g_directLibrary[i]));
         return r;
     });
 }
@@ -841,7 +846,7 @@ void runNative(win32::WinApplication* app, x86::CPU& cpu, const Translation& t, 
     uint32_t resume = 0;
     for (;;)
     {
-        resume = t.run(cpu, memory, range.begin, range.bank, resume);
+        resume = t.run(app, cpu, memory, range.begin, range.bank, resume);
         if (resume == Returned)
             break;
         if (mixstats::on())
@@ -937,7 +942,7 @@ void runShadow(win32::WinApplication* app, x86::CPU& cpu, const Translation& t, 
         if (compare)
         {
             const x86::CPU before = cpu;
-            resume = t.record(cpu, nativeStores, range.begin, range.bank, resume);
+            resume = t.record(app, cpu, nativeStores, range.begin, range.bank, resume);
             native = cpu;
             nativeStores.undo();
             cpu = before;
@@ -1042,6 +1047,8 @@ void runRoutine(win32::WinApplication* app, x86::CPU& cpu)
     const mixstats::Scoped scope(cpu, mixstats::Bank);
     ++s_depth;
     const Settings& options = settings();
+    static const bool s_library = (lib::configure(app), true);
+    RC_USE(s_library);
     Routine* cached = routine(range);
     const Translation* native = cached && options.native && cpu.ip == range.begin ? translation(*cached, range)
                                                                                   : nullptr;

@@ -256,6 +256,13 @@ def main():
                         help='with --float-align: check those addresses at run time and log misaligned sites')
     parser.add_argument('--fpu-check', action='store_true',
                         help='assert the x87 depth after every call whose depth is known (finds leaking callees)')
+    parser.add_argument('--inline-ftol2', action='store_true',
+                        help='emit calls to _ftol2 (the game\'s INLINE_HELPERS) inline instead of calling the native')
+    parser.add_argument('--pure-natives', action='store_true',
+                        help='no cpu.terminate check after calls that reach only the game\'s PURE_NATIVES')
+    parser.add_argument('--native-writes', action='store_true',
+                        help='callers of a native override take eax, ecx and edx as written where its guest body '
+                             'writes them on every path')
     args = parser.parse_args()
     global GAME
     GAME = importlib.import_module('games.' + args.game)
@@ -281,7 +288,10 @@ def main():
                                setjmp=GAME.SETJMP, longjmp_jumps=GAME.LONGJMP_JUMPS, fpu_check=args.fpu_check,
                                fpu_deltas=GAME.FPU_DELTAS, preempt_loops=True, address_taken=discovery.address_taken,
                                abi_flags=not args.flags_across_calls, jump_targets=GAME.JUMP_TARGETS,
-                               flag_audit=args.flag_audit, zero_idioms=not args.reads_zeroed_registers)
+                               flag_audit=args.flag_audit, zero_idioms=not args.reads_zeroed_registers,
+                               inline_calls=getattr(GAME, 'INLINE_HELPERS', {}) if args.inline_ftol2 else {},
+                               pure_natives=getattr(GAME, 'PURE_NATIVES', ()) if args.pure_natives else (),
+                               native_writes=args.native_writes)
     program.analyze()
     # Every direct call and tail call must reach a generated function.
     missing = sorted(set(x.target for fn in program.functions.values() for i in fn.reachable for x in fn.exits[i]

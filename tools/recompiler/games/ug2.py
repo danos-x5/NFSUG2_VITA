@@ -77,6 +77,20 @@ NATIVE_OVERRIDES = [
     0x5ce170,   # texture creation of a texture record (thiscall)
 ]
 
+# Calls emitted inline with generate.py --inline-ftol2 (codegen/control.py INLINE): address -> helper.
+INLINE_HELPERS = {
+    0x75bed4: 'ftol2',
+}
+
+# Native overrides that never run guest code, wait or set cpu.terminate (generate.py --pure-natives).
+PURE_NATIVES = [
+    0x75bed4,   # _ftol2
+    0x75c4d0,   # _chkstk
+    0x6f5fc5,   # Cyrix probe
+    0x75cfd0,   # memcpy
+    0x760df0,   # memmove
+]
+
 # Function entries discovery misses. Audio bank library table 0x817FE0: the data-pointer scan reads these entries as
 # 16-bit pairs.
 EXTRA_ENTRIES = [0x7201c2, 0x7201fe, 0x72023c, 0x72025f, 0x7202fb, 0x720376, 0x7203bd]

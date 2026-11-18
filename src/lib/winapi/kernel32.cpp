@@ -1704,7 +1704,10 @@ DWORD WaitForMultipleObjectsEx(WinApplication* app, x86::CPU& cpu,
     if (result != WAIT_TIMEOUT || dwMilliseconds == 0)
     {
         if (snd && result == 0 && nCount == 1)
+        {
             pf::perf::sndAcquired(x86::reg32(lpHandles[0]), cpu.efs);
+            pf::perf::sndWatch(true, x86::reg32(lpHandles[0]), cpu.efs, cpu.esp, 0);
+        }
         return result;
     }
     if (app->usesContext(cpu))
@@ -1766,7 +1769,10 @@ DWORD WaitForMultipleObjectsEx(WinApplication* app, x86::CPU& cpu,
         else
             pf::perf::sndOtherWait(sndWoke - sndBegan);
         if (result == 0 && nCount == 1)
+        {
             pf::perf::sndAcquired(x86::reg32(lpHandles[0]), cpu.efs);
+            pf::perf::sndWatch(true, x86::reg32(lpHandles[0]), cpu.efs, cpu.esp, sndWoke - sndBegan);
+        }
     }
     if (probe)
         waitprobe::record(waitprobe::Wait, thread, rc::ld32(cpu.esp), x86::reg32(lpHandles[0]), uint32_t(pf::ticksUs() - began),
@@ -2345,6 +2351,8 @@ HFILE _lopen(WinApplication* app, x86::CPU& cpu, LPCSTR lpPathName, int iReadWri
 BOOL ReleaseMutex(WinApplication* app, x86::CPU& cpu,
                   HANDLE hMutex)
 {
+    if (pf::perf::enabled())
+        pf::perf::sndWatch(false, x86::reg32(hMutex), cpu.efs, cpu.esp, 0);
     if (!win32::Event::releaseMutex(hMutex, threadField(app, cpu, teb::ThreadId)))
         return 0;
     if (pf::perf::enabled())

@@ -5,6 +5,7 @@
 #include "audio_cull.h"
 #include "audio_defer.h"
 #include "audio_kernels.h"
+#include "audio_split.h"
 #include "audio_stats.h"
 
 #include <lib/event.h>
@@ -888,7 +889,9 @@ static void renderLoop(win32::WinApplication* app, x86::CPU& cpu)
     mixer::s_sndMutex = mixer::s_sndYield ? win32::Event::find(rc::ld32(mixer::SndHandleSlot)) : nullptr;
     const reg32 output = mixer::s_dump ? rc::ld32(argument(cpu, 0)) : 0;
     const reg32 frames = argument(cpu, 1);
+    split::loopBegin(cpu);
     sub_725c8e_guest(app, cpu);
+    split::loopEnd(cpu);
     mixer::s_sndMutex = nullptr;
     if (mixer::s_dump)
         fwrite(rc::host(output), 2 * (rc::ld8(OutputChannelsA) + rc::ld8(OutputChannelsB)), frames, mixer::s_dump);
@@ -1035,7 +1038,10 @@ static void voiceRender(win32::WinApplication* app, x86::CPU& cpu)
     if (mixer::unlocked(cpu) && renderAudited(audit))
     {
         s_yieldVoice = 0;
-        sub_729574_guest(app, cpu);
+        {
+            const split::Window window(app, cpu);
+            sub_729574_guest(app, cpu);
+        }
         if (mixer::s_midLocked)
         {
             mixer::s_midLocked = false;
@@ -1820,6 +1826,20 @@ void configure(win32::WinApplication& app)
                 s_nativeKernels ? "native" : "guest", s_nativeKernels && s_neonKernels ? " (float fast paths)" : "",
                 native::s_inlineNotifications ? "inline" : "locked",
                 native::s_auditObjectCalls ? "audited" : "locked");
+}
+
+bool reaudit(win32::WinApplication* app, x86::CPU& cpu)
+{
+    native::Audit audit;
+    if (s_midLocked || !unlocked(cpu) || native::renderAudited(audit))
+        return false;
+    s_thread.store(0, std::memory_order_relaxed);
+    setLock(app, cpu, s_lock);
+    app->lockContext(cpu);
+    s_midLocked = true;
+    if (pf::perf::enabled())
+        pf::perf::audioLocked(audit.reason, audit.address);
+    return true;
 }
 
 bool libraryAudited(x86::reg32 target, const x86::CPU& cpu, const char*& reason, x86::reg32& value)

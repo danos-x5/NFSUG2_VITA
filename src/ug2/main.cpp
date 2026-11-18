@@ -4,6 +4,7 @@
 #include "audio_cull.h"
 #include "audio_defer.h"
 #include "audio_mixer.h"
+#include "audio_split.h"
 #include "audio_stats.h"
 #include "bankcode.h"
 #include "boot.h"
@@ -255,6 +256,7 @@ int main(int argc, char** argv)
         ug2::mixer::configure(app);
         ug2::cull::configure(app);
         ug2::mixstats::configure(app);
+        ug2::split::configure(app);
         ug2::sndq::configure(app);
         ug2::music::configure(app);
         ug2::boot::configure(app);

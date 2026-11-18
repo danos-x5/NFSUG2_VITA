@@ -70,6 +70,14 @@ NATIVE_OVERRIDES = [
     0x734bf4,   # EA-XA decoder (x87)
     0x72cac7,   # output module, float to 16-bit
     0x7216c6,   # SND output rate (device, rate): audio_mix_rate
+    # Voice render outside the SND mutex (src/ug2/audio_split.cpp): voice end, and the SND functions other threads wait
+    # in while that render runs: voices, streams, aux effects, SND heap frees
+    0x7292ac,
+    0x728df9, 0x728f75, 0x728fd2, 0x72905d, 0x729087, 0x7290af, 0x72d3cb, 0x72d3ec, 0x72d4ac, 0x72d548, 0x72d8e9,
+    0x723138, 0x7231d4, 0x723515, 0x723608, 0x723649, 0x72366a, 0x723699, 0x7237ef, 0x72387b, 0x72c31e,
+    0x722442, 0x727a12, 0x7279d6,
+    0x72653c, 0x7268bf, 0x726cee, 0x726db3,
+    0x724894,
     # Audio bank load and unload: bank-code lookups are cached between them (src/ug2/bankcode.cpp)
     0x7212e5,   # bank loader
     0x7211ab,   # bank unload

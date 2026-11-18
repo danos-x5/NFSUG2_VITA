@@ -136,7 +136,10 @@ class Function:
                 self.exits[i] = [Exit('exit', 'ret')]
             elif mnemonic == 'call':
                 op = ins.operands[0]
-                if op.type == X.X86_OP_IMM:
+                if op.type == X.X86_OP_IMM and op.imm in self.program.inline_calls:
+                    self.branch[i] = ('inline', op.imm)
+                    self.exits[i] = fall_off
+                elif op.type == X.X86_OP_IMM:
                     self.branch[i] = ('call', op.imm)
                     self.exits[i] = [Exit('call', 'call', op.imm)] + fall_off
                 else:
@@ -810,7 +813,7 @@ class Function:
             return None
         if self.is_call(i):
             return self.fpu_after_call(i)
-        return d + fpustack.effect(self.instructions[i].mnemonic.split()[-1])
+        return d + fpustack.step(self, i)
 
     def entry_loads(self):
         return [f for f in C.CPU_FLAGS if (self.ENTRY, f) in self.reloads]
@@ -836,8 +839,12 @@ class Program:
     def __init__(self, modules, thread_segments, skip_instructions, function_names, flags_preserved=(), not_code=(),
                  native_overrides=(), local_registers=True, memory_functions=(), local_x87=True, setjmp=None,
                  longjmp_jumps=None, fpu_check=False, fpu_deltas=None, preempt_loops=False, address_taken=None,
-                 abi_flags=False, jump_targets=None, flag_audit=False, zero_idioms=True):
+                 abi_flags=False, jump_targets=None, flag_audit=False, zero_idioms=True, inline_calls=None,
+                 pure_natives=(), native_writes=False):
         self.functions = {}
+        self.inline_calls = dict(inline_calls or {})    # callee -> codegen.control.INLINE helper
+        self.pure_natives = set(pure_natives)           # natives that never set cpu.terminate
+        self.native_writes = native_writes              # natives write what their guest bodies always write
         self.zero_idioms = zero_idioms     # xor/sub/sbb r, r do not read r
         # Backward jumps are preemption points (WinApplication::allowPreemption).
         self.preempt_loops = preempt_loops
@@ -972,7 +979,7 @@ class Program:
     def compute_reg_must(self, fns):
         """Function.reg_must_def of every function, to the greatest fixed point (recursion assumes the registers
         written until a path proves otherwise). Registers a function restores before returning do not count."""
-        unknown = self.native_overrides | {self.setjmp}
+        unknown = ({self.setjmp} if self.native_writes else self.native_overrides | {self.setjmp})
         self.reg_must = dict((fn.entry_address, 0 if fn.entry_address in unknown else CALL_WRITTEN) for fn in fns)
         changed = True
         while changed:
@@ -1164,10 +1171,13 @@ class Program:
 
     def compute_pure(self):
         """Functions whose calls cannot set cpu.terminate on this thread."""
-        impure = self.native_overrides | {self.setjmp}
+        impure = (self.native_overrides - self.pure_natives) | {self.setjmp}
         callees = {}
         for a, fn in self.functions.items():
             targets = set()
+            if a in self.pure_natives and a in self.native_overrides:
+                callees[a] = targets
+                continue
             for i in fn.reachable:
                 if fn.instructions[i].address in fn.thread_segments or fn.instructions[i].address in self.longjmp_jumps:
                     impure.add(a)

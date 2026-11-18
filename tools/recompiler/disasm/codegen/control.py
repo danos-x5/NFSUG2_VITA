@@ -61,7 +61,20 @@ def cg_loopne(ctx, *operands):
     return _loop(ctx, ' && !%s' % ctx.flag('zf'))
 
 
+def _inline_ftol2(ctx):
+    """_ftol2 inline, as native::sub_75bed4: st0 truncated into edx:eax."""
+    lines = ['const x86::reg64 r = x86::reg64(x86::truncInteger64(double(%s)));' % ctx.st(0)]
+    lines += ctx.set_reg('eax', 'x86::reg32(r)') + ctx.set_reg('edx', 'x86::reg32(r >> 32)')
+    return ['{'] + ['    ' + l for l in lines] + ['}'] + ctx.fpop()
+
+
+# Helpers whose calls are emitted inline (Program.inline_calls names them).
+INLINE = {'ftol2': _inline_ftol2}
+
+
 def cg_call(ctx, destination):
+    if ctx.fn.branch[ctx.index][0] == 'inline':
+        return INLINE[ctx.fn.program.inline_calls[destination.imm]](ctx)
     # The return address slot is not written: callees take their arguments relative to esp.
     if destination.type == X.X86_OP_IMM:
         ctx.boundary('call')

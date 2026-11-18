@@ -240,10 +240,12 @@ void multiply(const float* a, const float* b, float* out)
     float32x4_t r[4];
     for (int i = 0; i < 4; ++i)
     {
-        float32x4_t row = vmulq_n_f32(b0, a[i * 4]);
-        row = vmlaq_n_f32(row, b1, a[i * 4 + 1]);
-        row = vmlaq_n_f32(row, b2, a[i * 4 + 2]);
-        r[i] = vmlaq_n_f32(row, b3, a[i * 4 + 3]);
+        const float32x4_t ai = vld1q_f32(a + i * 4);
+        const float32x2_t lo = vget_low_f32(ai), hi = vget_high_f32(ai);
+        float32x4_t row = vmulq_lane_f32(b0, lo, 0);
+        row = vmlaq_lane_f32(row, b1, lo, 1);
+        row = vmlaq_lane_f32(row, b2, hi, 0);
+        r[i] = vmlaq_lane_f32(row, b3, hi, 1);
     }
     for (int i = 0; i < 4; ++i)
         vst1q_f32(out + i * 4, r[i]);

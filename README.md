@@ -218,7 +218,7 @@ export NFSU_LLVM=/usr/local/opt/llvm
 
 # 1. Recompiled game code from your game folder (about 5 minutes)
 python3 tools/recompiler/generate.py --game ug2 --binaries "<game folder>" --out src/ug2/generated \
-    --float-align all --inline-ftol2 --pure-natives --native-writes
+    --float-align all --inline-ftol2 --pure-natives --native-writes --promote-stack-slots --fold-rdata
 
 # 2. Effect tables from the same executable
 python3 -I tools/fx/fxtable.py --exe "<game folder>/SPEED2.EXE" --out include/winapi/d3d9_fxtables.h

@@ -23,7 +23,8 @@ REMEMBERED = os.path.join(REPO, 'build-game-dir.txt')
 GENERATED = os.path.join(REPO, 'src', 'ug2', 'generated')
 FX_TABLES = os.path.join(REPO, 'include', 'winapi', 'd3d9_fxtables.h')
 GAME_ART = os.path.join(REPO, 'sce_sys', 'game', 'icon0.png')
-CODEGEN_OPTIONS = ['--float-align', 'all', '--inline-ftol2', '--pure-natives', '--native-writes']
+CODEGEN_OPTIONS = ['--float-align', 'all', '--inline-ftol2', '--pure-natives', '--native-writes', '--promote-stack-slots',
+                   '--fold-rdata']
 
 
 def step(text):

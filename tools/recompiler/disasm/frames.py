@@ -794,6 +794,10 @@ class Walker:
 
 
 CHKSTK = 0x75c4d0
+# Reasons that mean a callee moves esp or ebp, or reads its caller's frame: callers keep their frames in memory.
+FRAME_HELPER = ('esp changed by an unknown amount', 'leave without a frame pointer', 'ret at a known height other than',
+                'mov esp from an unknown value', 'lea esp unknown', 'callee returns from its caller too', 'pop esp',
+                'ret with esp unknown', 'tail jump with esp unknown')
 
 
 def walk(program, fn, known, extents, final):
@@ -1126,6 +1130,12 @@ class Analysis:
         for a, f in frames.items():
             if f.reason is None and any(frame and t in walkers for t, frame, _ in f.ebp_calls):
                 f.reason = 'callee reads the frame through ebp'
+        helpers = set(a for a, f in frames.items() if f.reason and (f.reason.startswith(FRAME_HELPER) or (
+            f.reason.startswith('fs access') and frame_helper(self.program.functions[a])))) - {CHKSTK}
+        for a, f in frames.items():
+            fn = self.program.functions[a]
+            if f.reason is None and any(fn.branch[i][0] == 'call' and fn.branch[i][1] in helpers for i in fn.reachable):
+                f.reason = 'calls a function that changes its frame'
         for a, f in frames.items():
             f.extent = extents.get(a)
             if f.reason is None and not heights_plausible(self.program.functions[a], f):
@@ -1149,6 +1159,18 @@ def moves_esp(fn, i):
         return False
     return not (ins.mnemonic == 'lea' and ops[1].mem.base and ins.reg_name(ops[1].mem.base) == 'esp'
                 and not ops[1].mem.index)
+
+
+def frame_helper(fn):
+    """Sets esp from a register, or leaves through the caller's ebp."""
+    for i in fn.reachable:
+        ins = fn.instructions[i]
+        if moves_esp(fn, i) and ins.mnemonic not in ('leave', 'mov'):
+            return True
+        if ins.mnemonic in ('leave', 'mov') and moves_esp(fn, i) and not any(
+                fn.instructions[j].mnemonic == 'mov' and fn.instructions[j].op_str == 'ebp, esp' for j in fn.reachable):
+            return True
+    return False
 
 
 def ret_pops(fn):

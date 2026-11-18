@@ -836,8 +836,9 @@ class Program:
     def __init__(self, modules, thread_segments, skip_instructions, function_names, flags_preserved=(), not_code=(),
                  native_overrides=(), local_registers=True, memory_functions=(), local_x87=True, setjmp=None,
                  longjmp_jumps=None, fpu_check=False, fpu_deltas=None, preempt_loops=False, address_taken=None,
-                 abi_flags=False, jump_targets=None, flag_audit=False):
+                 abi_flags=False, jump_targets=None, flag_audit=False, zero_idioms=True):
         self.functions = {}
+        self.zero_idioms = zero_idioms     # xor/sub/sbb r, r do not read r
         # Backward jumps are preemption points (WinApplication::allowPreemption).
         self.preempt_loops = preempt_loops
         # Check the x87 depth after every call with a known result depth (diagnostic builds).

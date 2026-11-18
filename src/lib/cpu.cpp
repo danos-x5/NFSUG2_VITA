@@ -1,6 +1,8 @@
 #include <cpu.h>
+#include <recomp.h>
 #include <platform/log.h>
 #include <platform/time.h>
+#include <atomic>
 #include <cstring>
 
 namespace x86
@@ -322,4 +324,31 @@ extern "C" void convert64x80(const double *fp64, x86::IEEEf80Data *fp80)
     fp80->data3 = x86::reg16(uint16_t(mantissa >> 32));
     fp80->data4 = x86::reg16(uint16_t(mantissa >> 48));
     fp80->data5 = x86::reg16(expSign);
+}
+
+namespace rc
+{
+
+// Logs the first misaligned address of up to 256 sites.
+void misalignedFloat(x86::reg32 site, x86::reg32 address)
+{
+    static std::atomic<x86::reg32> sites[256];
+    static std::atomic<x86::reg32> total{0};
+    const x86::reg32 n = total.fetch_add(1) + 1;
+    for (std::atomic<x86::reg32>& slot : sites)
+    {
+        x86::reg32 seen = slot.load();
+        if (seen == site)
+            return;
+        // Atomic: the audio mixer can run guest code outside the execution lock.
+        if (seen == 0 && slot.compare_exchange_strong(seen, site))
+        {
+            pf::logError("misaligned float access at 0x%08x: address 0x%08x (%u so far)", site, address, n);
+            return;
+        }
+        if (seen == site)
+            return;
+    }
+}
+
 }

@@ -10,6 +10,50 @@ def _index(ctx, op):
     return int(name[-2] if name.endswith(')') else name[-1])
 
 
+FLOAT_ALIGN = 'off'         # vldr/vstr for 4-aligned float operands: 'off', 'stack' (esp, absolute), 'all' (any base)
+FLOAT_ALIGN_CHECK = False   # those helpers check the address and log misaligned sites (development)
+
+
+def _esp_stays_aligned(fn):
+    """Whether the function moves esp only by multiples of 4."""
+    cached = getattr(fn, '_esp_aligned', None)
+    if cached is None:
+        cached = True
+        for ins in fn.instructions:
+            ops = list(getattr(ins, 'operands', []))
+            if not ops or ops[0].type != X.X86_OP_REG or ins.reg_name(ops[0].reg) != 'esp':
+                if ins.mnemonic in ('push', 'pop') and ops and ops[0].size == 2:
+                    cached = False
+                continue
+            if ins.mnemonic in ('add', 'sub') and ops[1].type == X.X86_OP_IMM and ops[1].imm % 4:
+                cached = False
+            if ins.mnemonic == 'lea' and (ops[1].mem.disp % 4 or ops[1].mem.index and ops[1].mem.scale < 4):
+                cached = False
+        fn._esp_aligned = cached
+    return cached
+
+
+def _aligned(ctx, op):
+    """Whether FLOAT_ALIGN treats the operand's address as 4-aligned."""
+    m = op.mem
+    if FLOAT_ALIGN == 'off' or m.segment or m.disp % 4 or (m.index and m.scale < 4):
+        return False
+    if not m.base:
+        return True
+    if ctx.ins.reg_name(m.base) == 'esp':
+        return _esp_stays_aligned(ctx.fn)
+    return FLOAT_ALIGN == 'all'
+
+
+def _float_access(ctx, op, kind):
+    """Call prefix of the float load or store helper."""
+    if not _aligned(ctx, op):
+        return 'rc::%s(%s' % (kind, ctx.address(op))
+    if FLOAT_ALIGN_CHECK:
+        return 'rc::%sc(0x%x, %s' % (kind, ctx.ins.address, ctx.address(op))
+    return 'rc::%sa(%s' % (kind, ctx.address(op))
+
+
 def fval(ctx, op):
     """Operand as an x86::Float rvalue."""
     if op.type == X.X86_OP_REG:
@@ -17,9 +61,9 @@ def fval(ctx, op):
     if op.type == X.X86_OP_MEM:
         a = ctx.address(op)
         if op.size == 4:
-            return 'x86::Float(rc::ldf32(%s))' % a
+            return 'x86::Float(%s))' % _float_access(ctx, op, 'ldf32')
         if op.size == 8:
-            return 'x86::Float(rc::ldf64(%s))' % a
+            return 'x86::Float(%s))' % _float_access(ctx, op, 'ldf64')
         if op.size == 10:
             return 'x86::Float(app->getMemory<x86::IEEEf80>(%s))' % a
     raise AssertionError(ctx.ins.op_str)
@@ -30,9 +74,9 @@ def fstore(ctx, op, value):
         return ['%s = x86::Float(%s);' % (ctx.st(_index(ctx, op)), value)]
     a = ctx.address(op)
     if op.size == 4:
-        return ['rc::stf32(%s, float(%s));' % (a, value)]
+        return ['%s, float(%s));' % (_float_access(ctx, op, 'stf32'), value)]
     if op.size == 8:
-        return ['rc::stf64(%s, double(%s));' % (a, value)]
+        return ['%s, double(%s));' % (_float_access(ctx, op, 'stf64'), value)]
     if op.size == 10:
         return ['app->getMemory<x86::IEEEf80>(%s) = x86::Float(%s);' % (a, value)]
     raise AssertionError(ctx.ins.op_str)

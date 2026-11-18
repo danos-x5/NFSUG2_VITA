@@ -152,6 +152,71 @@ inline x86::reg64 ld64(x86::reg32 address)  { return load<x86::reg64>(address); 
 inline float ldf32(x86::reg32 address)      { return load<float>(address); }
 inline double ldf64(x86::reg32 address)     { return load<double>(address); }
 
+// 4-aligned float access (--float-align): vldr/vstr, no core register.
+template< typename T >
+inline T loadAligned(x86::reg32 address)
+{
+    T value;
+    memcpy(&value, __builtin_assume_aligned(win32::g_guestBase + address, 4), sizeof(T));
+    return value;
+}
+
+template< typename T >
+inline void storeAligned(x86::reg32 address, T value)
+{
+    memcpy(__builtin_assume_aligned(win32::g_guestBase + address, 4), &value, sizeof(T));
+}
+
+inline float ldf32a(x86::reg32 address)                 { return loadAligned<float>(address); }
+inline double ldf64a(x86::reg32 address)                { return loadAligned<double>(address); }
+inline void stf32a(x86::reg32 address, float value)     { storeAligned(address, value); }
+inline void stf64a(x86::reg32 address, double value)    { storeAligned(address, value); }
+
+// Logs a site's first misaligned float address (--float-align-check).
+[[gnu::noinline, gnu::cold]] void misalignedFloat(x86::reg32 site, x86::reg32 address);
+
+inline float ldf32c(x86::reg32 site, x86::reg32 address)
+{
+    if (address & 3) [[unlikely]]
+    {
+        misalignedFloat(site, address);
+        return load<float>(address);
+    }
+    return ldf32a(address);
+}
+
+inline double ldf64c(x86::reg32 site, x86::reg32 address)
+{
+    if (address & 3) [[unlikely]]
+    {
+        misalignedFloat(site, address);
+        return load<double>(address);
+    }
+    return ldf64a(address);
+}
+
+inline void stf32c(x86::reg32 site, x86::reg32 address, float value)
+{
+    if (address & 3) [[unlikely]]
+    {
+        misalignedFloat(site, address);
+        store(address, value);
+        return;
+    }
+    stf32a(address, value);
+}
+
+inline void stf64c(x86::reg32 site, x86::reg32 address, double value)
+{
+    if (address & 3) [[unlikely]]
+    {
+        misalignedFloat(site, address);
+        store(address, value);
+        return;
+    }
+    stf64a(address, value);
+}
+
 inline void st8(x86::reg32 address, x86::reg8 value)    { store(address, value); }
 inline void st16(x86::reg32 address, x86::reg16 value)  { store(address, value); }
 inline void st32(x86::reg32 address, x86::reg32 value)  { store(address, value); }

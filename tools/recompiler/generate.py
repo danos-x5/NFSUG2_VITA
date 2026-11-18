@@ -249,11 +249,18 @@ def main():
                         help='count xor r, r and sub r, r as reads of r (for comparisons)')
     parser.add_argument('--flag-audit', action='store_true',
                         help='check at run time that every flag read from cpu was stored there (logs the reader)')
+    parser.add_argument('--float-align', choices=('off', 'stack', 'all'), default='off',
+                        help='VFP loads and stores for float operands at 4-aligned addresses: none, esp-relative and '
+                             'absolute ones, or also those of other base registers (assumed aligned)')
+    parser.add_argument('--float-align-check', action='store_true',
+                        help='with --float-align: check those addresses at run time and log misaligned sites')
     parser.add_argument('--fpu-check', action='store_true',
                         help='assert the x87 depth after every call whose depth is known (finds leaking callees)')
     args = parser.parse_args()
     global GAME
     GAME = importlib.import_module('games.' + args.game)
+    codegen.fpu.FLOAT_ALIGN = args.float_align
+    codegen.fpu.FLOAT_ALIGN_CHECK = args.float_align_check
     started = time.time()
     image = check_binary(args.binaries)
     apply_patches(image)

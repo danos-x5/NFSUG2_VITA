@@ -1,11 +1,13 @@
 // Start-up of the recompiled SPEED2.EXE: the folders, the checked executable loaded into the guest arena, the
 // display, the guest registry and file system, then the game's entry point.
 
+#include "audio_cull.h"
 #include "audio_defer.h"
 #include "audio_mixer.h"
 #include "bankcode.h"
 #include "boot.h"
 #include "movies.h"
+#include "music_decode.h"
 #include "default_cfg.h"
 #include "frontend.h"
 #include "hitch.h"
@@ -250,7 +252,9 @@ int main(int argc, char** argv)
         std::vector<win32::Section>().swap(sections);
         std::vector<uint8_t>().swap(image);
         ug2::mixer::configure(app);
+        ug2::cull::configure(app);
         ug2::sndq::configure(app);
+        ug2::music::configure(app);
         ug2::boot::configure(app);
         ug2::textentry::configure(app);
         ug2::padbind::configure(app);

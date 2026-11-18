@@ -15,15 +15,15 @@ namespace
 
 const int MaxEntries = 64;
 const int MaxKey     = 32;
-const int MaxValue   = 192;
-const int MaxLine    = 256;
+const int MaxValue   = 384;
+const int MaxLine    = 448;
 
 // Every setting the game reads; other keys are reported as unknown.
 const char* const Known[] =
 {
     // Player settings.
     "widescreen", "ui_log", "button_prompts", "frame_rate", "car_reflection_interval", "rear_touch", "front_touch", "garage_stick", "garage_stick_deadzone", "garage_stick_speed", "pad_log", "pad_script",
-    "world_min_pixels", "reflection_min_pixels", "world_min_pixels_lights", "world_lod_pixels", "world_lod_min_tris", "world_lod_max_percent", "world_lod_min_width", "world_lod_signs", "scene_log", "scene_log_frames", "timing_interval", "material_native", "matrix4_native", "box_cull_native", "box_neon", "tree_cull_native", "draw_scenery_native",
+    "music_hw_decode", "world_min_pixels", "reflection_min_pixels", "world_min_pixels_lights", "world_lod_pixels", "world_lod_min_tris", "world_lod_max_percent", "world_lod_min_width", "world_lod_signs", "scene_log", "scene_log_frames", "timing_interval", "material_native", "matrix4_native", "box_cull_native", "box_neon", "tree_cull_native", "draw_scenery_native",
     "world_upload_native", "texture_step_native", "light_upload_native", "flush_native",
     "entry_resolve_native", "ui_pos_native", "sine_poly_native", "point_in_quad_native", "vec_blend_native", "sub_61b670_native",
     "entry_pick_native", "mixer_accumulate_native", "ground_query_native", "ug2_draw_walk_native", "corner_walk_native",
@@ -48,7 +48,7 @@ const char* const Known[] =
     "debug_skip_vp", "debug_skip_fp", "debug_max_draws", "debug_scene_scale", "debug_scene_dump", "debug_merge_limit", "debug_plan_check", "debug_shot_frames", "scene_merge", "blend_op_exact", "copy_elide", "dead_passes",
     "effect_stats", "effect_trace", "effect_check", "optimised_particles", "smoke_log", "smoke_skip", "smoke_fade", "smoke_near", "smoke_mip",
     // Native versions of guest code and their shadow compares.
-    "audio_log", "audio_block_ms", "audio_mixer", "audio_defer", "audio_defer_log", "audio_defer_notify", "audio_defer_hook", "audio_inline_with_hooks", "audio_hook_release", "audio_hook_wait_ms", "audio_snd_yield", "audio_mixer_stay", "audio_dump", "audio_engine_inline", "ea_timer_unlocked", "yield_relock_spin_us", "audio_inline_notifications", "audio_library_audit", "audio_native_kernels", "audio_neon_kernels", "audio_selftest", "audio_hash", "bank_native", "shadow_bank", "bank_cache_check", "coll_native", "shadow_coll", "cull_native", "cull_parallel", "shadow_cull",
+    "audio_log", "audio_silence_db", "audio_cull_check", "dev_cull_stats", "audio_block_ms", "audio_mixer", "audio_defer", "audio_defer_log", "audio_defer_notify", "audio_defer_hook", "audio_inline_with_hooks", "audio_hook_release", "audio_hook_wait_ms", "audio_snd_yield", "audio_mixer_stay", "audio_dump", "audio_engine_inline", "ea_timer_unlocked", "yield_relock_spin_us", "audio_inline_notifications", "audio_library_audit", "audio_native_kernels", "audio_neon_kernels", "audio_selftest", "audio_hash", "bank_native", "shadow_bank", "bank_cache_check", "coll_native", "shadow_coll", "cull_native", "cull_parallel", "shadow_cull", "music_hw_check", "music_hw_check_dump", "music_hw_ahead",
     "sampler", "sampler_interval_us", "sampler_copies", "sampler_thread",
     "draw_native", "shadow_draw", "flush_native", "flush_async", "flush_async_core", "flush_async_priority",
     "flush_async_frame", "flares_native", "flares_parallel", "shadow_flares",

@@ -296,6 +296,8 @@ uint32_t s_loopHolds = 0;
 bool s_loopOpen = false;
 uint32_t s_loops = 0, s_loopsClean = 0;
 std::vector<uint64_t> s_changed;
+Footprint s_render;                             // at the window's start, to learn what the render writes
+uint32_t s_renderHolds = 0;
 
 Holder* holderOf(reg32 thread, bool create)
 {
@@ -425,6 +427,12 @@ void logCounts()
 bool takeBack(x86::CPU& cpu)
 {
     const uint32_t holds = s_otherHolds;
+    if (s_watch && holds == s_renderHolds)
+    {
+        changedFields(s_render, nullptr, s_changed);
+        for (uint64_t k : s_changed)
+            s_mixerWrites.insert(k);
+    }
     s_state.store(Finishing, std::memory_order_seq_cst);
     const int waiters = s_waiters.load(std::memory_order_seq_cst);
     if (waiters > 0)
@@ -508,6 +516,11 @@ Window::Window(win32::WinApplication* app, x86::CPU& cpu)
     }
     if (pf::perf::enabled())
         pf::perf::sndReleased(handle, cpu.efs);
+    if (s_watch)
+    {
+        capture(s_render);
+        s_renderHolds = s_otherHolds;
+    }
     s_mixer = cpu.efs;
     s_opened = pf::perf::now();
     s_state.store(Rendering, std::memory_order_seq_cst);

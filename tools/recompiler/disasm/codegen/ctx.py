@@ -251,6 +251,8 @@ class Ctx:
         self.index = index
         self.ins = self.fn.instructions[index]
         self.effects = Effects() if self.record else None
+        self.used_slots = set()     # stack slot sites served from locals in this instruction
+        self.slot_checks = []       # check-mode statements run before the instruction
         # x87 depth above the entry stack while generating this instruction; None: the stack stays in cpu.fpu.
         self.fdepth = None if self.record else self.fn.fpu_depth(index)
 
@@ -313,11 +315,119 @@ class Ctx:
             parts.append('0x%xu' % disp)
         return ' + '.join(parts)
 
-    def load(self, bits, address):
-        return 'rc::ld%d(%s)' % (bits, address)
+    def load(self, bits, address, stack=False):
+        if stack:
+            return 'rc::sload<x86::reg%d>(sb, %s)' % (bits, address)
+        return 'rc::ld%d(%s)' % (bits, self.heap_address(address, bits // 8))
 
-    def store(self, bits, address, value):
-        return ['rc::st%d(%s, %s);' % (bits, address, value)]
+    def store(self, bits, address, value, stack=False):
+        if stack:
+            return ['rc::sstore<x86::reg%d>(sb, %s, %s);' % (bits, address, value)]
+        return ['rc::st%d(%s, %s);' % (bits, self.heap_address(address, bits // 8), value)]
+
+    def typed_load(self, ctype, address, stack):
+        if stack:
+            return 'rc::sload<%s>(sb, %s)' % (ctype, address)
+        return 'rc::load<%s>(%s)' % (ctype, self.heap_address(address, 4 if ctype == 'float' else 8))
+
+    def typed_store(self, ctype, address, value, stack):
+        if stack:
+            return ['rc::sstore<%s>(sb, %s, %s);' % (ctype, address, value)]
+        return ['rc::store<%s>(%s, %s);' % (ctype, self.heap_address(address, 4 if ctype == 'float' else 8), value)]
+
+    def heap_address(self, address, size):
+        """Check mode: the address, logged if inside the separate stack."""
+        frame = None if self.record else getattr(self.fn, 'frame', None)
+        if frame is None or not frame.stack_sites or not self.fn.program.check_assumptions:
+            return address
+        limit = 'esp0' if not frame.stack_limit else 'esp0 - 0x%xu' % -frame.stack_limit
+        return 'rc::heapAddress(%s, %d, esp, %s, 0x%xu)' % (address, size, limit, self.ins.address)
+
+    def stack_access(self, key):
+        """The access uses the separate stack base."""
+        frame = None if self.record else getattr(self.fn, 'frame', None)
+        if frame is None or (self.index, key) not in frame.stack_sites:
+            return False
+        self.used_slots.add(key)
+        return True
+
+    def read_only_constant(self, op, as_float=True):
+        """fold_rdata: an absolute .rdata operand as a constant, or None."""
+        m = op.mem
+        sizes = (4, 8) if as_float else (1, 2, 4, 8)
+        if self.record or not self.fn.program.fold_rdata or m.base or m.index or m.segment or op.size not in sizes:
+            return None
+        a = m.disp & 0xffffffff
+        image = self.fn.module.image
+        # Every section of the unpacked executable is writable; on the PC .rdata was not (the port writes past it).
+        section = next((s for s in image.sections if s.address <= a and a + op.size <= s.address + s.virtual_size
+                        and a + op.size <= s.address + s.raw_size), None)
+        if section is None or section.name != '.rdata':
+            return None
+        if any(r in image.relocations or r in self.fn.program.import_slots for r in range(a - 3, a + op.size)):
+            return None
+        bits = int.from_bytes(image.read(a, op.size), 'little')
+        literal = lit(bits, op.size * 8)
+        if self.fn.program.check_assumptions:
+            self.slot_checks.append('rc::checkConstant<x86::reg%d>(0x%xu, %s, 0x%xu);'
+                                    % (op.size * 8, a, literal, self.ins.address))
+        return 'rc::bitsF%d(%s)' % (op.size * 8, literal) if as_float else literal
+
+    def mem_key(self, op):
+        m = op.mem
+        return ('m', m.base, m.index, m.scale, m.disp, op.size)
+
+    # ---- stack slots in locals (frames.py) ---------------------------------------------------------------
+    def slot(self, key):
+        """The promoted slot this access of the instruction uses."""
+        frame = None if self.record else getattr(self.fn, 'frame', None)
+        if frame is None:
+            return None
+        s = frame.sites.get((self.index, key))
+        if s is not None:
+            self.used_slots.add(key)
+            self.slot_key = key
+        return s
+
+    def mem_slot(self, op):
+        return self.slot(self.mem_key(op))
+
+    def slot_get(self, s, address, want):
+        """Value of slot s as an 'int' or 'float' expression."""
+        if s.load_site == (self.index, self.slot_key):
+            self.slot_checks.append('%s = rc::load<%s>(%s);' % (s.name, s.ctype, address))
+        elif self.fn.program.check_poison and not s.arg and not s.entry_load:
+            self.slot_checks.append('rc::checkPoison<%s>(%s, 0x%xu);' % (s.ctype, address, self.ins.address))
+        elif self.fn.program.check_assumptions:
+            self.slot_checks.append('rc::checkSlot<%s>(%s, %s, 0x%xu);' % (s.ctype, address, s.name, self.ins.address))
+        name = s.name
+        if self.fn.program.promote_bisect and s.load_site != (self.index, self.slot_key):
+            name = '(RC_PROMOTED(0x%xu) ? %s : rc::load<%s>(%s))' % (self.fn.entry_address, s.name, s.ctype, address)
+        if want == 'float':
+            if s.ctype in ('float', 'double'):
+                return name
+            return 'rc::bitsF%d(%s)' % (s.size * 8, name)
+        if s.ctype == 'float' or s.ctype == 'double':
+            return 'rc::f%dBits(%s)' % (s.size * 8, name)
+        return name
+
+    def slot_set(self, s, address, value, given):
+        """Statements storing an int or float value into slot s."""
+        bits = s.size * 8
+        if s.ctype in ('float', 'double'):
+            v = '%s(%s)' % (s.ctype, value) if given == 'float' else 'rc::bitsF%d(%s)' % (bits, value)
+        else:
+            v = '%s(%s)' % (s.ctype, value) if given == 'int' else 'rc::f%dBits(%s(%s))' % (
+                bits, 'float' if bits == 32 else 'double', value)
+        lines = ['%s = %s;' % (s.name, v)]
+        if self.fn.program.check_poison and not s.arg and not s.entry_load:
+            lines.append('rc::storePoison<%s>(%s);' % (s.ctype, address))
+        elif s.arg or self.fn.program.check_assumptions:
+            lines.append('rc::store<%s>(%s, %s);' % (s.ctype, address, s.name))
+        elif self.fn.program.promote_bisect:
+            lines.append('if (!RC_PROMOTED(0x%xu)) rc::store<%s>(%s, %s);' % (self.fn.entry_address, s.ctype, address,
+                                                                               s.name))
+        return lines
 
     def val(self, op, bits=None):
         """Rvalue of an operand, of type reg<bits> (default: the operand size)."""
@@ -331,7 +441,14 @@ class Ctx:
                 value = '%s(%s)' % (T(bits), value)
             return value
         if op.type == X.X86_OP_MEM:
-            value = self.load(op.size * 8, self.address(op))
+            s = self.mem_slot(op)
+            constant = None if s is not None else self.read_only_constant(op, False)
+            if s is not None:
+                value = self.slot_get(s, self.address(op), 'int')
+            elif constant is not None:
+                value = constant
+            else:
+                value = self.load(op.size * 8, self.address(op), self.stack_access(self.mem_key(op)))
             if op.size * 8 != bits:
                 value = '%s(%s)' % (T(bits), value)
             return value
@@ -350,16 +467,24 @@ class Ctx:
         if op.type == X.X86_OP_REG:
             return self.set_reg(self.ins.reg_name(op.reg), value)
         if op.type == X.X86_OP_MEM:
-            return self.store(op.size * 8, self.address(op), value)
+            s = self.mem_slot(op)
+            if s is not None:
+                return self.slot_set(s, self.address(op), value, 'int')
+            return self.store(op.size * 8, self.address(op), value, self.stack_access(self.mem_key(op)))
         raise AssertionError(op.type)
 
     def bind(self, op, name='dst'):
         """For read-modify-write: (setup lines, rvalue, writer) that compute a memory address once."""
         if op.type == X.X86_OP_MEM:
+            s = self.mem_slot(op)
+            if s is not None:
+                address = self.address(op)
+                return [], self.slot_get(s, address, 'int'), lambda v: self.slot_set(s, address, v, 'int')
             a = 'a_' + name
             setup = ['const x86::reg32 %s = %s;' % (a, self.address(op))]
             bits = op.size * 8
-            return setup, self.load(bits, a), lambda v: self.store(bits, a, v)
+            stack = self.stack_access(self.mem_key(op))
+            return setup, self.load(bits, a, stack), lambda v: self.store(bits, a, v, stack)
         return [], self.val(op), lambda v: self.put(op, v)
 
     # ---- x87 stack ----------------------------------------------------------------------------------------

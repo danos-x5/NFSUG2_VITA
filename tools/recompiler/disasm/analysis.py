@@ -66,6 +66,7 @@ class Function:
         self.entry = self.index_of[self.entry_address]
         self.n = len(self.instructions)
         self.program = None
+        self.frame = None           # frames.Frame when stack slots live in locals
 
         self.branch = [None] * self.n
         self.succ = [[] for _ in range(self.n)]
@@ -839,6 +840,10 @@ class Program:
                  abi_flags=False, jump_targets=None, flag_audit=False, zero_idioms=True):
         self.functions = {}
         self.zero_idioms = zero_idioms     # xor/sub/sbb r, r do not read r
+        self.check_assumptions = False     # generated code logs where frames.py or fold_rdata facts fail
+        self.fold_rdata = False            # x87 loads from read-only sections are constants
+        self.promote_bisect = False        # slots are locals only in functions the promote_lo/hi settings pick
+        self.check_poison = False          # promoted slots leave a poison pattern in guest memory
         # Backward jumps are preemption points (WinApplication::allowPreemption).
         self.preempt_loops = preempt_loops
         # Check the x87 depth after every call with a known result depth (diagnostic builds).

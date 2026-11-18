@@ -2,6 +2,7 @@
 // kernel, filters and mix; its source modules run as usual.
 
 #include "audio_cull.h"
+#include "audio_split.h"
 
 #include <lib/heap.h>
 #include <platform/config.h>
@@ -89,6 +90,7 @@ struct Saved
     reg32 voice;
     reg32 chain;                // voice +0x40 when saved
     reg32 bits;
+    uint32_t gains;             // gain changes of the voice when saved
 };
 
 bool s_enabled = false;
@@ -268,7 +270,8 @@ void markVoices()
             continue;
         for (int k = 0; k < mixedCount; ++k)
         {
-            s_saved[s_savedCount++] = {mixed[k], voice, root, rc::ld32(mixed[k])};
+            s_saved[s_savedCount++] = {mixed[k], voice, root, rc::ld32(mixed[k]),
+                                       split::gainWrites((voice - voices) / VoiceSize)};
             rc::st32(mixed[k], 0);
         }
         if (auxMixed)
@@ -281,7 +284,8 @@ void restoreGains()
     for (int i = 0; i < s_savedCount; ++i)
     {
         const Saved& s = s_saved[i];
-        if (rc::ld32(s.address) == 0 && rc::ld32(s.voice + 0x40) == s.chain)
+        if (rc::ld32(s.address) == 0 && rc::ld32(s.voice + 0x40) == s.chain
+            && split::gainWrites((s.voice - rc::ld32(VoiceArray)) / VoiceSize) == s.gains)
             rc::st32(s.address, s.bits);
     }
     s_savedCount = 0;

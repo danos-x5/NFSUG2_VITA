@@ -767,6 +767,19 @@ void setSndObserver(SndObserver observer)
     s_sndObserver = observer;
 }
 
+SndWatch s_sndWatch = nullptr;
+
+void setSndWatch(SndWatch watch)
+{
+    s_sndWatch = watch;
+}
+
+void sndWatch(bool acquired, uint32_t handle, uint32_t thread, uint32_t esp, uint32_t waitUs)
+{
+    if (s_sndWatch && sndHandle(handle))
+        s_sndWatch(acquired, thread, esp, waitUs);
+}
+
 void sndLockWait(SndCause cause, uint32_t microseconds)
 {
     if (s_sndDepth)

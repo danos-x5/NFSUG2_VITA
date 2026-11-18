@@ -19,6 +19,10 @@ bool unlocked(const x86::CPU& cpu);
 // with the failed check (a string literal) and the guest value it failed on.
 bool libraryAudited(x86::reg32 target, const x86::CPU& cpu, const char*& reason, x86::reg32& value);
 
+// In the voice render after another thread held the SND mutex: takes the execution lock for the rest of the render
+// when the voices no longer pass the audit; true when it did.
+bool reaudit(win32::WinApplication* app, x86::CPU& cpu);
+
 // True for the bank library functions that touch only their arguments and SND state.
 bool libraryPure(x86::reg32 target);
 

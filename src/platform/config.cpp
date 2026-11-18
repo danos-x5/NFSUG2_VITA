@@ -22,7 +22,7 @@ const int MaxLine    = 256;
 const char* const Known[] =
 {
     // Player settings.
-    "widescreen", "ui_log", "button_prompts", "frame_rate", "car_reflection_interval", "rear_touch", "front_touch", "pad_log", "pad_script",
+    "widescreen", "ui_log", "button_prompts", "frame_rate", "car_reflection_interval", "rear_touch", "front_touch", "garage_stick", "garage_stick_deadzone", "garage_stick_speed", "pad_log", "pad_script",
     "world_min_pixels", "reflection_min_pixels", "world_min_pixels_lights", "world_lod_pixels", "world_lod_min_tris", "world_lod_max_percent", "world_lod_min_width", "world_lod_signs", "scene_log", "scene_log_frames", "timing_interval", "material_native", "matrix4_native", "box_cull_native", "box_neon", "tree_cull_native", "draw_scenery_native",
     "world_upload_native", "texture_step_native", "light_upload_native", "flush_native",
     "entry_resolve_native", "ui_pos_native", "sine_poly_native", "point_in_quad_native", "vec_blend_native", "sub_61b670_native",
@@ -58,7 +58,7 @@ const char* const Known[] =
     // Movies through the platform video decoder (src/ug2/movies.cpp).
     "movies", "movies_dir", "movies_selftest",
     // Front end (src/ug2/frontend.cpp).
-    "boot_script", "fe_log", "fe_files", "ime_test", "ime_test_field", "movies_skip", "fe_msg", "fe_grep_words", "fe_grep", "fe_grep_frame", "fe_scan_file", "fe_scan_every", "boot_steps", "fe_dump", "boot_quit_after", "fe_gfx_apply", "fe_gfx_apply_delay",
+    "boot_script", "fe_log", "fe_files", "ime_test", "ime_test_field", "movies_skip", "fe_msg", "fe_orbit", "fe_grep_words", "fe_grep", "fe_grep_frame", "fe_scan_file", "fe_scan_every", "boot_steps", "fe_dump", "boot_quit_after", "fe_gfx_apply", "fe_gfx_apply_delay",
     // Save folder (src/lib/file.cpp).
     "save_dir", "save_log", "save_sync", "save_atomic", "file_lazy_seek", "file_handle_cache",
     // Host build.

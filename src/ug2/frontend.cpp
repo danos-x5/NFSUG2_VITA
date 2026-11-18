@@ -36,6 +36,10 @@ const reg32 QueryPerformanceCounterSlot = 0x0078311C;  // import slot; the frame
 const reg32 CreateFileASlot = 0x007831D0;      // import slot; stdcall (path, ...)
 const reg32 MouseX = 0x008763D4, MouseY = 0x008763D8;      // the game's mouse: 640x480 position, left button
 const reg32 MouseButton = 0x008763F1;
+const reg32 MouseMoveX = 0x008763E4, MouseMoveY = 0x008763E8;
+const reg32 MouseMiddle = 0x008763F7;          // held; only the garage camera orbit 0x4A5D90 reads it
+const reg32 GarageHandler = 0x004D8D20;        // message handler of the garage screens (vtable + 8)
+const reg32 GarageYaw = 0x274, GarageOrbitSpeed = 0x248;   // floats in the garage screen: degrees, yaw and pitch speed
 const reg32 FramesRendered = 0x0086514C;       // incremented at the end of each main-loop iteration by 0x57A050
 const reg32 GameState = 0x008654A4;            // 1 front end, 3 leaving it, 4 race (set by 0x57FF10, 0x5800A0, 0x57F210)
 const reg32 PendingCall = 0x00865484;          // deferred function the main loop 0x5811C0 runs next
@@ -61,6 +65,8 @@ struct Press
     uint64_t periodUs;       // 0 for a single press
     uint64_t endUs;          // a repeating press stops at this time, 0 for never
     int touch[2] = { -1, -1 };      // boot_steps front touch in display pixels, -1 for none
+    int touchTo[2] = { -1, -1 };    // where a boot_steps drag ends, -1 for a still touch
+    int stick[2] = { 0, 0 };        // boot_steps right stick in percent, y down
 };
 
 struct Name
@@ -85,6 +91,8 @@ struct Step
     unsigned delay = 30;     // frames to wait once the condition holds
     unsigned hold = 24;      // frames the buttons are held
     int touch[2] = { -1, -1 };
+    int touchTo[2] = { -1, -1 };
+    int stick[2] = { 0, 0 };
 };
 
 std::vector<Step> s_steps;
@@ -226,12 +234,21 @@ bool parseButton(const std::string& name, Press* press)
         press->raw |= uint32_t(1) << atoi(name.c_str() + 1);
         return true;
     }
-    int x, y;
+    int x, y, toX = -1, toY = -1;
     char end;
-    if (sscanf(name.c_str(), "touch%dx%d%c", &x, &y, &end) == 2 && x >= 0 && y >= 0)
+    if (sscanf(name.c_str(), "rs%d_%d%c", &x, &y, &end) == 2)
+    {
+        press->stick[0] = x;
+        press->stick[1] = y;
+        return true;
+    }
+    const int fields = sscanf(name.c_str(), "touch%dx%d-%dx%d%c", &x, &y, &toX, &toY, &end);
+    if ((fields == 2 || fields == 4) && x >= 0 && y >= 0 && name.back() != '-')
     {
         press->touch[0] = x;
         press->touch[1] = y;
+        press->touchTo[0] = toX;
+        press->touchTo[1] = toY;
         return true;
     }
     return false;
@@ -357,6 +374,10 @@ void parseSteps(const std::string& text)
         step.inputs = press.inputs;
         step.touch[0] = press.touch[0];
         step.touch[1] = press.touch[1];
+        step.touchTo[0] = press.touchTo[0];
+        step.touchTo[1] = press.touchTo[1];
+        step.stick[0] = press.stick[0];
+        step.stick[1] = press.stick[1];
         s_steps.push_back(step);
     }
 }
@@ -597,6 +618,32 @@ void applyGraphics(reg32 frame, const std::string& cur)
     rc::st8(GraphicsDirty, 1);
 }
 
+// Debug aid (fe_orbit=on): logs the garage camera's yaw.
+void logOrbit(reg32 frame)
+{
+    static float s_yaw = -1.0f;
+    reg32 node = rc::ld32(MessageHub + 4);
+    for (int guard = 0; node && node - 4 != MessageHub && guard < 64; ++guard)
+    {
+        const reg32 object = rc::ld32(node - 4 + 0x14);
+        node = rc::ld32(node);
+        const reg32 vtable = object && win32::MemMap::isGuestRange(object, GarageYaw + 4) ? rc::ld32(object) : 0;
+        if (!vtable || !win32::MemMap::isGuestRange(vtable, 16) || rc::ld32(vtable + 8) != GarageHandler)
+            continue;
+        const float yaw = rc::ldf32(object + GarageYaw);
+        float sx, sy;
+        win32::Gamepad::getRightStick(&sx, &sy);
+        if (yaw != s_yaw || std::fabs(sx) > 0.05f || std::fabs(sy) > 0.05f)
+            pf::logInfo("fe: orbit frame %u yaw %.3f, speed %.2f %.2f, stick %.2f,%.2f, real mouse %d,%d move %d,%d buttons %u %u",
+                        unsigned(frame), double(yaw), double(rc::ldf32(object + GarageOrbitSpeed)),
+                        double(rc::ldf32(object + GarageOrbitSpeed + 4)), double(sx), double(sy),
+                        int(rc::ld32(MouseX)), int(rc::ld32(MouseY)), int(rc::ld32(MouseMoveX)),
+                        int(rc::ld32(MouseMoveY)), unsigned(rc::ld8(MouseButton)), unsigned(rc::ld8(MouseMiddle)));
+        s_yaw = yaw;
+        return;
+    }
+}
+
 // Graphics values when a race starts from the front end.
 void logGraphics(reg32 frame)
 {
@@ -611,7 +658,7 @@ void logGraphics(reg32 frame)
 }
 
 // Advances boot_steps by one frame; returns the pad inputs to hold.
-uint32_t stepInputs(reg32 frame, reg32 state, const std::string& boot, const std::string& cur, int* touch)
+uint32_t stepInputs(reg32 frame, reg32 state, const std::string& boot, const std::string& cur, int* touch, float* stick)
 {
     if (s_step >= s_steps.size())
         return 0;
@@ -647,6 +694,14 @@ uint32_t stepInputs(reg32 frame, reg32 state, const std::string& boot, const std
         {
             touch[0] = step.touch[0];
             touch[1] = step.touch[1];
+            stick[0] = float(step.stick[0]) / 100.0f;
+            stick[1] = float(step.stick[1]) / 100.0f;
+            if (step.touchTo[0] >= 0 && step.hold > 1)
+            {
+                const int at = int(frame - s_stepFrame), last = int(step.hold) - 1;
+                touch[0] += (step.touchTo[0] - step.touch[0]) * at / last;
+                touch[1] += (step.touchTo[1] - step.touch[1]) * at / last;
+            }
             if (step.touch[0] >= 0 && frame - s_stepFrame + 2 >= step.hold)
                 pf::logInfo("fe: touch px %d,%d -> cursor %d,%d (canvas), button %u", step.touch[0], step.touch[1],
                             int(rc::ld32(MouseX)), int(rc::ld32(MouseY)), unsigned(rc::ld8(MouseButton)));
@@ -799,7 +854,10 @@ void frameHook(win32::WinApplication* app, x86::CPU& cpu)
         uint32_t raw = 0;
         scriptAt(elapsed, &pad, &raw);
         int touch[2] = { -1, -1 };
-        pad.inputs |= stepInputs(s_frame, gameState, boot, cur, touch);
+        float stick[2] = {};
+        pad.inputs |= stepInputs(s_frame, gameState, boot, cur, touch, stick);
+        pad.sticks[2] = stick[0];
+        pad.sticks[3] = stick[1];
         if (touch[0] >= 0 && pad.touchCount < controls::PadSample::MaxTouches)
             pad.touches[pad.touchCount++] = { (float(touch[0]) + 0.5f) / float(pf::gxm::DisplayWidth),
                                               (float(touch[1]) + 0.5f) / float(pf::gxm::DisplayHeight), 1000 };
@@ -826,6 +884,15 @@ void frameHook(win32::WinApplication* app, x86::CPU& cpu)
     if (s_moviesSkip > 0)
         checkMovies(app, cpu, now, s_frame);
     checkQuit(elapsed, s_frame, gameState);
+    static const bool orbit = pf::Config::getBool("fe_orbit", false);
+    if (orbit && gameState == 4 && s_frame % 30 == 0)
+    {
+        const reg32 vehicle = rc::ld32(rc::ld32(0x008900AC) + 4);
+        pf::logInfo("fe: car frame %u at %.1f,%.1f,%.1f", unsigned(s_frame), double(rc::ldf32(vehicle + 0x60)),
+                    double(rc::ldf32(vehicle + 0x64)), double(rc::ldf32(vehicle + 0x68)));
+    }
+    if (orbit)
+        logOrbit(s_frame);
     static const bool gfxApply = *pf::Config::getString("fe_gfx_apply", "") != 0;
     if (gfxApply)
         applyGraphics(s_frame, cur);

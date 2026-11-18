@@ -5,6 +5,7 @@
 #include <platform/sync.h>
 #include <platform/time.h>
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -64,6 +65,7 @@ uint64_t                s_typedUs;          // when the last one was posted
 bool                    s_typedDown[256];   // typed keys down, by DirectInput code
 bool                    s_appendOnly;       // the game's editor has no cursor: no End before clearing
 Gamepad::PollHook       s_pollHook;         // not guarded: set before the game starts
+std::atomic<float>      s_rightStick[2];    // the last pump's right stick
 controls::PadSample     s_injected;         // setInjectedPad
 Gamepad::Touch          s_touch;            // getTouch
 bool                    s_touchSeen;
@@ -263,6 +265,8 @@ void pump()
     for (int i = 0; i < 4; ++i)
         if (s_injected.sticks[i] != 0.0f)
             pad.sticks[i] = s_injected.sticks[i];
+    s_rightStick[0] = pad.sticks[2];
+    s_rightStick[1] = pad.sticks[3];
     if (!controls::frontTouchEnabled())
         pad.touchCount = 0;
     else if (s_injected.touchCount)
@@ -457,6 +461,12 @@ void Gamepad::setInjectedPad(const controls::PadSample& pad)
 {
     pf::LwLockGuard lock(s_mutex);
     s_injected = pad;
+}
+
+void Gamepad::getRightStick(float* x, float* y)
+{
+    *x = s_rightStick[0];
+    *y = s_rightStick[1];
 }
 
 bool Gamepad::getTouch(Touch* touch, bool button)

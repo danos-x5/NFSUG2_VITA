@@ -563,7 +563,7 @@ void loopEnd(const x86::CPU& cpu)
 void configure(win32::WinApplication& app)
 {
     RC_USE(app);
-    s_split = pf::Config::getBool("audio_mixer_split", false)
+    s_split = pf::Config::getBool("audio_mixer_split", true)
               && strcmp(pf::Config::getString("audio_mixer", "unlocked"), "unlocked") == 0
               && !pf::Config::getBool("audio_snd_yield", false);
     s_check = s_split && pf::Config::getBool("audio_split_check", false) && pf::perf::enabled();

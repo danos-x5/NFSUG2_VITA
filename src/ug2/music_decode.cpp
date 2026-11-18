@@ -687,7 +687,7 @@ bool selfTest()
 
 void configure(win32::WinApplication& app)
 {
-    if (!pf::Config::getBool("music_hw_decode", false))
+    if (!pf::Config::getBool("music_hw_decode", true))
         return;
     if (!pf::mp3::init() || !selfTest())
     {

@@ -23,6 +23,7 @@ REMEMBERED = os.path.join(REPO, 'build-game-dir.txt')
 GENERATED = os.path.join(REPO, 'src', 'ug2', 'generated')
 FX_TABLES = os.path.join(REPO, 'include', 'winapi', 'd3d9_fxtables.h')
 GAME_ART = os.path.join(REPO, 'sce_sys', 'game', 'icon0.png')
+CODEGEN_OPTIONS = ['--float-align', 'all', '--inline-ftol2', '--pure-natives', '--native-writes']
 
 
 def step(text):
@@ -71,7 +72,7 @@ def generator_stamp(folder):
     for root, _, names in os.walk(os.path.join(HERE, 'recompiler')):
         if '__pycache__' not in root:
             files += [os.path.join(root, n) for n in names if n.endswith(('.py', '.txt'))]
-    digest = hashlib.sha256()
+    digest = hashlib.sha256(' '.join(CODEGEN_OPTIONS).encode())
     for path in sorted(files):
         with open(path, 'rb') as f:
             digest.update(hashlib.sha256(f.read()).digest())
@@ -94,7 +95,7 @@ def translate(folder, force):
         step('Translating the game code (about 5 minutes)')
         os.makedirs(GENERATED, exist_ok=True)
         command = python() + [os.path.join(HERE, 'recompiler', 'generate.py'), '--game', 'ug2',
-                   '--binaries', folder, '--out', GENERATED]
+                   '--binaries', folder, '--out', GENERATED] + CODEGEN_OPTIONS
         if run(command) != 0:
             sys.exit('Translating the game code failed.')
         with open(stamp_file, 'w') as f:

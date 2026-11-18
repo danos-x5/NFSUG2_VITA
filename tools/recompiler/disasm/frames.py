@@ -43,7 +43,7 @@ def is_frame(v):
 def top_of(*values):
     """Unknown frame address; local unless an input reaches the arguments."""
     for v in values:
-        if is_form(v) and not (v[1] != ENTRY or v[2] < 0):
+        if is_form(v) and (v[3] or (v[1] == ENTRY and v[2] >= 0)):
             return TOP_ANY
         if v == TOP_ANY:
             return TOP_ANY
@@ -360,14 +360,16 @@ class Walker:
         self.frame.accesses.append(Access(i, key, addr[1], addr[2], size, read, write, kind, supported, save))
 
     def escape(self, i, why, value=None):
-        if self.final and (value == TOP_ANY or (is_form(value) and value[1] == ENTRY and value[2] >= 0)):
-            self.frame.escaped_args = True
         if self.final:
             v = self.solver.value(value) if is_form(value) else None
             if v is not None and not v[3]:
                 self.frame.escaped_at.add((v[1], v[2]))
+                if v[1] == ENTRY and v[2] >= 0:
+                    self.frame.escaped_args = True
             else:
                 self.frame.escaped_unknown = True
+                if value != TOP_LOCAL:
+                    self.frame.escaped_args = True
             self.frame.escaped = True
             if len(self.frame.escape_sites) < 4:
                 self.frame.escape_sites.append((self.fn.instructions[i].address, why))
@@ -376,7 +378,8 @@ class Walker:
         for r in names:
             v = regs[r]
             if is_frame(v):
-                if v == TOP_ANY or (is_form(v) and v[1] == ENTRY and v[2] >= 0):
+                w = self.solver.value(v) if is_form(v) else v
+                if w == TOP_ANY or (is_form(w) and (w[3] or (w[1] == ENTRY and w[2] >= 0))):
                     self.frame.unbounded = True
                 self.escape(i, '%s in %s' % (why, r), v)
 

@@ -69,6 +69,7 @@ NATIVE_OVERRIDES = [
     0x733700,   # linear resampler, mono (x87)
     0x734bf4,   # EA-XA decoder (x87)
     0x72cac7,   # output module, float to 16-bit
+    0x7216c6,   # SND output rate (device, rate): audio_mix_rate
     # Audio bank load and unload: bank-code lookups are cached between them (src/ug2/bankcode.cpp)
     0x7212e5,   # bank loader
     0x7211ab,   # bank unload

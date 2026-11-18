@@ -46,6 +46,7 @@ void sub_733700_guest(win32::WinApplication* app, x86::CPU& cpu);
 void sub_734bf4_guest(win32::WinApplication* app, x86::CPU& cpu);
 void sub_72cac7_guest(win32::WinApplication* app, x86::CPU& cpu);
 void sub_734a81(win32::WinApplication* app, x86::CPU& cpu);
+void sub_7216c6_guest(win32::WinApplication* app, x86::CPU& cpu);
 
 namespace mixer
 {
@@ -799,6 +800,36 @@ const reg32 LoopHookBefore  = 0x8b46c0;     // mixer thread loop hooks, unset in
 const reg32 LoopHookAfter   = 0x8b46c4;
 
 static void renderLoop(win32::WinApplication* app, x86::CPU& cpu);
+
+// audio_mix_rate: the SND mix rate in Hz, or 0 for the game's (0x47ABA9: 22050 or 44100 by g_PerformanceLevel).
+static reg32 mixRate()
+{
+    static const reg32 s_rate = []
+    {
+        const int rate = pf::Config::getInt("audio_mix_rate", 0);
+        const int allowed[] = { 0, 22050, 24000, 32000, 44100, 48000 };
+        if (std::find(std::begin(allowed), std::end(allowed), rate) != std::end(allowed))
+            return reg32(rate);
+        pf::logError("audio_mix_rate=%d: not 22050, 24000, 32000, 44100 or 48000; the game's rate is used", rate);
+        return reg32(0);
+    }();
+    return s_rate;
+}
+
+// SND output rate (device, rate), set twice at sound start-up (0x47AB8A, 0x47AC0F).
+void sub_7216c6(win32::WinApplication* app, x86::CPU& cpu)
+{
+    const reg32 GameRate = 0x7ecbd8;
+    const reg32 rate = mixRate();
+    if (rate)
+    {
+        pf::logInfo("audio mix rate: %u Hz instead of %u (audio_mix_rate)", unsigned(rate),
+                    unsigned(argument(cpu, 1)));
+        rc::st32(cpu.esp + 8, rate);
+        rc::st32(GameRate, rate);
+    }
+    sub_7216c6_guest(app, cpu);
+}
 
 // Render loop (&output pointer, frames); audio_mixer_stay keeps the thread unlocked.
 void sub_725c8e(win32::WinApplication* app, x86::CPU& cpu)

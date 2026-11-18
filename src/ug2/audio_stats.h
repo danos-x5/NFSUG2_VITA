@@ -30,6 +30,9 @@ void voicesEnter(const x86::CPU& cpu, x86::reg32 frames);
 void voicesLeave(const x86::CPU& cpu);
 void mixCall(const x86::CPU& cpu, x86::reg32 n, float gain, x86::reg32 src);
 void work(const x86::CPU& cpu, int scope, uint32_t elements, uint32_t extra = 0);
+// Bank code: a library call by a routine, and a routine run.
+void bankCall(const x86::CPU& cpu, x86::reg32 target);
+void bankRun(const x86::CPU& cpu, const char* name, bool native);
 
 // Times a scope on the counted thread.
 class Scoped

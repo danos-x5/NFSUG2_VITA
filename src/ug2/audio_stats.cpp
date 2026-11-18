@@ -66,6 +66,13 @@ struct Signature
     uint32_t count;
 };
 
+struct Tally
+{
+    uintptr_t key;
+    uint32_t  count;
+};
+const int Tallies = 48;
+
 struct Second
 {
     Bucket   buckets[ScopeCount];
@@ -80,6 +87,9 @@ struct Second
     uint32_t clockReads;
     uint64_t probeUs;       // loudness scans, left out of the scopes
     Signature signatures[Signatures];
+    Tally    calls[Tallies];        // bank library calls by target
+    Tally    runs[Tallies];         // bank routine runs by translation name (interpreted: key 1)
+    uint32_t callsOther, runsOther;
 };
 
 win32::MethodPtr s_original[KindCount + 1];
@@ -244,6 +254,41 @@ const char* scopeName(int scope, char* buffer)
     return buffer;
 }
 
+void tally(Tally* table, uint32_t& other, uintptr_t key)
+{
+    for (int i = 0; i < Tallies; ++i)
+    {
+        if (table[i].key == key || !table[i].key)
+        {
+            table[i].key = key;
+            ++table[i].count;
+            return;
+        }
+    }
+    ++other;
+}
+
+void reportTallies(const char* what, Tally* table, uint32_t other, bool names)
+{
+    std::sort(table, table + Tallies, [](const Tally& a, const Tally& b) { return a.count > b.count; });
+    uint32_t total = other;
+    for (int i = 0; i < Tallies; ++i)
+        total += table[i].count;
+    char line[960];
+    int length = snprintf(line, sizeof(line), "mixstats: %s %u, other %u:", what, total, other);
+    for (int i = 0; i < Tallies && table[i].key && length < int(sizeof(line)) - 48; ++i)
+    {
+        if (names)
+            length += snprintf(line + length, sizeof(line) - length, " %s %u",
+                               table[i].key == 1 ? "(interpreted)" : reinterpret_cast<const char*>(table[i].key),
+                               table[i].count);
+        else
+            length += snprintf(line + length, sizeof(line) - length, " %x %u", unsigned(table[i].key),
+                               table[i].count);
+    }
+    pf::logInfo("%s", line);
+}
+
 void report(uint32_t elapsed)
 {
     Second& t = s_second;
@@ -295,6 +340,8 @@ void report(uint32_t elapsed)
         length += snprintf(line + length, sizeof(line) - length, " %u", sig.count);
     }
     pf::logInfo("%s", line);
+    reportTallies("bank calls", t.calls, t.callsOther, false);
+    reportTallies("bank runs", t.runs, t.runsOther, true);
     t = Second();
 }
 
@@ -441,6 +488,18 @@ void work(const x86::CPU& cpu, int scope, uint32_t elements, uint32_t extra)
     Bucket& b = s_second.buckets[scope];
     b.elements += elements;
     b.extra += extra;
+}
+
+void bankCall(const x86::CPU& cpu, reg32 target)
+{
+    if (counted(cpu))
+        tally(s_second.calls, s_second.callsOther, target);
+}
+
+void bankRun(const x86::CPU& cpu, const char* name, bool native)
+{
+    if (counted(cpu))
+        tally(s_second.runs, s_second.runsOther, native ? reinterpret_cast<uintptr_t>(name) : 1);
 }
 
 void voicesLeave(const x86::CPU& cpu)

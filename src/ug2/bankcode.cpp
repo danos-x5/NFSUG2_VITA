@@ -716,6 +716,8 @@ void interpret(win32::WinApplication* app, x86::CPU& cpu, const Range& range, Ro
     interpreter.begin(cpu.ip);
     while (interpreter.segment())
     {
+        if (mixstats::on())
+            mixstats::bankCall(cpu, cpu.ip);
         callTarget(app, cpu);
         if (cpu.terminate)
             break;
@@ -842,6 +844,8 @@ void runNative(win32::WinApplication* app, x86::CPU& cpu, const Translation& t, 
         resume = t.run(cpu, memory, range.begin, range.bank, resume);
         if (resume == Returned)
             break;
+        if (mixstats::on())
+            mixstats::bankCall(cpu, cpu.ip);
         callTarget(app, cpu);
         if (cpu.terminate)
             break;
@@ -1041,6 +1045,8 @@ void runRoutine(win32::WinApplication* app, x86::CPU& cpu)
     Routine* cached = routine(range);
     const Translation* native = cached && options.native && cpu.ip == range.begin ? translation(*cached, range)
                                                                                   : nullptr;
+    if (mixstats::on())
+        mixstats::bankRun(cpu, native ? native->name : nullptr, native != nullptr);
     if (native && options.shadow)
     {
         runShadow(app, cpu, *native, range, *cached);

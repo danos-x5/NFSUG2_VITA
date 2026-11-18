@@ -1,5 +1,5 @@
 // Native sub_5a8280: one wheel's contact forces (thiscall, ret 8), with its helpers sub_43c9d0, sub_441000, sub_43c570,
-// sub_59d490, sub_59d400 and sub_59d510 inlined. Exact to the guest.
+// sub_59d490, sub_59d400 and sub_59d510 inlined (native/physics.h). Exact to the guest.
 
 #include <native/check.h>
 #include <native/common.h>
@@ -23,25 +23,6 @@ using physics::lookup;
 
 inline Real one() { return ld(0x784250); }
 inline Real zero() { return ld(0x7d7d3c); }
-
-// sub_59d490: traction factor of the wheel.
-Real traction(reg32 w)
-{
-    if (rc::ld32(w + 0x10c) != 0 || ld(w + 0x28) < zero() || x86::sreg32(rc::ld32(rc::ld32(w + 0x14) + 0x18)) < 2)
-        return one();
-    Real x = ld(rc::ld32(w + 0x20) + 0x3ec);
-    x -= ld(0x7a1eb0);
-    x *= ld(0x7850fc);
-    if (x > one())
-        x = one();
-    else if (x < zero())
-        x = zero();
-    Real r = one();
-    r -= ld(0x7fc71c);
-    x *= r;
-    x += ld(0x7fc71c);
-    return x;
-}
 
 // sub_59d400: grip test; sets the wheel's slipping state.
 void gripTest(x86::CPU& cpu, reg32 w, float q)
@@ -137,35 +118,9 @@ void wheel(x86::CPU& cpu, reg32 w, reg32 step)
         rc::stf32(w + 0x108, float(lat2));
     }
 
-    // Velocity at the contact point in the wheel's frame (sub_43c9d0 then sub_441000).
-    const reg32 m = w + 0x70, p = w + 0xf0;
-    const Real px = ld(p), py = ld(p + 4), pz = ld(p + 8);
-    Real x = ld(m + 0x08) * pz;
-    x += ld(m + 0x04) * py;
-    x += ld(m) * px;
-    x += ld(m + 0x0c);
-    Real y = ld(m + 0x18) * pz;
-    y += ld(m + 0x10) * px;
-    y += ld(m + 0x14) * py;
-    y += ld(m + 0x1c);
-    const float vx = float(x), vy = float(y);
-
-    physics::Registers regs = {0, 0, 0};
-    physics::angle(cpu, Real(vx), Real(vy), regs);
-    const Real k = ld(0x7a1788);
-    Real a = Real(x86::sreg32(regs.eax & 0xffffu));
-    a *= ld(0x784240);
-    float af = float(a);
-    if (a > k)
-        af = float(Real(af) - (k + k));
-    if (Real(vx) < zero())
-    {
-        Real t = k;
-        t += Real(af);
-        af = float(t);
-        if (t > k)
-            af = float(Real(af) - (k + k));
-    }
+    const physics::Vec3 v = physics::transformTransposed(w + 0x70, physics::load3(w + 0xf0));
+    const float vx = v.x, vy = v.y;
+    const float af = physics::slipAngle(cpu, v);
 
     Real slip = ld(rc::ld32(w + 0x14) + 0x10);
     slip *= ld(w + 0x28);
@@ -197,7 +152,7 @@ void wheel(x86::CPU& cpu, reg32 w, reg32 step)
         float loadf = float(load);
         if (rc::ld32(rc::ld32(w + 0x20) + 0x424) == 1)
         {
-            Real r = traction(w);
+            Real r = physics::traction(w);
             r *= Real(loadf);
             loadf = float(r);
         }

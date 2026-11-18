@@ -55,8 +55,8 @@ NATIVE_OVERRIDES = [
     0x5bc4a0, 0x5ba8b0, 0x5be060, 0x5bdfe0, 0x5be180, 0x401650, 0x5aad20, 0x43d0c0,
     # Car physics: drivetrain (src/ug2/native/sub_594300.cpp)
     0x594300, 0x594840, 0x594a30, 0x594da0,
-    # Car physics: one wheel's contact forces (src/ug2/native/sub_5a8280.cpp)
-    0x5a8280,
+    # Car physics: one wheel's contact and tyre forces (src/ug2/native/sub_5a8280.cpp, sub_59d600.cpp)
+    0x5a8280, 0x59d600,
     # Car physics: shape bounds and vector helpers (src/ug2/native/sub_5a19f0.cpp, sub_43d1e0.cpp, sub_43c570.cpp)
     0x5a19f0, 0x43d1e0, 0x43c570,
     # D3DX (include/winapi/d3dx9.h): native effects without the guest effect compiler or shader objects

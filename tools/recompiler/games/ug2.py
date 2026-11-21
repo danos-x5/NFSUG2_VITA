@@ -161,6 +161,13 @@ PATCHES = [
 ]
 THREAD_SEGMENTS = []
 
+# Mod operand edits, generated both ways and picked at run time by a flag (src/ug2/mods_runtime.cpp):
+# address, original bytes, the mod's bytes, flag.
+MOD_SWITCHES = [
+    # ExtraOptions 5.1.0.1340 [Gameplay] UnlockRegionalCars: PickRandomCarsOfSomeSort (0x4FEAF0) list length 26 -> 28
+    (0x4feb9d, '1a', '1c', 'modrt::euCarsAiList'),
+]
+
 # Net x87 pushes of functions the depth analysis cannot follow.
 FPU_DELTAS = {
     0x75ca0d: 0,    # CRT pow core (_CIpow 0x75c9b0): fnsave 0x75cb1d / frstor 0x75cb29 restore the depth they save

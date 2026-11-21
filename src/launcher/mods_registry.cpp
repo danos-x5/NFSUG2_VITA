@@ -68,7 +68,7 @@ const Source s_sources[SourceCount] =
             { "Gameplay", "ShowPercentOn1LapRaces", "1", false },
             { "Gameplay", "GameRegion", "0", false },
             { "Gameplay", "StartingCash", "0", false },
-            { "Gameplay", "UnlockRegionalCars", "1", true },
+            { "Gameplay", "UnlockRegionalCars", "1", true },      // ExtraOptions 5.1.0.1340 [Gameplay] UnlockRegionalCars
             { "Gameplay", "UnlockAllThings", "0", false },
             { "Gameplay", "NeonBrightness", "1", false },
             { "Gameplay", "NosTrailRepeatCount", "8", false },
@@ -95,7 +95,7 @@ const Source s_sources[SourceCount] =
 
 const Mod s_mods[Count] =
 {
-    {
+    {   // ExtraOptions 5.1.0.1340 [Gameplay] UnlockRegionalCars
         ExtraOptions,
         modreq::EuCarContent,
         "You can drive Peugeout 106 & Vauxhall Corsa in your NTSC game. Same deal with Acura RSX & Honda Civic in your "

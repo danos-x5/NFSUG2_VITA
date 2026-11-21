@@ -695,6 +695,8 @@ void configure(win32::WinApplication& app)
     }
     if (pf::Config::getBool("memory_log", false))
         frontend::hookFileOpens(app);
+    if (*pf::Config::getString("boot_steps", "") != 0)
+        frontend::configure(app);
     const std::string mode = pf::Config::getString("boot_mode", "race");
     s_settings.freeRoam = mode == "freeroam";
     s_settings.url = mode == "url";

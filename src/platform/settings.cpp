@@ -110,6 +110,7 @@ const Setting s_table[] =
     INT("movies_vp6_queue", Developer, 6, 1, 15, 1, "VP6 frames decoded ahead.", DS),
     ENUM("movies_vp6_split", Developer, 1, "off|on|core0", "VP6 coefficients on a second thread: off, on (core 3 only) or on core 0.", DS),
     BOOL("movies_vp6_unlock", Developer, 0, "Decode VP6 movies without the execution lock.", DS),
+    STR("movies_game_dir", Developer, "", "Folder below the data folder the game opens its .vp6 movies from (with movies_dir).", DS),
     STR("movies_redirect", Developer, "", "from:to, the game opens to.vp6 in place of from.vp6.", DS),
     STR("ime_test", Developer, "", "Text the keyboard test types.", 0),
     STR("ime_test_field", Developer, "", "Field the keyboard test fills.", 0),

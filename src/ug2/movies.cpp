@@ -116,6 +116,7 @@ std::vector<MemMap*> s_frameBlocks;            // worker frame buffers
 uint8_t* s_linger = nullptr;                   // last frame of an ended movie, freed with its codec
 std::string s_redirectFrom, s_redirectTo;      // movies_redirect=<from>:<to> (dev): the game opens <to>.vp6
 MemMap* s_redirectPath = nullptr;
+std::string s_gameDir;                         // movies_game_dir (dev): the game opens its .vp6 files from this folder
 win32::MethodPtr s_createFile = nullptr;
 win32::MethodPtr s_decode = nullptr;
 win32::MethodPtr s_destroy = nullptr;
@@ -209,6 +210,20 @@ reg32 redirectPath(reg32 path, const char* name)
     return copy;
 }
 
+// movies_game_dir: a guest copy of the path in that folder, or 0.
+reg32 relocatePath(const char* name)
+{
+    if (s_gameDir.empty())
+        return 0;
+    const std::string text = "C:\\" + s_gameDir + "\\" + name + ".vp6";
+    if (!s_redirectPath)
+        s_redirectPath = new MemMap(4096, MemMap::High, pf::perf::AllocOther);
+    const reg32 copy = s_redirectPath->getBlockStart();
+    for (size_t i = 0; i <= text.size(); ++i)
+        rc::st8(copy + reg32(i), uint8_t(text.c_str()[i]));
+    return copy;
+}
+
 void createFileHook(win32::WinApplication* app, x86::CPU& cpu)
 {
     char name[sizeof(s_lastName)];
@@ -220,6 +235,8 @@ void createFileHook(win32::WinApplication* app, x86::CPU& cpu)
             rc::st32(cpu.esp + 4, copy);
             strcpy(name, s_redirectTo.c_str());
         }
+        if (const reg32 copy = relocatePath(name))
+            rc::st32(cpu.esp + 4, copy);
         lockName();
         strcpy(s_lastName, name);
         unlockName();
@@ -843,6 +860,7 @@ void configure(win32::WinApplication& app)
     }
 #ifdef DEV_SETTINGS
     s_unlockDecode = pf::Config::getBool("movies_vp6_unlock", false);
+    s_gameDir = pf::Config::getString("movies_game_dir", "");
     const std::string redirect = pf::Config::getString("movies_redirect", "");
     const size_t colon = redirect.find(':');
     if (colon != std::string::npos)

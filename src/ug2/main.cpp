@@ -304,6 +304,8 @@ int main(int argc, char** argv)
         pf::fatal("graphics initialisation failed");
     if (pf::Config::getBool("gxm_program_list", true))
         pf::gxm::Device::get().usePrograms(join(f.data, "gxm_programs.bin").c_str());
+    static const char* const MsaaModes[] = { "off", "2x", "4x" };
+    win32::d3d9::bridge::setMsaaSamples(1u << pf::Config::getChoice("msaa", MsaaModes, 3, 0));
 
     win32::File::setDataDirectory((f.data + "/").c_str());
     win32::File::setCdDirectory((f.game + "/").c_str());

@@ -207,6 +207,7 @@ Delete the file to get a fresh copy on the next start.
 | `frame_rate` | `30` (default), `0` | Locked to 30 frames a second for steady pacing, or unlocked |
 | `widescreen` | `on` (default), `off` | Full 16:9 picture with the HUD at the screen edges, or the original 4:3 one with black bars |
 | `gfx_preset` | `vita` (default), `max` | Graphics the port is tuned for, or everything on (much slower). Can be changed in game Options -> Display|
+| `msaa` | `off` (default), `2x`, `4x` | Anti-Aliasing: smoother edges in the 3D view. `2x` and `4x` cost GPU time and memory, `4x` the most |
 | `rear_touch` | `on` (default), `off` | Rear touch pad L2, R2, L3, R3 (unbound until set in Options > Controls) |
 | `front_touch` | `on` (default), `off` | Touching the screen works as a mouse click in the menus; no cursor is drawn |
 | `garage_stick` | `on` (default), `off` | The right stick turns the car in the garage and customisation menus. `garage_stick_deadzone` (default `30`, percent) tunes it. The right stick does not move menu selections |

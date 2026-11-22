@@ -303,6 +303,7 @@ const Setting s_table[] =
     NATIVE_ALWAYS("anim_sample_native", "keyframe sampling"),
     NATIVE_ALWAYS("anim_quant_native", "quantised keyframe sampling"),
     NATIVE_ALWAYS("anim_quant3_native", "quantised three-channel keyframe sampling"),
+    NATIVE("movies_convert_native", "the movie frame conversion"),
 
     // ---- Developer: save folder, files ----
     STR("save_dir", Developer, "", "Save folder override; empty uses the folder below the data folder.", 0),

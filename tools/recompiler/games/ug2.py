@@ -101,6 +101,8 @@ NATIVE_OVERRIDES = [
     # Unloads that wait for pending draw flushes (src/ug2/native/load_hooks.cpp): chunk unload, solid unload,
     # texture pack unload, streamed texture unload
     0x577b10, 0x493f20, 0x494dd0, 0x494b10,
+    # Movie frame conversion, YV12 to 32-bit pixels (cdecl; src/ug2/native/sub_700150.cpp)
+    0x700150,
 ]
 
 # Calls emitted inline with generate.py --inline-ftol2 (codegen/control.py INLINE): address -> helper.

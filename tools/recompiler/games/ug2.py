@@ -40,6 +40,8 @@ NATIVE_OVERRIDES = [
     0x50bac0,   # "$name$" token skip (cdecl; text, flags): draws or measures the button icon
     0x50bce0,   # line width (thiscall on the font): the context of its token skip
     0x50c080,   # line width with wrapping (thiscall on the font): the context of its token skip
+    # PS2 bottom bar (src/ug2/psbar.cpp): the PC help bar fill
+    0x54e6e0, 0x54e6a0, 0x54e6b0,   # fill, Show, Hide
     # Port screen table first (src/ug2/ownscreens.cpp)
     0x50b790,   # screen constructor by package hash (cdecl; hash, package, argument)
     0x50b840,   # screen table entry by package hash (cdecl; hash)

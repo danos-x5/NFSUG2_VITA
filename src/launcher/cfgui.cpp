@@ -620,16 +620,14 @@ Outcome Configurator::update(const Input& input, uint64_t nowUs)
         if (m_complete)
         {
             if (pressed || released)
-            {
-                m_files->finish();
                 enter(Screen::Manager);
-            }
             return Outcome::Running;
         }
         m_progress = m_files->progress();
         const ModFiles::Phase phase = m_progress.phase;
         if (phase == ModFiles::Phase::Done && m_files->requirementsMet(m_mods[m_download].view.id))
         {
+            m_files->finish();
             endDownload(true);
             m_complete = true;
             m_progress.fraction = 1.0f;

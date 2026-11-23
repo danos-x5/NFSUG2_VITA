@@ -36,7 +36,7 @@ NATIVE_OVERRIDES = [
     0x5c7ec0,   # projection (thiscall, view): hor+ factors of the player views
     0x5bd4a0,   # draw queue material setup (cdecl; material, packet flags): D3D material or effect vectors
     # Front touch (src/ug2/padbind.cpp)
-    0x50b460,   # FE mouse cursor draw (cdecl; x, y): skipped with front_touch=on
+    0x50b460,   # FE mouse cursor draw (cdecl; x, y): never drawn
     # Forwarding placeholders for the hot-function conversions (src/ug2/native/stubs.cpp, tools/native/placeholders.txt)
     0x5cf420, 0x5bc300, 0x61b670, 0x5bdde0, 0x5c5930, 0x5d6570,
     0x5bc210, 0x4013f0, 0x5bcc30, 0x4905a0, 0x5ceb30, 0x5dd490,

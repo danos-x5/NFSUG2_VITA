@@ -49,6 +49,7 @@ struct SettingAlias
     const char* key;
 };
 const SettingAlias* settingAliases(int* count);
+bool settingRetired(const char* key);           // a removed key: the loader skips its line silently
 const char* canonicalKey(const char* key);      // the current name of an alias; key itself otherwise
 const char* oldKeyOf(const char* key);          // the alias of a current name, or null
 

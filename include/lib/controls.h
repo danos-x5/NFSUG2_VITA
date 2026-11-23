@@ -96,9 +96,6 @@ struct PadSample
 
 PadSample readPad();
 
-// front_touch (off by default): the front panel is the mouse.
-bool frontTouchEnabled();
-
 #ifndef __vita__
 // Host builds: readPad returns the source's sample, or without one the last setPadState sample (keyboard frontends).
 typedef PadSample (*PadSource)(void* context);
@@ -124,6 +121,22 @@ private:
     std::vector<Entry> m_entries;
 };
 
+// Set by the pad hook in a race or free roam.
+void setDriving(bool driving);
+bool driving();
+
+// Free roam HUD touch zones: a short tap requests the zone's world action, whatever the buttons do. The pad hook
+// sends it as the game's joy event.
+enum HudZone { HudMap, HudMessages, HudShop, HudCareer, HudZoneCount };
+struct ScreenRect
+{
+    float x0, y0, x1, y1;       // 0..1 of the display
+};
+// HUD draw, each frame (Mapper clock); unrenewed zones lapse.
+void setHudZone(HudZone zone, const ScreenRect& rect, uint64_t nowUs);
+// Bit per HudZone (1 << zone) tapped since the last call.
+uint32_t takeWorldRequests();
+
 // What the game gets from one PadSample.
 struct State
 {
@@ -147,6 +160,17 @@ private:
     uint32_t    m_chorded;          // inputs pressed while Select was held, mapped by the chord table until released
     bool        m_selectUsed;       // a chord was used during this Select press
     uint64_t    m_selectPulseEndUs; // the Select tap's button is reported until then
+    struct Tap
+    {
+        int      id;                // -1 for a free entry
+        uint64_t startUs;
+        float    startX, startY;
+        float    farthest;          // greatest distance moved from the start
+        bool     seen;
+    };
+    Tap         m_taps[PadSample::MaxTouches];
+
+    void updateTaps(const PadSample& pad, uint64_t nowUs);
 };
 
 // Radial dead zone and response curve of one stick (x, y in -1..1). deadZone and saturation are DirectInput

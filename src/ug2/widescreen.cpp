@@ -3,6 +3,7 @@
 
 #include "widescreen.h"
 
+#include <lib/controls.h>
 #include <lib/gamepad.h>
 #include <lib/guest.h>
 #include <lib/winapp.h>
@@ -10,11 +11,13 @@
 #include <platform/config.h>
 #include <platform/gxm.h>
 #include <platform/log.h>
+#include <platform/time.h>
 
 #include <algorithm>
 #include <cctype>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <map>
 #include <native.h>
 #include <recomp.h>
@@ -72,7 +75,7 @@ const x86::reg32 TypeImage = 1, TypeColoredImage = 9, TypeMovie = 7;
 double s_k = 1.0;               // part of the screen width the 4:3 canvas spans, centred
 uint32_t s_width = 0, s_height = 0;     // back buffer
 bool s_ready = false;
-bool s_hudFlush = false, s_menuFlush = false, s_logFlush = false;
+bool s_hudFlush = false, s_menuFlush = false, s_logFlush = false, s_hudPackage = false;
 std::string s_package;
 x86::reg32 s_context = 0;
 
@@ -141,6 +144,110 @@ bool fixedPlace(const std::string& package, x86::reg32 texture, Place* place)
         return false;
     *place = Place::Left;
     return true;
+}
+
+// Canvas rectangle to display fractions, with the current drawing map.
+win32::controls::ScreenRect displayRect(float x0, float y0, float x1, float y1)
+{
+    const pf::gxm::Rect screen = pf::gxm::Device::windowRect(s_width, s_height);
+    const Map map = { rc::ldf32(SlotScale), rc::ldf32(SlotOffset) };
+    const double half = 0.5 * (screen.x1 - screen.x0);
+    auto px = [&](float x) { return screen.x0 + (x * map.scale - map.offset + 1.0) * half; };
+    auto py = [&](float y) { return screen.y0 + y / 480.0 * (screen.y1 - screen.y0); };
+    return { float(px(x0) / pf::gxm::DisplayWidth), float(py(y0) / pf::gxm::DisplayHeight),
+             float(px(x1) / pf::gxm::DisplayWidth), float(py(y1) / pf::gxm::DisplayHeight) };
+}
+
+// Free-roam HUD zones from textures: the minimap and the top-left ring's right, up and down arms (SMS, Shop, Career).
+// Arm half width and centre gap, canvas units.
+const float ArmHalf = 20.0f, ArmGap = 10.0f;
+
+struct HudSeen
+{
+    bool minimap = false, ring = false;
+    win32::controls::ScreenRect zones[win32::controls::HudZoneCount];  // by HudZone
+};
+HudSeen s_hudSeen;
+
+// True when the texture's name matches, ignoring case.
+bool textureIs(x86::reg32 texture, const char* name)
+{
+    for (x86::reg32 i = 0;; ++i)
+    {
+        const char c = char(std::toupper(static_cast<unsigned char>(rc::ld8(texture + 0xc + i))));
+        if (c != name[i])
+            return false;
+        if (!c)
+            return true;
+    }
+}
+
+void recordHudZone(x86::reg32 render, const Box& box)
+{
+    using namespace win32::controls;
+    const x86::reg32 texture = rc::ld32(render + 0x14);
+    if (!texture || box.empty() || !s_ready)
+        return;
+    const float margin = 6.0f;
+    if (textureIs(texture, "MINIMAP_MASK"))
+    {
+        s_hudSeen.minimap = true;
+        s_hudSeen.zones[HudMap] = displayRect(box.x0 - margin, box.y0 - margin, box.x1 + margin, box.y1 + margin);
+    }
+    else if (textureIs(texture, "ENGAGE_DPAD_BACKING"))
+    {
+        const float cx = 0.5f * (box.x0 + box.x1), cy = 0.5f * (box.y0 + box.y1);
+        s_hudSeen.ring = true;
+        s_hudSeen.zones[HudMessages] = displayRect(cx + ArmGap, cy - ArmHalf, box.x1 + margin, cy + ArmHalf);
+        s_hudSeen.zones[HudShop] = displayRect(cx - ArmHalf, box.y0 - margin, cx + ArmHalf, cy - ArmGap);
+        s_hudSeen.zones[HudCareer] = displayRect(cx - ArmHalf, cy + ArmGap, cx + ArmHalf, box.y1 + margin);
+    }
+}
+
+#ifdef DEV_TOOLS
+// Logs the zones when they appear or move.
+void logHudZones(const HudSeen& seen, uint64_t now)
+{
+    using namespace win32::controls;
+    static const char* const Names[HudZoneCount] = { "World Map (minimap)", "Read SMS (right arm)",
+                                                     "Enter Shop (up arm)", "Career Stats (down arm)" };
+    static int s_last[HudZoneCount][4];
+    static uint64_t s_lastUs = 0;
+    int px[HudZoneCount][4];
+    for (int z = 0; z < HudZoneCount; ++z)
+    {
+        const ScreenRect& r = seen.zones[z];
+        px[z][0] = int(std::lround(r.x0 * pf::gxm::DisplayWidth));
+        px[z][1] = int(std::lround(r.y0 * pf::gxm::DisplayHeight));
+        px[z][2] = int(std::lround(r.x1 * pf::gxm::DisplayWidth));
+        px[z][3] = int(std::lround(r.y1 * pf::gxm::DisplayHeight));
+    }
+    const bool fresh = !s_lastUs || now - s_lastUs > 500000;
+    s_lastUs = now;
+    if (!fresh && memcmp(px, s_last, sizeof(px)) == 0)
+        return;
+    memcpy(s_last, px, sizeof(px));
+    for (int z = 0; z < HudZoneCount; ++z)
+    {
+        const ScreenRect& r = seen.zones[z];
+        pf::logInfo("screen: HUD touch zone %s: %.3f,%.3f..%.3f,%.3f of the display, px %d,%d..%d,%d", Names[z],
+                    double(r.x0), double(r.y0), double(r.x1), double(r.y1), px[z][0], px[z][1], px[z][2], px[z][3]);
+    }
+}
+#endif
+
+void publishHudZones()
+{
+    const HudSeen seen = s_hudSeen;
+    s_hudSeen = HudSeen();
+    if (!seen.ring || !seen.minimap)
+        return;
+    const uint64_t now = pf::ticksUs();
+#ifdef DEV_TOOLS
+    logHudZones(seen, now);
+#endif
+    for (int z = 0; z < win32::controls::HudZoneCount; ++z)
+        win32::controls::setHudZone(win32::controls::HudZone(z), seen.zones[z], now);
 }
 
 void setMap(const Map& map)
@@ -260,12 +367,15 @@ void packageFlush(win32::WinApplication* app, x86::CPU& cpu)
     s_package = guestString(package ? rc::ld32(package + 0xc) : 0);
     s_context = rc::ld32(cpu.ecx + 0xc);
     const bool wide = s_ready && s_k < 1.0;
-    s_hudFlush = wide && isHud(s_package);
+    s_hudPackage = isHud(s_package);
+    s_hudFlush = wide && s_hudPackage;
     s_menuFlush = wide && !s_hudFlush;
     s_logFlush = s_ready && uiLog();
     s_logNow.clear();
     s_signature.clear();
     sub_537480_guest(app, cpu);
+    if (s_hudPackage)
+        publishHudZones();
     if (s_hudFlush)
         s_unitLast.swap(s_unitNow), s_unitNow.clear();
     s_hudFlush = s_menuFlush = s_logFlush = false;
@@ -289,6 +399,8 @@ void renderObject(win32::WinApplication* app, x86::CPU& cpu)
     {
         if (s_logFlush)
             logDraw(cpu.ecx, rc::ld32(cpu.ecx + 8), rc::ld32(cpu.ecx + 8), renderBox(cpu.ecx), "4:3");
+        if (s_hudPackage)
+            recordHudZone(cpu.ecx, renderBox(cpu.ecx));
         sub_51a5d0_guest(app, cpu);
         return;
     }
@@ -332,6 +444,8 @@ void renderObject(win32::WinApplication* app, x86::CPU& cpu)
     }
     if (uiLog())
         logDraw(render, object, unit, box, how);
+    if (s_hudPackage)
+        recordHudZone(render, box);
     sub_51a5d0_guest(app, cpu);
     if (moved)
         setMap(placeMap(Place::Centre, s_k));

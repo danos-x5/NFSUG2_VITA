@@ -130,6 +130,8 @@ bool Config::load(const char* path, const char* missingFileText)
                      MaxKey - 1, MaxValue - 1);
             continue;
         }
+        if (settingRetired(key))
+            continue;
         const bool known = isKnown(key);
         const char* current = canonicalKey(key);
         const bool alias = current != key;

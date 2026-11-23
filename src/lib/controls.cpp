@@ -1,5 +1,4 @@
 #include <lib/controls.h>
-#include <platform/cached.h>
 #include <platform/config.h>
 #include <platform/log.h>
 #ifdef __vita__
@@ -9,6 +8,7 @@
 #include <mutex>
 #endif
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -228,18 +228,16 @@ static const PadButton s_padButtons[] =
 
 static bool s_touchReady = false;
 static bool s_rearTouch = true;
-static bool s_frontTouch = false;
 static SceTouchPanelInfo s_panels[2];   // front, back
 
-// rear_touch=off and front_touch (off by default) choose the panels read.
+// Front panel always; rear_touch=off skips the rear one.
 static void initTouch()
 {
     s_touchReady = true;
     s_rearTouch = pf::Config::getBool("rear_touch", true);
-    s_frontTouch = frontTouchEnabled();
     for (int port = 0; port < 2; ++port)
     {
-        if (!(port ? s_rearTouch : s_frontTouch))
+        if (port && !s_rearTouch)
             continue;
         sceTouchSetSamplingState(port, SCE_TOUCH_SAMPLING_STATE_START);
         if (sceTouchGetPanelInfo(port, &s_panels[port]) < 0)
@@ -288,7 +286,7 @@ PadSample readPad()
         for (SceUInt32 i = 0; i < touch.reportNum && i < SCE_TOUCH_MAX_REPORT; ++i)
             sample.inputs |= bit(Quadrants[touch.report[i].y >= centreY][touch.report[i].x >= centreX]);
     }
-    if (s_frontTouch && sceTouchPeek(SCE_TOUCH_PORT_FRONT, &touch, 1) >= 0)
+    if (sceTouchPeek(SCE_TOUCH_PORT_FRONT, &touch, 1) >= 0)
     {
         const SceTouchPanelInfo& panel = s_panels[SCE_TOUCH_PORT_FRONT];
         for (SceUInt32 i = 0; i < touch.reportNum && i < SCE_TOUCH_MAX_REPORT && sample.touchCount < PadSample::MaxTouches; ++i)
@@ -340,9 +338,35 @@ PadSample readPad()
 }
 #endif
 
-bool frontTouchEnabled()
+// ---- HUD touch zones ----
+
+static std::atomic<bool>     s_driving(false);
+static std::atomic<float>    s_hudZone[HudZoneCount][4];
+static std::atomic<uint64_t> s_hudStampUs[HudZoneCount];
+static std::atomic<uint32_t> s_worldRequests(0);
+
+void setDriving(bool driving)
 {
-    return pf::cachedStatic([] { return pf::Config::getBool("front_touch", true); });
+    s_driving = driving;
+}
+
+bool driving()
+{
+    return s_driving;
+}
+
+void setHudZone(HudZone zone, const ScreenRect& rect, uint64_t nowUs)
+{
+    s_hudZone[zone][0] = rect.x0;
+    s_hudZone[zone][1] = rect.y0;
+    s_hudZone[zone][2] = rect.x1;
+    s_hudZone[zone][3] = rect.y1;
+    s_hudStampUs[zone] = nowUs ? nowUs : 1;
+}
+
+uint32_t takeWorldRequests()
+{
+    return s_worldRequests.exchange(0);
 }
 
 // ---- Pad script ----
@@ -448,6 +472,68 @@ Mapper::Mapper()
     ,   m_selectUsed(false)
     ,   m_selectPulseEndUs(0)
 {
+    for (Tap& tap : m_taps)
+        tap.id = -1;
+}
+
+// Short still taps in a live HUD zone request its action.
+void Mapper::updateTaps(const PadSample& pad, uint64_t nowUs)
+{
+    static const uint64_t TapMaxUs = 300000;
+    static const float TapMaxMove = 0.04f;
+    static const uint64_t ZoneLifeUs = 500000;
+#ifdef DEV_TOOLS
+    static const char* const ZoneNames[HudZoneCount] = { "World Map", "Read SMS", "Enter Shop", "Career Stats" };
+#endif
+    for (Tap& tap : m_taps)
+        tap.seen = false;
+    for (int i = 0; i < pad.touchCount; ++i)
+    {
+        const PadSample::Touch& touch = pad.touches[i];
+        Tap* tap = nullptr;
+        for (Tap& t : m_taps)
+        {
+            if (t.id == touch.id)
+                tap = &t;
+        }
+        for (Tap& t : m_taps)
+        {
+            if (!tap && t.id < 0)
+                tap = &t;
+        }
+        if (!tap)
+            continue;
+        if (tap->id != touch.id)
+            *tap = { touch.id, nowUs, touch.x, touch.y, 0.0f, true };
+        tap->seen = true;
+        tap->farthest = std::fmax(tap->farthest, std::hypot(touch.x - tap->startX, touch.y - tap->startY));
+    }
+    for (Tap& tap : m_taps)
+    {
+        if (tap.id < 0 || tap.seen)
+            continue;
+        const bool quick = nowUs - tap.startUs <= TapMaxUs && tap.farthest <= TapMaxMove;
+        tap.id = -1;
+        if (!quick || !s_driving)
+            continue;
+        for (int zone = 0; zone < HudZoneCount; ++zone)
+        {
+            const uint64_t stamp = s_hudStampUs[zone];
+            if (!stamp || nowUs - stamp > ZoneLifeUs)
+                continue;
+            if (tap.startX >= s_hudZone[zone][0] && tap.startX <= s_hudZone[zone][2] &&
+                tap.startY >= s_hudZone[zone][1] && tap.startY <= s_hudZone[zone][3])
+            {
+                s_worldRequests |= 1u << zone;
+#ifdef DEV_TOOLS
+                pf::logInfo("controls: tap at %.3f %.3f (%.0f, %.0f px) in the %s zone", double(tap.startX),
+                            double(tap.startY), double(tap.startX * 960.0f), double(tap.startY * 544.0f),
+                            ZoneNames[zone]);
+#endif
+                break;
+            }
+        }
+    }
 }
 
 State Mapper::update(const PadSample& pad, uint64_t nowUs)
@@ -499,6 +585,7 @@ State Mapper::update(const PadSample& pad, uint64_t nowUs)
     }
     if (nowUs < m_selectPulseEndUs)
         state.buttons |= uint32_t(1) << s_selectTapButton;
+    updateTaps(pad, nowUs);
 
     state.axes[AxisX] = pad.sticks[0];
     state.axes[AxisY] = pad.sticks[1];

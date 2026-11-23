@@ -37,7 +37,6 @@ const Setting s_table[] =
 
     // ---- Controls ----
     BOOL("rear_touch", Controls, 1, "Rear touch pad works as L2, R2, L3 and R3, unbound until set in the Controls screen.", 0),
-    BOOL("front_touch", Controls, 1, "Touching the screen clicks like a mouse in the menus; no cursor is drawn.", 0),
     BOOL("garage_stick", Controls, 1, "The right stick turns the car in the garage and the customisation menus.", 0),
     INT("garage_stick_deadzone", Controls, 30, 0, 99, 1, "Dead zone of the garage stick, in percent of its range.", 0),
 
@@ -324,6 +323,9 @@ const Setting s_table[] =
 #undef NATIVE_ALWAYS
 #undef FAST
 
+// Keys that no longer exist: a cfg line for one is skipped without a message.
+const char* const s_retired[] = { "front_touch" };
+
 const SettingAlias s_aliases[] =
 {
     { "world_lod_pixels", "dev_world_lod_pixels" },
@@ -380,6 +382,16 @@ bool settingReadInThisBuild(const Setting& setting)
     missing |= SettingNeedsShadowBuild;
 #endif
     return (setting.flags & missing) == 0;
+}
+
+bool settingRetired(const char* key)
+{
+    for (const char* retired : s_retired)
+    {
+        if (strcmp(retired, key) == 0)
+            return true;
+    }
+    return false;
 }
 
 const SettingAlias* settingAliases(int* count)

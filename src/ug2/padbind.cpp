@@ -1,5 +1,5 @@
-// Pad bindings: installs the port's default bindings and leaves the rest to the game's Controls screen and profile.
-// Also the pad log, the pad script and the hidden mouse cursor.
+// Pad bindings: the port's defaults, then the game's Controls screen and profile. Also the pad log, pad script,
+// hidden mouse cursor and free-roam HUD touch requests.
 
 #include "padbind.h"
 #include "pad_defaults.h"
@@ -39,6 +39,13 @@ const reg32 RaceCoordinator = 0x008900D8;
 const reg32 GearOffset = 0x27C;             // the car's gear, found by diffing memory around shifts
 const float CarLogPeriod = 0.5f;
 const reg32 BindingName = 0x005C20E0;       // thiscall slot (action, 0/1 primary/secondary): Controls screen text
+const reg32 JoyHandlers = 0x008655A0;       // per port a list of nodes: next, -, event +8, cdecl handler +0x10, its data +0x14
+const reg32 JoyPortSize = 0x1C8;
+const reg32 JoyPortCount = 2;
+const reg32 RequestEngageInfo = 0xBF;       // JOY_EVENT_REQUEST_ENGAGE_INFO (action 15): Enter Shop / Start Race
+const reg32 RequestWorldMap = 0xC0;         // JOY_EVENT_REQUEST_WORLD_MAP (action 16)
+const reg32 RequestLegend = 0xC1;           // JOY_EVENT_REQUEST_LEGEND (action 18): Career Stats
+const reg32 RequestMessages = 0xC2;         // JOY_EVENT_REQUEST_MESSAGE_SYSTEM (action 17): Read SMS
 
 win32::MethodPtr s_peekMessage = nullptr;
 bool s_log = false;
@@ -112,11 +119,61 @@ void logMaps()
     }
 }
 
-void program()
+// Calls the game's own handler for a joy event.
+void requestEvent(win32::WinApplication* app, x86::CPU& cpu, reg32 event, const char* name)
+{
+    for (reg32 port = 0; port < JoyPortCount; ++port)
+    {
+        const reg32 list = JoyHandlers + port * JoyPortSize;
+        for (reg32 node = rc::ld32(list); node && node != list; node = rc::ld32(node))
+        {
+            const reg32 handler = rc::ld32(node + 0x10);
+            if (rc::ld32(node + 8) != event || !handler)
+                continue;
+            const x86::CPU saved = cpu;
+            cpu.esp -= 16;
+            rc::st32(cpu.esp, port);
+            rc::st32(cpu.esp + 4, event);
+            rc::st32(cpu.esp + 8, 1);
+            rc::st32(cpu.esp + 12, rc::ld32(node + 0x14));
+            cpu.esp -= 4;
+            app->dynamic_call(handler, cpu);
+            cpu = saved;
+#ifdef DEV_TOOLS
+            pf::logInfo("padbind: touch: %s requested on port %u", name, unsigned(port));
+#endif
+            return;
+        }
+    }
+#ifdef DEV_TOOLS
+    pf::logInfo("padbind: touch: %s request dropped, the game is not listening for it", name);
+#endif
+}
+
+// Sends the HUD taps as the game's world action events.
+void sendWorldRequests(win32::WinApplication* app, x86::CPU& cpu)
+{
+    static const struct { controls::HudZone zone; reg32 event; const char* name; } Requests[] = {
+        { controls::HudMap, RequestWorldMap, "World Map" },
+        { controls::HudMessages, RequestMessages, "Read SMS" },
+        { controls::HudShop, RequestEngageInfo, "Enter Shop" },
+        { controls::HudCareer, RequestLegend, "Career Stats" },
+    };
+    const uint32_t zones = controls::takeWorldRequests();
+    for (const auto& r : Requests)
+    {
+        if (zones & (1u << r.zone))
+            requestEvent(app, cpu, r.event, r.name);
+    }
+}
+
+void program(win32::WinApplication* app, x86::CPU& cpu)
 {
     if (s_log)
         logCar();
     const bool driving = rc::ld32(InputMap) != 1;
+    controls::setDriving(driving && rc::ld32(GameState) == 6);
+    sendWorldRequests(app, cpu);
     if (s_scripted && (s_scriptStep || (driving && rc::ld32(GameState) == 6)))
         win32::Gamepad::setInjectedPad(s_script.sampleAt(s_scriptStep++));
     if (!s_log)
@@ -171,7 +228,7 @@ void logNames(win32::WinApplication* app, x86::CPU& cpu, reg32 slot)
 void peekMessageHook(win32::WinApplication* app, x86::CPU& cpu)
 {
     s_peekMessage(app, cpu);
-    program();
+    program(app, cpu);
     if (s_namesSlot)
     {
         logNames(app, cpu, s_namesSlot);
@@ -183,18 +240,13 @@ void peekMessageHook(win32::WinApplication* app, x86::CPU& cpu)
 
 }
 
-void sub_50b460_guest(win32::WinApplication* app, x86::CPU& cpu);
-
 namespace native
 {
 
-// Mouse cursor draw (cdecl; x, y): none with front_touch=on.
-void sub_50b460(win32::WinApplication* app, x86::CPU& cpu)
+// Mouse cursor draw (cdecl; x, y): never drawn.
+void sub_50b460(win32::WinApplication*, x86::CPU& cpu)
 {
-    if (!win32::controls::frontTouchEnabled())
-        sub_50b460_guest(app, cpu);
-    else
-        cpu.esp += 4;
+    cpu.esp += 4;
 }
 
 }

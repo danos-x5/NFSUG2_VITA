@@ -35,6 +35,11 @@ NATIVE_OVERRIDES = [
     0x51a5d0,   # FERenderObject draw (thiscall): canvas mapping of the object
     0x5c7ec0,   # projection (thiscall, view): hor+ factors of the player views
     0x5bd4a0,   # draw queue material setup (cdecl; material, packet flags): D3D material or effect vectors
+    # PS2 button icons (src/ug2/helpicons.cpp, src/ug2/psprompt.cpp)
+    0x51c110,   # FE font render (thiscall on the font): the context of its token skips
+    0x50bac0,   # "$name$" token skip (cdecl; text, flags): draws or measures the button icon
+    0x50bce0,   # line width (thiscall on the font): the context of its token skip
+    0x50c080,   # line width with wrapping (thiscall on the font): the context of its token skip
     # Front touch (src/ug2/padbind.cpp)
     0x50b460,   # FE mouse cursor draw (cdecl; x, y): skipped with front_touch=on
     # Forwarding placeholders for the hot-function conversions (src/ug2/native/stubs.cpp, tools/native/placeholders.txt)

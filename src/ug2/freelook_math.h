@@ -1,7 +1,7 @@
 #ifndef UG2_FREELOOK_MATH_H_
 #define UG2_FREELOOK_MATH_H_
 
-// Free look maths: stick direction to view yaw, and turning the chase camera rig about the car as Look Back does.
+// Free look maths: stick direction to view yaw, the front-half swing, and turning the chase camera rig like Look Back.
 
 #include <cmath>
 #include <cstdint>
@@ -10,6 +10,8 @@ namespace ug2 { namespace freelook_math {
 
 const float DeadZone = 0.30f;           // radial, of full deflection
 const float SnapDegrees = 8.0f;         // stick this close to straight up or down reads exactly 0 or 180
+const float RearDegrees = 90.0f;        // aims this far round or more snap; nearer ahead they swing
+const int   DefaultSwingSpeed = 360;    // degrees a second
 
 struct Vec
 {
@@ -45,6 +47,38 @@ inline Aim aim(float x, float y, float deadZone = DeadZone)
     else if (std::fabs(yaw) >= 180.0f - SnapDegrees)
         yaw = 180.0f;
     return { true, yaw };
+}
+
+// The yaw free look shows.
+struct View
+{
+    bool  on;       // free look turns the camera
+    float yaw;      // degrees right of ahead
+};
+
+// Moves current toward target the short way, at most step.
+inline float approach(float current, float target, float step)
+{
+    const float d = wrap(target - current);
+    if (std::fabs(d) <= step)
+        return target;
+    return wrap(current + (d > 0 ? step : -step));
+}
+
+// Next view: rear aims snap, front aims swing at speed.
+inline View next(const View& view, const Aim& aim, float dt, float speed, bool releaseSwing)
+{
+    const float step = speed > 0 ? speed * dt : 360.0f;
+    if (aim.held)
+    {
+        if (std::fabs(aim.yaw) >= RearDegrees)
+            return { true, aim.yaw };
+        return { true, approach(view.on ? view.yaw : 0.0f, aim.yaw, step) };
+    }
+    if (!releaseSwing || !view.on)
+        return { false, 0.0f };
+    const float yaw = approach(view.yaw, 0.0f, step);
+    return { yaw != 0.0f, yaw };
 }
 
 // Turn giving yaw, after the game's own Look Back mirror (or not).

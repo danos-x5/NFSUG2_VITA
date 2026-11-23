@@ -1,5 +1,5 @@
 // Free look: the stick's direction turns the chase camera rig about the car, the turn Look Back makes at 180
-// degrees. The game's own Look Back is never touched.
+// degrees; aims ahead swing there, rear aims snap. The game's own Look Back is untouched.
 
 #include "freelook.h"
 #include "freelook_math.h"
@@ -10,6 +10,7 @@
 #include <platform/log.h>
 #include <recomp.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 
@@ -24,6 +25,7 @@ namespace fm = freelook_math;
 const reg32 RaceCoordinator = 0x008900D8;   // pointer; its first dword is 6 while the race is paused
 const reg32 OptionsExit = 0x008384DC;       // byte
 const reg32 ReplayState = 0x0085EF6C;       // byte; the game ignores Look Back while it is set (0x6033c7)
+const reg32 FrameStep = 0x00865198;         // float: the frame's time step in seconds
 
 // Chase camera mover (vtable 0x787f28, update 0x453570) and the camera director that creates it (0x5f1fd0).
 const reg32 MoverType = 0x0C;               // 1: the player's chase camera, the one Look Back reaches
@@ -45,7 +47,10 @@ struct State
     uint32_t    frame = 0;          // of the camera's last update
     bool        live = false;
     bool        held = false;       // the stick is out of its dead zone
-    float       yaw = 0;            // view yaw, degrees right of ahead
+    bool        on = false;         // free look turns the camera
+    float       yaw = 0;            // view yaw shown, degrees right of ahead
+    float       aim = 0;            // the stick's yaw
+    uint32_t    stepFrame = 0;      // frame of the last swing step
     uint32_t    logFrame = 0;
     bool        turned = false;     // the look-at hook has turned this camera
     const char* declined = nullptr; // the reason last logged
@@ -59,6 +64,27 @@ bool rawStick()
 {
     static const bool on = pf::Config::getBool("free_look", false);
     return on;
+}
+
+struct Settings
+{
+    float swing;            // degrees a second, 0 snaps
+    bool  releaseSwing;
+};
+
+const Settings& settings()
+{
+    static const Settings s = {
+        float(std::min(std::max(pf::Config::getInt("free_look_swing", fm::DefaultSwingSpeed), 0), 2000)),
+        pf::Config::getBool("free_look_release_swing", false),
+    };
+    return s;
+}
+
+float frameStep()
+{
+    const float dt = rc::ldf32(FrameStep);
+    return dt > 0.0f ? std::min(dt, 0.1f) : 0.0f;
 }
 
 bool logging()
@@ -98,10 +124,10 @@ bool hideRightStick()
 void release(const char* why)
 {
     State& s = s_state;
-    if (s.held && logging())
+    if (s.on && logging())
         pf::logInfo("freelook: release (%s): chase view", why);
-    s.held = false;
-    s.yaw = 0;
+    s.held = s.on = false;
+    s.yaw = s.aim = 0;
 }
 
 void setLive(bool live, reg32 camera)
@@ -145,8 +171,8 @@ void update(reg32 camera)
             release("no camera update for a while");
         else if (logging() && s.camera)
             pf::logInfo("freelook: camera %08X -> %08X", unsigned(s.camera), unsigned(camera));
-        s.held = s.turned = false;
-        s.yaw = 0;
+        s.held = s.on = s.turned = false;
+        s.yaw = s.aim = 0;
         s.camera = camera;
     }
     s.frame = frame;
@@ -165,19 +191,30 @@ void update(reg32 camera)
 
     const float x = s_input[0], y = s_input[1];
     const fm::Aim aim = fm::aim(x, y);
-    if (!aim.held)
+    const float dt = frame != s.stepFrame ? frameStep() : 0.0f;
+    s.stepFrame = frame;
+    const Settings& cfg = settings();
+    const fm::View view = fm::next({ s.on, s.yaw }, aim, dt, cfg.swing, cfg.releaseSwing);
+    if (logging())
     {
-        release("stick centred");
-        return;
+        const bool rear = std::fabs(aim.yaw) >= fm::RearDegrees, wasRear = std::fabs(s.aim) >= fm::RearDegrees;
+        if (aim.held && (!s.held || rear != wasRear))
+            pf::logInfo("freelook: %s: stick %.2f,%.2f at %.1f deg, aim %.1f, %s from %.1f", s.held ? "half" : "press",
+                        x, y, stickDegrees(x, y), aim.yaw, rear ? "snap" : "swing", s.yaw);
+        else if (aim.held && !rear && s.yaw != s.aim && view.yaw == aim.yaw && aim.yaw == s.aim)
+            pf::logInfo("freelook: swing reached %.1f", aim.yaw);
+        if (!aim.held && s.held)
+            pf::logInfo("freelook: release (stick centred): %s from %.1f", view.on ? "swing back" : "chase view",
+                        s.yaw);
+        else if (!aim.held && s.on && !view.on)
+            pf::logInfo("freelook: release swing done: chase view");
     }
-    if (!s.held)
-    {
+    if (aim.held && !s.held)
         s.declined = nullptr;
-        if (logging())
-            pf::logInfo("freelook: snap: stick %.2f,%.2f at %.1f deg, yaw %.1f", x, y, stickDegrees(x, y), aim.yaw);
-    }
-    s.held = true;
-    s.yaw = aim.yaw;
+    s.held = aim.held;
+    s.on = view.on;
+    s.yaw = view.yaw;
+    s.aim = aim.held ? aim.yaw : 0.0f;
 }
 
 }
@@ -211,7 +248,7 @@ void beforeLookAt(win32::WinApplication*, x86::CPU& cpu)
 {
     State& s = s_state;
     const reg32 camera = s_update.camera;
-    if (!camera || camera != s.camera || !s.live || !s.held)
+    if (!camera || camera != s.camera || !s.live || !s.on)
         return;
     if (cpu.esp != s_update.lookAtEsp)
     {
@@ -232,12 +269,12 @@ void beforeLookAt(win32::WinApplication*, x86::CPU& cpu)
     {
         const float x = s_input[0], y = s_input[1];
         s.logFrame = frontend::frameCounter();
-        pf::logInfo("freelook: stick %.2f,%.2f at %.1f deg, yaw %.1f, game look back %u, turn %.1f", x, y,
-                    stickDegrees(x, y), s.yaw, unsigned(mirrored), turn);
+        pf::logInfo("freelook: stick %.2f,%.2f at %.1f deg, aim %.1f, yaw %.1f, game look back %u, turn %.1f", x, y,
+                    stickDegrees(x, y), s.aim, s.yaw, unsigned(mirrored), turn);
     }
     if (turn == 0.0f)
     {
-        decline(mirrored ? "stick down with Look Back held: the game's own view" : "stick up: the chase view", cpu.esp);
+        decline(mirrored ? "stick down with Look Back held: the game's own view" : "yaw 0: the chase view", cpu.esp);
         return;
     }
     if (!s.turned && logging())

@@ -7,7 +7,7 @@
 
 namespace ug2 { namespace controlsshell {
 
-// Before guest code runs, after psprompt::configure.
+// Before guest code runs.
 void configure(win32::WinApplication& app);
 // Per frame on the game thread.
 void frame(win32::WinApplication* app, x86::CPU& cpu);

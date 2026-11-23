@@ -238,6 +238,10 @@ add_executable(NFSU2LAUNCH.elf
   src/launcher/cfgui_sysfont.cpp src/launcher/mods_edit.cpp src/launcher/save.cpp src/launcher/log.cpp
   src/launcher/mods_registry.cpp src/ug2/mods_require.cpp src/ug2/mods_hook.cpp src/ug2/notice_text.cpp
   src/platform/settings.cpp src/platform/cfgfile.cpp src/platform/textfile.cpp)
+# Start-up screen shots on request (shot_c.req) with the game's screenshot writer, development builds only.
+if(DEV_TOOLS)
+  target_sources(NFSU2LAUNCH.elf PRIVATE src/launcher/shots.cpp src/dev/screenshot.cpp)
+endif()
 target_compile_options(NFSU2LAUNCH.elf PRIVATE ${NFSU_COMMON_FLAGS} -O2)
 target_compile_definitions(NFSU2LAUNCH.elf PRIVATE ${NFSU_RUNTIME_DEFINES})
 target_include_directories(NFSU2LAUNCH.elf PRIVATE ${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/src/ug2

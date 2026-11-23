@@ -40,6 +40,10 @@ NATIVE_OVERRIDES = [
     0x50bac0,   # "$name$" token skip (cdecl; text, flags): draws or measures the button icon
     0x50bce0,   # line width (thiscall on the font): the context of its token skip
     0x50c080,   # line width with wrapping (thiscall on the font): the context of its token skip
+    # Port screen table first (src/ug2/ownscreens.cpp)
+    0x50b790,   # screen constructor by package hash (cdecl; hash, package, argument)
+    0x50b840,   # screen table entry by package hash (cdecl; hash)
+    0x570d70,   # chunk register (cdecl; chunk): a replaced package chunk goes in instead (src/ug2/ownscreens.cpp)
     # Front touch (src/ug2/padbind.cpp)
     0x50b460,   # FE mouse cursor draw (cdecl; x, y): skipped with front_touch=on
     # Forwarding placeholders for the hot-function conversions (src/ug2/native/stubs.cpp, tools/native/placeholders.txt)

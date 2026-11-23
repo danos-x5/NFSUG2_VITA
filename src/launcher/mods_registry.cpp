@@ -31,46 +31,46 @@ Source s_sources[SourceCount] =
             { "Hotkeys", "UnlockAllThings", "116", false },
             { "Hotkeys", "AutoDrive", "117", false },
             { "Hotkeys", "EnableSaveLoadHotPos", "0", false },
-            { "LapControllers", "Minimum", "0", false },
-            { "LapControllers", "Maximum", "127", false },
+            { "LapControllers", "Minimum", "0", true },
+            { "LapControllers", "Maximum", "127", true },
             { "LapControllers", "KOEnabled", "5", false },
             { "OpponentControllers", "Minimum", "0", false },
             { "OpponentControllers", "Maximum", "5", false },
             { "OpponentControllers", "KOEnabled", "5", false },
             { "OpponentControllers", "MaximumLANPlayers", "6", false },
-            { "Drift", "MaximumMultiplier", "5", false },
-            { "Drift", "PlusSign", "0", false },
-            { "Drift", "ShowWithoutMultiplying", "0", false },
-            { "Drift", "HideNiftyDriftMessages", "0", false },
-            { "Menu", "ShowOutrun", "0", false },
+            { "Drift", "MaximumMultiplier", "5", true },
+            { "Drift", "PlusSign", "0", true },
+            { "Drift", "ShowWithoutMultiplying", "0", true },
+            { "Drift", "HideNiftyDriftMessages", "0", true },
+            { "Menu", "ShowOutrun", "0", true },
             { "Menu", "ShowMoreRaceOptions", "1", false },
             { "Menu", "ShowOnline", "1", false },
-            { "Menu", "ShowSubs", "0", false },
-            { "Menu", "ShowSpecialVinyls", "1", false },
+            { "Menu", "ShowSubs", "0", true },
+            { "Menu", "ShowSpecialVinyls", "1", true },
             { "Menu", "ShowDebugCarCustomize", "0", false },
             { "Menu", "ShowDebugEventID", "0", false },
-            { "Menu", "AnyTrackInAnyRaceMode", "0", false },
-            { "Menu", "FreeRunTrackSelect", "1", false },
-            { "Menu", "OutrunTrackSelect", "1", false },
+            { "Menu", "AnyTrackInAnyRaceMode", "0", true },
+            { "Menu", "FreeRunTrackSelect", "1", true },
+            { "Menu", "OutrunTrackSelect", "1", true },
             { "Menu", "SplashScreenTimeLimit", "30", false },
             { "Menu", "ShowcaseCamInfiniteYRotation", "0", false },
             { "Menu", "AllowLongerProfileNames", "1", false },
-            { "Menu", "DisableTakeover", "0", false },
-            { "Gameplay", "EnableHiddenCameraModes", "0", false },
+            { "Menu", "DisableTakeover", "0", true },
+            { "Gameplay", "EnableHiddenCameraModes", "0", true },
             { "Gameplay", "EnableDebugCamera", "0", false },
             { "Gameplay", "GameSpeed", "1", false },
             { "Gameplay", "WorldAnimationSpeed", "45", false },
             { "Gameplay", "HeadlightsMode", "2", false },
             { "Gameplay", "LowBeamBrightness", "0.75", false },
             { "Gameplay", "HighBeamBrightness", "1", false },
-            { "Gameplay", "RemoveRaceBarriers", "0", false },
-            { "Gameplay", "RemoveLockedAreaBarriers", "0", false },
-            { "Gameplay", "ShowPercentOn1LapRaces", "1", false },
-            { "Gameplay", "GameRegion", "0", false },
-            { "Gameplay", "StartingCash", "0", false },
-            { "Gameplay", "UnlockRegionalCars", "1", true },      // ExtraOptions 5.1.0.1340 [Gameplay] UnlockRegionalCars
-            { "Gameplay", "UnlockAllThings", "0", false },
-            { "Gameplay", "NeonBrightness", "1", false },
+            { "Gameplay", "RemoveRaceBarriers", "0", true },
+            { "Gameplay", "RemoveLockedAreaBarriers", "0", true },
+            { "Gameplay", "ShowPercentOn1LapRaces", "1", true },
+            { "Gameplay", "GameRegion", "0", true },
+            { "Gameplay", "StartingCash", "0", true },
+            { "Gameplay", "UnlockRegionalCars", "1", true },
+            { "Gameplay", "UnlockAllThings", "0", true },
+            { "Gameplay", "NeonBrightness", "1", true },
             { "Gameplay", "NosTrailRepeatCount", "8", false },
             { "Weather", "AlwaysRain", "0", false },
             { "Weather", "GeneralRainAmount", "1", false },
@@ -80,8 +80,8 @@ Source s_sources[SourceCount] =
             { "Weather", "RainCrossing", "0.02", false },
             { "Weather", "RainSpeed", "0.03", false },
             { "Weather", "RainGravity", "0.35", false },
-            { "Fixes", "DisappearingWheelsFix", "1", false },
-            { "Fixes", "ExperimentalSplitScreenFix", "0", false },
+            { "Fixes", "DisappearingWheelsFix", "1", true },
+            { "Fixes", "ExperimentalSplitScreenFix", "0", true },
             { "Fixes", "DamageFix", "1", false },
             { "Fixes", "MegalowPartsFix", "1", false },
             { "Misc", "WindowedMode", "0", false },
@@ -95,6 +95,9 @@ Source s_sources[SourceCount] =
 };
 
 
+#define EXOPTS(id, description, comment, overlap) { ExtraOptions, modreq::id, description, comment, { overlap } }
+
+// ExtraOptions 5.1.0.1340: descriptions from its readme, comments ours
 const Mod s_mods[Count] =
 {
     {   // ExtraOptions 5.1.0.1340 [Gameplay] UnlockRegionalCars
@@ -105,7 +108,66 @@ const Mod s_mods[Count] =
         "1 lists the Corsa and the Peugeot 106 in the US game, 0 keeps them out",
         { "eu_content" },
     },
+    // ExtraOptions 5.1.0.1340 [LapControllers] Minimum, Maximum
+    EXOPTS(LapMinimum, "You can have from 0 (which makes the race unlimited) to 127 (Really long races) laps.",
+           "fewest laps in Quick Race and LAN options, 0 to 127", "lap_minimum"),
+    EXOPTS(LapMaximum, "You can have from 0 (which makes the race unlimited) to 127 (Really long races) laps.",
+           "most laps in Quick Race and LAN options, 0 to 127", "lap_maximum"),
+    // ExtraOptions 5.1.0.1340 [Drift] MaximumMultiplier, PlusSign, ShowWithoutMultiplying, HideNiftyDriftMessages
+    EXOPTS(DriftMaximumMultiplier, "The default value was x5. You can boost it up to x9, or use x1 for more "
+           "challenging drift races. Now with this hack, static drift scores in Heights Drift races are multiplied with "
+           "Multiplier/5 (1.8 for x9) to balance them with you.", "highest drift multiplier, 1 to 9", "drift_multiplier"),
+    EXOPTS(DriftPlusSign, "You can also tweak how your score will look like. Add a + before it, or show it without "
+           "multiplying.", "1 shows a + before the drift points", "drift_plus_sign"),
+    EXOPTS(DriftShowWithoutMultiplying, "You can also tweak how your score will look like. Add a + before it, or show "
+           "it without multiplying.", "1 shows drift points as 500x3", "drift_points_axb"),
+    EXOPTS(DriftHideNiftyMessages, "You can now get rid of \"Good Drift!\", \"Perfect Drift!\", etc. messages while "
+           "drifting! You are always the drift king, tho.", "1 hides Good Drift! and the like", "drift_messages"),
+    // ExtraOptions 5.1.0.1340 [Menu] ShowOutrun, ShowSubs, ShowSpecialVinyls, AnyTrackInAnyRaceMode
+    EXOPTS(ShowOutrun, "Your 1vs1 game mode from Career and LAN is now available in Quick Race. But with some issues: "
+           "Screen will stay black, it isn't even split. And you control 2 cars at the same time.",
+           "1 adds Outrun to the Quick Race modes", "quick_race_outrun"),
+    EXOPTS(ShowSubs, "You want to know what they talk about, but you can't understand what do they say? This is for "
+           "you! Some subtitles are buggy, because of their cut strings.", "1 shows English subtitles", "subtitles"),
+    EXOPTS(ShowSpecialVinyls, "Debug vinyl and sponsor vinyls; just go install them from the Vinyls menu. Some vinyls "
+           "don't work for some cars.", "1 adds the special vinyl category", "special_vinyls"),
+    EXOPTS(AnyTrackInAnyRaceMode, "Drift in your favourite track, or make a free roam Drag! This option will also add "
+           "hidden tracks in menus. This will make the list too long. After some races, icons won't scroll. But you "
+           "can select a race safely. If you select a Sprint Drift (Heights Drifts) for another game mode, your game "
+           "will crash when you finish the race.", "1 lists every track in every race mode", "any_track"),
+    // ExtraOptions 5.1.0.1340 [Menu] FreeRunTrackSelect, OutrunTrackSelect, DisableTakeover
+    EXOPTS(FreeRunTrackSelect, "They have a very long list! Just try it.", "1 lets Free Run pick its track", "free_run_track_select"),
+    EXOPTS(OutrunTrackSelect, "They have a very long list! Just try it. No more random tracks for Outrun game mode!",
+           "1 lets Outrun pick its track", "outrun_track_select"),
+    EXOPTS(DisableTakeover, "Removes \"Extra Options by ExOpts Team\" text from Copyright area.",
+           "1 hides the Extra Options line on the splash screen", "takeover_text"),
+    // ExtraOptions 5.1.0.1340 [Gameplay] EnableHiddenCameraModes, RemoveRaceBarriers, RemoveLockedAreaBarriers
+    EXOPTS(EnableHiddenCameraModes, "Birds eye free roam? Yeah, it's here! Unused Driver Camera is here, too!",
+           "1 adds the hidden camera modes", "camera_modes"),
+    EXOPTS(RemoveRaceBarriers, "Locked area barriers or route indicators, remove if you don't want them! This hack "
+           "will be disabled for Drift, StreetX and URL tracks to fix invisible walls bug.",
+           "1 removes the race route barriers", "race_barriers"),
+    EXOPTS(RemoveLockedAreaBarriers, "Locked area barriers or route indicators, remove if you don't want them!",
+           "1 removes the locked area barriers", "locked_area_barriers"),
+    // ExtraOptions 5.1.0.1340 [Gameplay] ShowPercentOn1LapRaces, GameRegion, StartingCash, UnlockAllThings
+    EXOPTS(ShowPercentOn1LapRaces, "No more LAPS 1/1! You'll see % progress on 1-lap races now.",
+           "1 shows the % progress on 1-lap races", "lap_percent"),
+    EXOPTS(GameRegion, "You can't play with your European friends? Just change your game region code to anything "
+           "else. It may change your cars' frontend information. (Logos and names)",
+           "0 NTSC-U, 1 to 12 PAL/NTSC-J", "game_region"),
+    EXOPTS(StartingCash, "Start with a specified amount of cash. Get rich easily from the start!",
+           "cash of a new career", "starting_cash"),
+    EXOPTS(UnlockAllThings, "This will unlock everything in game. Like a season pass, but it's for FREE!",
+           "1 unlocks everything", "unlock_all"),
+    // ExtraOptions 5.1.0.1340 [Gameplay] NeonBrightness, [Fixes] DisappearingWheelsFix, ExperimentalSplitScreenFix
+    EXOPTS(NeonBrightness, "Are that neons too bright for you? You can dim them.", "under-car neon brightness", "neon_brightness"),
+    EXOPTS(DisappearingWheelsFix, "You can use open-wheel cars now! Disappearing wheels issue is fixed.",
+           "1 keeps the wheels drawn", "wheels_fix"),
+    EXOPTS(ExperimentalSplitScreenFix, "It's experimental and doesn't fix any race behaviour. Use with 'ShowOutrun' "
+           "option in [Menu] section.", "1 fixes the Outrun black screen (experimental)", "split_screen_fix"),
 };
+
+#undef EXOPTS
 
 }
 
@@ -120,12 +182,6 @@ bool fileExists(const std::string& file)
     return stat(file.c_str(), &info) == 0 && S_ISREG(info.st_mode);
 }
 
-bool isOn(const std::string& value)
-{
-    const bool hex = value.size() > 2 && value[0] == '0' && (value[1] == 'x' || value[1] == 'X');
-    return strtol(value.c_str(), nullptr, hex ? 16 : 10) != 0;
-}
-
 namespace
 {
 
@@ -135,19 +191,17 @@ void readValue(const std::string& file, const Mod& mod, State* s)
     const pf::TextFile kind = pf::readTextFile(file.c_str(), &text);
     s->iniFound = kind != pf::TextFile::Missing;
     s->unreadable = kind == pf::TextFile::Unreadable;
-    // Extra Options reads the key with a default of 1: a missing section or key is on.
-    s->on = kind == pf::TextFile::Readable &&
-            (ini::get(file, def(mod).section, def(mod).key, &value) ? isOn(value) : onByDefault(mod));
+    s->keyFound = kind == pf::TextFile::Readable && ini::get(file, def(mod).section, def(mod).key, &value);
+    // Read as the mod reads it: a missing section or key takes its code default.
+    s->value = s->keyFound ? modreq::parse(def(mod), value) : modreq::codeDefault(def(mod));
+    s->on = kind == pf::TextFile::Readable && s->value != 0;
 }
 
 }
 
 bool onByDefault(const Mod& mod)
 {
-    for (const IniKey& key : s_sources[mod.source].keys)
-        if (!strcmp(key.section, def(mod).section) && !strcmp(key.key, def(mod).key))
-            return isOn(key.def);
-    return true;
+    return modreq::codeDefault(def(mod)) != 0;
 }
 
 const Mod& get(Id id)

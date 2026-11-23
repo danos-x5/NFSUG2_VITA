@@ -2,9 +2,12 @@
 
 #include "mods_require.h"
 #include "exopts.h"
+#include <cctype>
+#include <cerrno>
+#include <climits>
+#include <cstdlib>
 #include <cstring>
 #include <sys/stat.h>
-#include <vector>
 
 namespace ug2 { namespace modreq {
 
@@ -50,8 +53,79 @@ private:
     }
 };
 
+// An Extra Options key with no requirements.
+class Option : public Setting
+{
+public:
+    Option(const char* name, const char* section, const char* key, Kind kind, const char* code, const char* shipped,
+           double min = 0, double max = 1, double step = 1, std::vector<const char*> labels = {})
+        : Setting(exopts::Name, name, exopts::IniPath, section, key)
+    {
+        this->kind = kind;
+        codeDefault = code;
+        this->shipped = shipped;
+        this->min = min;
+        this->max = max;
+        this->step = step;
+        this->labels = labels;
+    }
+
+    bool requirementsMet(const std::string&) const override { return true; }
+    std::string requirementsString(const std::string&) const override { return std::string(); }
+};
+
+const Kind B = Kind::Bool, I = Kind::Int, F = Kind::Float, E = Kind::Enum;
+
+// ExtraOptions 5.1.0.1340: code defaults from Init() (checked against the release ASI), shipped values from its ini
 const EuCars s_euCars;
-const Setting* const s_settings[SettingCount] = { &s_euCars };
+const Option s_lapMin("Minimum Laps", "LapControllers", "Minimum", I, "0", "0", 0, 127);
+const Option s_lapMax("Maximum Laps", "LapControllers", "Maximum", I, "127", "127", 0, 127);
+const Option s_driftMax("Maximum Drift Multiplier", "Drift", "MaximumMultiplier", I, "5", "5", 1, 9);
+const Option s_driftPlus("Drift Plus Sign", "Drift", "PlusSign", B, "0", "0");
+const Option s_driftAxB("Drift Points as AxB", "Drift", "ShowWithoutMultiplying", B, "0", "0");
+const Option s_driftNifty("Hide Drift Messages", "Drift", "HideNiftyDriftMessages", B, "0", "0");
+const Option s_outrun("Outrun in Quick Race", "Menu", "ShowOutrun", B, "1", "0");
+const Option s_subs("Subtitles", "Menu", "ShowSubs", B, "1", "0");
+const Option s_vinyls("Special Vinyls", "Menu", "ShowSpecialVinyls", B, "1", "1");
+const Option s_anyTrack("Any Track in Any Mode", "Menu", "AnyTrackInAnyRaceMode", B, "1", "0");
+const Option s_freeRun("Free Run Track Select", "Menu", "FreeRunTrackSelect", B, "1", "1");
+const Option s_outrunSelect("Outrun Track Select", "Menu", "OutrunTrackSelect", B, "1", "1");
+const Option s_takeover("Hide Extra Options Text", "Menu", "DisableTakeover", B, "0", "0");
+const Option s_cameras("Hidden Camera Modes", "Gameplay", "EnableHiddenCameraModes", B, "1", "0");
+const Option s_raceBarriers("Remove Race Barriers", "Gameplay", "RemoveRaceBarriers", B, "0", "0");
+const Option s_lockedBarriers("Remove Locked Area Barriers", "Gameplay", "RemoveLockedAreaBarriers", B, "1", "0");
+const Option s_percent("Percent on 1-Lap Races", "Gameplay", "ShowPercentOn1LapRaces", B, "0", "1");
+const Option s_region("Game Region", "Gameplay", "GameRegion", E, "0", "0", 0, 12, 1,
+                      { "NTSC-U (NFSU2NA)", "PAL/NTSC-J 1", "PAL/NTSC-J 2", "PAL/NTSC-J 3", "PAL/NTSC-J 4",
+                        "PAL/NTSC-J 5", "PAL/NTSC-J 6", "PAL/NTSC-J 7", "PAL/NTSC-J 8", "PAL/NTSC-J 9",
+                        "PAL/NTSC-J 10", "PAL/NTSC-J 11", "PAL/NTSC-J 12" });
+const Option s_cash("Starting Cash", "Gameplay", "StartingCash", I, "0", "0", 0, 9999000, 1000);
+const Option s_unlockAll("Unlock All Things", "Gameplay", "UnlockAllThings", B, "1", "0");
+const Option s_neon("Neon Brightness", "Gameplay", "NeonBrightness", F, "1", "1", 0, 10, 0.05);
+const Option s_wheels("Disappearing Wheels Fix", "Fixes", "DisappearingWheelsFix", B, "1", "1");
+const Option s_splitScreen("Split Screen Fix", "Fixes", "ExperimentalSplitScreenFix", B, "0", "0");
+
+const Setting* const s_settings[SettingCount] =
+{
+    &s_euCars, &s_lapMin, &s_lapMax, &s_driftMax, &s_driftPlus, &s_driftAxB, &s_driftNifty, &s_outrun, &s_subs,
+    &s_vinyls, &s_anyTrack, &s_freeRun, &s_outrunSelect, &s_takeover, &s_cameras, &s_raceBarriers,
+    &s_lockedBarriers, &s_percent, &s_region, &s_cash, &s_unlockAll, &s_neon, &s_wheels, &s_splitScreen,
+};
+
+// std::stoi(text, nullptr, base): false where it would throw.
+bool stoi(const std::string& text, int base, int* out)
+{
+    const char* p = text.c_str();
+    while (isspace(static_cast<unsigned char>(*p)))
+        ++p;
+    char* end = nullptr;
+    errno = 0;
+    const long value = strtol(p, &end, base);
+    if (end == p || errno == ERANGE || value < INT_MIN || value > INT_MAX)
+        return false;
+    *out = int(value);
+    return true;
+}
 
 }
 
@@ -69,6 +143,20 @@ SettingId find(const char* iniPath, const char* section, const char* key)
             return SettingId(i);
     }
     return SettingCount;
+}
+
+double codeDefault(const Setting& s)
+{
+    return atof(s.codeDefault);
+}
+
+double parse(const Setting& s, const std::string& text)
+{
+    if (s.kind == Kind::Float)
+        return atof(text.c_str());
+    const bool hex = text.size() >= 2 && text[0] == '0' && (text[1] == 'x' || text[1] == 'X');
+    int value;
+    return stoi(text, hex ? 16 : 10, &value) ? value : codeDefault(s);
 }
 
 }}

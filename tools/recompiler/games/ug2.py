@@ -182,11 +182,82 @@ PATCHES = [
 ]
 THREAD_SEGMENTS = []
 
-# Mod operand edits, generated both ways and picked at run time by a flag (src/ug2/mods_runtime.cpp):
-# address, original bytes, the mod's bytes, flag.
+# Mod switches, generated both ways and picked at run time by a flag (src/ug2/mods_runtime.cpp, disasm/modswitch.py):
+# address, original bytes, the mod's bytes, flag[, 'value' | 'call NAME REG...'].
 MOD_SWITCHES = [
     # ExtraOptions 5.1.0.1340 [Gameplay] UnlockRegionalCars: PickRandomCarsOfSomeSort (0x4FEAF0) list length 26 -> 28
     (0x4feb9d, '1a', '1c', 'modrt::euCarsAiList'),
+    # ExtraOptions 5.1.0.1340 [LapControllers] Minimum, Maximum: TONumLaps::Act (0x4B3D60) wrap limits
+    (0x4b3d82, '01', '00', 'modrt::exoLapLimits', 'value'),
+    (0x4b3d86, '0a', '7f', 'modrt::exoLapLimits', 'value'),
+    (0x4b3d97, '0a', '7f', 'modrt::exoLapLimits', 'value'),
+    (0x4b3d9b, '01', '00', 'modrt::exoLapLimits', 'value'),
+    # ExtraOptions 5.1.0.1340 [LapControllers] Minimum, Maximum: LAN lap limits (0x4B3E40, 0x4B3F10)
+    (0x4b3e7a, '02', '00', 'modrt::exoLapLimits', 'value'),
+    (0x4b3e9e, '04', '00', 'modrt::exoLapLimits', 'value'),
+    (0x4b3ee4, '04', '00', 'modrt::exoLapLimits', 'value'),
+    (0x4b3f30, '0a', '7f', 'modrt::exoLapLimits', 'value'),
+    (0x4b3f41, '0a', '7f', 'modrt::exoLapLimits', 'value'),
+    # ExtraOptions 5.1.0.1340 [Drift] ShowWithoutMultiplying: 0x4AB780 setne al -> mov al, 1
+    (0x4ab792, '0f95c0', 'b00190', 'modrt::exoDriftAxB'),
+    # ExtraOptions 5.1.0.1340 [Drift] PlusSign: 0x4AB780 jne -> je
+    (0x4ab7db, '75', '74', 'modrt::exoDriftPlus'),
+    # ExtraOptions 5.1.0.1340 [Drift] HideNiftyDriftMessages: FEngHud::ShowNiftyDriftyMessage je -> jmp
+    (0x4ac136, '74', 'eb', 'modrt::exoDriftNifty'),
+    # ExtraOptions 5.1.0.1340 [Drift] MaximumMultiplier: 0x56CB50 threshold rows of 8 from 0x925000, level limit
+    (0x56cc98, '8f', 'cf', 'modrt::exoDriftLevels'),
+    (0x56cc9c, '84da79', '005092', 'modrt::exoDriftLevels'),
+    (0x56cc58, '05', '05', 'modrt::exoDriftLevels', 'value'),
+    (0x56cc90, '05', '05', 'modrt::exoDriftLevels', 'value'),
+    # ExtraOptions 5.1.0.1340 [Menu] ShowOutrun: UIQRModeSelect::Setup jne -> NOPs
+    (0x4b2f3e, '754a', '9090', 'modrt::exoShowOutrun'),
+    # ExtraOptions 5.1.0.1340 [Menu] ShowSubs: PSAMovieScreen, InGamePlayMovie jcc -> NOPs
+    (0x4a8ba0, '7410', '9090', 'modrt::exoShowSubs'),
+    (0x553a65, '750e', '9090', 'modrt::exoShowSubs'),
+    (0x55b061, '740c', '9090', 'modrt::exoShowSubs'),
+    # ExtraOptions 5.1.0.1340 [Menu] AnyTrackInAnyRaceMode: BuildPresetTrackList calls UIQRTrackSelect_IsAvailable
+    (0x4cdef5, 'e8c6a8fcff', None, 'modrt::exoAnyTrack', 'call native::exoptsTrackAvailable eax'),
+    # ExtraOptions 5.1.0.1340 [Menu] FreeRunTrackSelect, OutrunTrackSelect: 0x4B2A80, SetupOutrun jcc -> NOPs
+    (0x4b2ae3, '7405', '9090', 'modrt::exoFreeRunSelect'),
+    (0x4b2aa0, '7405', '9090', 'modrt::exoOutrunSelect'),
+    (0x5268f8, '740b', '9090', 'modrt::exoOutrunSelect'),
+    # ExtraOptions 5.1.0.1340 [Menu] ShowSpecialVinyls: the cave at 0x54625C follows this last category call
+    (0x546257, 'e8c4f6ffff', None, 'modrt::exoVinyls', 'call native::exoptsVinylCategories eax ecx edx'),
+    # ExtraOptions 5.1.0.1340 [Menu] DisableTakeover: SplashScreen ctor, the cave replacing the call at 0x4A91B6
+    (0x4a91b6, 'e845380600', None, 'modrt::exoTakeover', 'call native::exoptsTakeover eax ecx edx'),
+    # ExtraOptions 5.1.0.1340 [Gameplay] EnableHiddenCameraModes: PlayerSettings::ScrollDriveCam 5 camera modes
+    (0x50254e, '03000000', '05000000', 'modrt::exoCameras'),
+    (0x502575, '04000000', '05000000', 'modrt::exoCameras'),
+    # ExtraOptions 5.1.0.1340 [Gameplay] EnableHiddenCameraModes: the six calls of GetPOVTypeFromPlayerCamera (0x502500,
+    # which the mod jumps away from; no data points at it)
+    (0x5ea7e5, 'e8167df1ff', None, 'modrt::exoCameras', 'call native::exoptsPovType eax'),
+    (0x5eb40e, 'e8ed70f1ff', None, 'modrt::exoCameras', 'call native::exoptsPovType eax'),
+    (0x5f2a9f, 'e85cfaf0ff', None, 'modrt::exoCameras', 'call native::exoptsPovType eax'),
+    (0x5f2fd0, 'e82bf5f0ff', None, 'modrt::exoCameras', 'call native::exoptsPovType eax'),
+    (0x5f3267, 'e894f2f0ff', None, 'modrt::exoCameras', 'call native::exoptsPovType eax'),
+    (0x5ffe39, 'e8c226f0ff', None, 'modrt::exoCameras', 'call native::exoptsPovType eax'),
+    # ExtraOptions 5.1.0.1340 [Gameplay] RemoveRaceBarriers: the calls of 0x578060, its cave at 0x578070 run first
+    (0x5782c0, 'e89bfdffff', None, 'modrt::exoRaceBarriers', 'call native::exoptsRaceBarriers eax ecx edx'),
+    (0x57a689, 'e8d2d9ffff', None, 'modrt::exoRaceBarriers', 'call native::exoptsRaceBarriers eax ecx edx'),
+    # ExtraOptions 5.1.0.1340 [Drift] MaximumMultiplier: the three calls of DriftManager::BuildLeaderBoard (0x56D850),
+    # with the cave at 0x56DB51 when the factor is not 1
+    (0x5f7b3f, 'e80c5df7ff', None, 'modrt::exoDriftFactor', 'call native::exoptsDriftBoard eax ecx edx'),
+    (0x5f94c7, 'e88443f7ff', None, 'modrt::exoDriftFactor', 'call native::exoptsDriftBoard eax ecx edx'),
+    (0x6052f8, 'e85385f6ff', None, 'modrt::exoDriftFactor', 'call native::exoptsDriftBoard eax ecx edx'),
+    # ExtraOptions 5.1.0.1340 [Gameplay] NeonBrightness: CarRenderInfo::RenderNeon brightness 1.0 -> the ini value
+    (0x60d8d0, '0000803f', '0000803f', 'modrt::exoNeon', 'value'),
+    # ExtraOptions 5.1.0.1340 [Gameplay] ShowPercentOn1LapRaces: LapCounter::Update lap count, cmp al, 1; jne
+    (0x4aa27f, 'b4', 'bc', 'modrt::exoLapPercent'),
+    (0x4aa283, '85c00f84', '3c010f85', 'modrt::exoLapPercent'),
+    # ExtraOptions 5.1.0.1340 [Gameplay] StartingCash: the cave at 0x53290D stores the cash this call returns
+    (0x532908, 'e883370400', None, 'modrt::exoStartingCash', 'call native::exoptsStartingCash eax ecx'),
+    # ExtraOptions 5.1.0.1340 [Gameplay] UnlockAllThings: CarCustomizeManager::GetPartUnlockFilter jne -> NOPs
+    (0x50f0d8, '7516', '9090', 'modrt::exoUnlockAll'),
+    # ExtraOptions 5.1.0.1340 [Fixes] DisappearingWheelsFix: CarPartCuller::CullParts culled flag 0 -> 1
+    (0x60c5a9, '00', '01', 'modrt::exoWheels'),
+    # ExtraOptions 5.1.0.1340 [Fixes] ExperimentalSplitScreenFix: 0x5DACB0 jne -> jmp, 0x5C21E0 xor eax, eax -> NOPs
+    (0x5dacdb, '75', 'eb', 'modrt::exoSplitScreen'),
+    (0x5c23a9, '33c0', '9090', 'modrt::exoSplitScreen'),
 ]
 
 # Net x87 pushes of functions the depth analysis cannot follow.

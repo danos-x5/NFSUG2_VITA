@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 
 namespace ug2 { namespace cfgui {
@@ -23,6 +24,47 @@ bool belowMin(const Setting& s, const std::string& value)
     return ((s.flags & pf::SettingOff) && value == "off") || ((s.flags & pf::SettingAuto) && value == "auto");
 }
 
+}
+
+std::string formatModValue(double value)
+{
+    char text[32];
+    snprintf(text, sizeof text, "%g", value);
+    return text;
+}
+
+std::string resetOf(const ModView& view)
+{
+    return view.reset.empty() ? "0" : view.reset;
+}
+
+std::string steppedValue(const ModView& view, const std::string& value, int direction, int steps)
+{
+    const double now = atof(value.c_str());
+    if (view.kind == ModKind::Enum)
+    {
+        const int count = int(view.max - view.min) + 1;
+        const int at = int(std::lround(now - view.min));
+        const int from = at < 0 || at >= count ? (direction > 0 ? -1 : count) : at;
+        return formatModValue(view.min + ((from + direction) % count + count) % count);
+    }
+    double next = now + double(direction) * steps * view.step;
+    if (view.kind == ModKind::Float)
+        next = std::round(next / view.step) * view.step;
+    return formatModValue(std::min(view.max, std::max(view.min, next)));
+}
+
+std::string shownModValue(const ModView& view, const std::string& value)
+{
+    if (view.kind == ModKind::Bool)
+        return value == "0" ? "off" : "on";
+    if (view.kind == ModKind::Enum)
+    {
+        const double at = atof(value.c_str()) - view.min;
+        if (at >= 0 && at < double(view.labels.size()) && at == std::floor(at))
+            return view.labels[size_t(at)];
+    }
+    return value;
 }
 
 std::string valueOf(const Setting& s, const std::string& cfgText)
@@ -83,7 +125,10 @@ Configurator::Configurator(const std::string& cfgText, const std::vector<ModView
         }
     }
     for (const ModView& view : mods)
-        m_mods.push_back(Mod{ view, view.enabled });
+    {
+        const std::string initial = view.kind == ModKind::Bool ? (view.enabled ? "1" : "0") : view.value;
+        m_mods.push_back(Mod{ view, initial, initial });
+    }
     rebuild();
     for (int t = 0; t < 2; ++t)
     {
@@ -198,7 +243,7 @@ int Configurator::defaultsCount() const
     else
     {
         for (const Mod& mod : m_mods)
-            count += mod.view.supported && mod.current;
+            count += mod.view.supported && mod.current != resetOf(mod.view);
     }
     return count;
 }
@@ -215,7 +260,7 @@ void Configurator::applyDefaults()
     {
         for (Mod& mod : m_mods)
             if (mod.view.supported)
-                mod.current = false;
+                mod.current = resetOf(mod.view);
     }
 }
 
@@ -378,13 +423,18 @@ void Configurator::changeValue(int direction, int steps)
     if (m_tab == Tab::Mods)
     {
         Mod& mod = m_mods[modAt(index)];
-        if (!mod.current && m_files && mod.view.id >= 0 && mod.view.downloadSpace &&
+        if (mod.view.kind != ModKind::Bool)
+        {
+            mod.current = steppedValue(mod.view, mod.current, direction, steps);
+            return;
+        }
+        if (mod.current == "0" && m_files && mod.view.id >= 0 && mod.view.downloadSpace &&
             !m_files->requirementsMet(mod.view.id))
         {
             m_download = modAt(index);
             m_askDownload = true;
         }
-        mod.current = !mod.current;
+        mod.current = mod.current == "0" ? "1" : "0";
         return;
     }
     Row& row = configRow(index);
@@ -448,8 +498,15 @@ void Configurator::changeValue(int direction, int steps)
 void Configurator::resetValue()
 {
     const int index = selection();
-    if (m_tab != Tab::Config || index >= rowCount())
+    if (index >= rowCount())
         return;
+    if (m_tab == Tab::Mods)
+    {
+        Mod& mod = m_mods[modAt(index)];
+        if (mod.view.supported)
+            mod.current = resetOf(mod.view);
+        return;
+    }
     Row& row = configRow(index);
     if (row.setting->type != SettingType::String)
         row.current = pf::defaultText(*row.setting);
@@ -520,6 +577,9 @@ void Configurator::stick(const Input& input, uint64_t nowUs)
     }
     const int index = selection();
     if (m_tab == Tab::Config && index < rowCount() && configRow(index).setting->type == SettingType::Int)
+        changeValue(dx < 0 ? -1 : 1, steps);
+    if (m_tab == Tab::Mods && index < rowCount() && (m_mods[modAt(index)].view.kind == ModKind::Int ||
+                                                     m_mods[modAt(index)].view.kind == ModKind::Float))
         changeValue(dx < 0 ? -1 : 1, steps);
 }
 
@@ -727,7 +787,10 @@ Outcome Configurator::update(const Input& input, uint64_t nowUs)
     if (pressed & BtnCross)
     {
         const int index = selection();
-        if (m_tab == Tab::Mods || (configRow(index).setting->type != SettingType::Int))
+        const bool stepped = m_tab == Tab::Mods ? m_mods[modAt(index)].view.kind == ModKind::Int ||
+                                                    m_mods[modAt(index)].view.kind == ModKind::Float
+                                                : configRow(index).setting->type == SettingType::Int;
+        if (!stepped)
             changeValue(1, 1);
     }
     if (pressed & BtnSquare)
@@ -744,7 +807,7 @@ Outcome Configurator::update(const Input& input, uint64_t nowUs)
 
 void Configurator::endDownload(bool installed)
 {
-    m_mods[m_download].current = installed;
+    m_mods[m_download].current = installed ? "1" : "0";
     if (!installed)
         return;
     for (Mod& mod : m_mods)

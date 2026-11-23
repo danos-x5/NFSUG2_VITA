@@ -1,14 +1,29 @@
 #ifndef UG2_MODS_REQUIRE_H_
 #define UG2_MODS_REQUIRE_H_
 
-// Each supported mod setting and whether it can work in a game folder. Built into both the game and the launcher,
-// so both decide the same way; how a setting decides is its own business.
+// Each supported mod setting: its key, value type and defaults, and whether it can work in a game folder. Built into
+// both the game and the launcher, so both read and decide the same way.
 
 #include <string>
+#include <vector>
 
 namespace ug2 { namespace modreq {
 
-enum SettingId { EuCarContent, SettingCount };
+enum SettingId
+{
+    EuCarContent,
+    LapMinimum, LapMaximum,
+    DriftMaximumMultiplier, DriftPlusSign, DriftShowWithoutMultiplying, DriftHideNiftyMessages,
+    ShowOutrun, ShowSubs, ShowSpecialVinyls, AnyTrackInAnyRaceMode, FreeRunTrackSelect, OutrunTrackSelect,
+    DisableTakeover,
+    EnableHiddenCameraModes, RemoveRaceBarriers, RemoveLockedAreaBarriers, ShowPercentOn1LapRaces, GameRegion,
+    StartingCash, UnlockAllThings, NeonBrightness,
+    DisappearingWheelsFix, ExperimentalSplitScreenFix,
+    SettingCount
+};
+
+// Bool: a number read as != 0. Int and Enum: whole numbers, Enum with a label per value. Float: a decimal.
+enum class Kind { Bool, Int, Float, Enum };
 
 class Setting
 {
@@ -18,6 +33,11 @@ public:
     const char* iniPath;                // relative to the game folder
     const char* section;
     const char* key;
+    Kind kind = Kind::Bool;
+    const char* codeDefault = "1";      // what the mod uses when the key is missing
+    const char* shipped = "1";          // the value in the mod's own settings file: the Mods tab's default
+    double min = 0, max = 1, step = 1;  // the Mods tab's range
+    std::vector<const char*> labels;    // Enum: one per value from min
 
     Setting(const char* mod, const char* name, const char* iniPath, const char* section, const char* key)
         : mod(mod), name(name), iniPath(iniPath), section(section), key(key) {}
@@ -30,6 +50,11 @@ public:
 const Setting& setting(SettingId id);
 // SettingCount when no setting uses that key.
 SettingId find(const char* iniPath, const char* section, const char* key);
+
+// The key's value as the mod reads it from text (no comment): an Int, Enum or Bool through std::stoi (base 16 after
+// 0x), the code default when that fails; a Float through atof.
+double parse(const Setting& s, const std::string& text);
+double codeDefault(const Setting& s);
 
 }}
 

@@ -62,7 +62,7 @@ is in `src/ug2/fonts/OFL.txt`.
 ## Mods tab descriptions
 
 The start-up screen's Mods tab quotes each feature's description from its mod's readme, credited to the mod's authors:
-EU Car Content's from the NFSU2 Extra Options readme, by the ExOpts Team.
+Extra Options' from the NFSU2 Extra Options readme, by the ExOpts Team.
 
 ## mINI
 
@@ -88,11 +88,13 @@ carries as `launcher/LICENSES.txt`.
 
 ## NFSU2 Extra Options
 
-The EU Car Content feature, which lifts the game's regional car lock, is based on the Unlock Regional Cars option of
-[NFSU2 Extra Options](https://github.com/ExOptsTeam/NFSU2ExOpts) by the ExOpts Team (nlgxzef and others), GPLv3, and
-is switched by that mod's own settings file. The port makes the same change to the game's data that Extra Options
-makes, the 0xFF byte in each of the four region list entries (`src/ug2/mods_runtime.cpp`), and contains none of Extra
-Options' code.
+The EU Car Content feature, which lifts the game's regional car lock, and the other Extra Options settings of the
+Mods tab are based on [NFSU2 Extra Options](https://github.com/ExOptsTeam/NFSU2ExOpts) 5.1.0.1340 by the ExOpts Team
+(nlgxzef and others), GPLv3, and are switched by that mod's own settings file. The port makes the same changes to the
+game's code and data that Extra Options makes (`src/ug2/mods_runtime.cpp`, `MOD_SWITCHES` in
+`tools/recompiler/games/ug2.py`, `src/ug2/native/exopts.cpp`, `src/ug2/native/exopts_drift.cpp`), reimplemented from
+its behaviour, and contains none of Extra Options' code. The splash screen line it shows and the Mods tab's
+descriptions are quoted from the mod.
 
 ## Need for Speed Underground 2
 

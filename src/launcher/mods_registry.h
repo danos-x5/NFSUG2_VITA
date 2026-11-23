@@ -11,7 +11,19 @@
 
 namespace ug2 { namespace mods {
 
-enum Id { EuCarContent, Count };
+// The Extra Options features in modreq::SettingId order.
+enum Id
+{
+    EuCarContent,
+    LapMinimum, LapMaximum,
+    DriftMaximumMultiplier, DriftPlusSign, DriftShowWithoutMultiplying, DriftHideNiftyMessages,
+    ShowOutrun, ShowSubs, ShowSpecialVinyls, AnyTrackInAnyRaceMode, FreeRunTrackSelect, OutrunTrackSelect,
+    DisableTakeover,
+    EnableHiddenCameraModes, RemoveRaceBarriers, RemoveLockedAreaBarriers, ShowPercentOn1LapRaces, GameRegion,
+    StartingCash, UnlockAllThings, NeonBrightness,
+    DisappearingWheelsFix, ExperimentalSplitScreenFix,
+    Count
+};
 
 // One key of a mod's PC ini. A supported key has a feature in the registry below; flip the flag when one is added.
 struct IniKey
@@ -93,15 +105,16 @@ bool get(const std::string& file, const char* section, const char* key, std::str
 
 std::string pathIn(const std::string& folder, const char* relative);
 bool fileExists(const std::string& file);
-bool isOn(const std::string& value);    // an Extra Options number, as it reads one
-// The mod's own default for the key, when the ini lacks it.
+// The mod's code default for the key, as when the ini lacks it, is non-zero.
 bool onByDefault(const Mod& mod);
 
 struct State
 {
     bool iniFound = false;
     bool unreadable = false;            // the ini exists but cannot be read (pf::readTextFile); the mod is off
-    bool on = false;                    // the ini's key is 1
+    bool keyFound = false;              // the readable ini has the key
+    double value = 0;                   // as the mod reads it, its code default when missing
+    bool on = false;                    // the ini is readable and the value non-zero
     bool met = false;                   // modreq::Setting::requirementsMet
     std::string requirements;           // modreq::Setting::requirementsString
 };

@@ -12,14 +12,31 @@ namespace ug2 { namespace mods {
 
 namespace ini
 {
-// Sets the value, keeping any comment, the line ends and the final break; writes through file.tmp.
+struct Line
+{
+    const char* section;
+    const char* key;
+    std::string value;
+    const char* comment;        // written after a new line's value; null for none
+};
+// Sets the values, keeping any comment, the line ends and the final break; writes through file.tmp.
+bool set(const std::string& file, const std::vector<Line>& lines);
 bool set(const std::string& file, const char* section, const char* key, const std::string& number,
          const char* comment);
 }
 
+// Bool keys: the value that leaves the game as it is. A new file's value: that, or the shipped value of a number.
+std::string vanillaValue(const Mod& mod);
+std::string freshValue(const Mod& mod);
+// A new settings file with every key of the source at its freshValue (an unsupported one at the shipped value), key
+// (when given) at value.
+bool writeFresh(const Source& src, const std::string& file, const char* section, const char* key,
+                const std::string& value);
+
 // Every key of every source; supported keys carry their feature's Id in ModView::id.
 std::vector<cfgui::ModView> views(const std::string& gameFolder);
-// Writes the Mods tab's choice to the mod's ini.
+// Writes the Mods tab's value to the mod's ini; a missing one is created whole (writeFresh).
+bool save(const Mod& mod, const std::string& gameFolder, const std::string& value);
 bool save(const Mod& mod, const std::string& gameFolder, bool on);
 
 }}

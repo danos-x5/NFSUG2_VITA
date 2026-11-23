@@ -102,13 +102,20 @@ The manager has two tabs, switched with L and R: **Mods** for PC mod features (s
 
 The start-up screen's Mods tab switches PC mod features the port has rebuilt itself, grouped by the mod they come
 from. Each feature keeps its setting in the mod's own settings file, shared with the PC game, so a PC mod
-user's file works as it is. The game is vanilla by default: with no settings file a mod is off.
+user's file works as it is. The game is vanilla by default: with no settings file a mod is off. Without the file the
+rows show the values a fresh install of the mod has, and Save creates the whole file, every key at the mod's own value
+except the ones you changed; with an existing file only the changed keys are changed in place, every other line left
+as it was. As on the PC, an existing file without a key (or its section) gets the value the mod's code gives it, which
+is not always the one in the mod's own file (for example Extra Options turns `UnlockAllThings` on when the key is
+missing). Numbers step with Left and Right within the mod's range, Square sets a row back to the mod's own value, and
+holding Select does that for the whole tab.
 
 The settings files are under the game folder, `ux0:data/NeedForSpeedUnderground2/`, and can be edited by hand.
 
 | Entry | Settings file | Needs |
 |-------|---------------|-------|
 | ExtraOptions 5.1.0.1340 by ExOpts Team: EU Car Content | `scripts/NFSU2ExtraOptionsSettings.ini`, `UnlockRegionalCars = 1` in `[Gameplay]` | `CARS/CORSA` and `CARS/PEUGOT106`, each with `GEOMETRY.BIN`, `TEXTURES.BIN`, `VINYLS.BIN` and `PARTS_ANIMATIONS.bin`, copied from a European PC copy of the game |
+| ExtraOptions 5.1.0.1340 by ExOpts Team: the options below | the same file, `[LapControllers]` `Minimum`, `Maximum`; `[Drift]` `MaximumMultiplier`, `PlusSign`, `ShowWithoutMultiplying`, `HideNiftyDriftMessages`; `[Menu]` `ShowOutrun`, `ShowSubs`, `ShowSpecialVinyls`, `AnyTrackInAnyRaceMode`, `FreeRunTrackSelect`, `OutrunTrackSelect`, `DisableTakeover`; `[Gameplay]` `EnableHiddenCameraModes`, `RemoveRaceBarriers`, `RemoveLockedAreaBarriers`, `ShowPercentOn1LapRaces`, `GameRegion`, `StartingCash`, `UnlockAllThings`, `NeonBrightness`; `[Fixes]` `DisappearingWheelsFix`, `ExperimentalSplitScreenFix` | nothing more |
 
 ### Settings file
 
@@ -132,6 +139,16 @@ kept between sessions. The resolution stays at 960x544.
 ## Mods
 
 Existing PC mods will slowly be added to the port over its development.
+
+### NFSU2 Extra Options
+
+With its settings file in place the game works as with Extra Options 5.1.0.1340 on the PC for the options in the Mods
+tab table, including the changes the mod makes whatever its keys say: the lap limits, the drift multiplier's
+thresholds, the starting cash of a new career and the neon brightness all take the file's values (or the mod's code
+defaults). The hotkeys, the weather, sound and window options and the rest stay unsupported and are never read. The
+port changes the same game code and data the mod changes, and reads the values the same way: a key that is not a
+number takes the mod's code default, a decimal that is not a number reads as 0. `AnyTrackInAnyRaceMode` and
+`UnlockAllThings` are read at start-up only; there is no hotkey.
 
 ## Build
 

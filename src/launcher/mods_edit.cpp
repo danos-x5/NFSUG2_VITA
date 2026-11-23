@@ -7,6 +7,7 @@
 #include <platform/cfgfile.h>
 #include <platform/log.h>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <sys/stat.h>
 
@@ -43,8 +44,7 @@ std::string withCrLf(const std::string& text)
 namespace ini
 {
 
-bool set(const std::string& file, const char* section, const char* key, const std::string& number,
-         const char* comment)
+bool set(const std::string& file, const std::vector<Line>& lines)
 {
     const std::string temporary = file + ".tmp";
     std::string text;
@@ -58,13 +58,16 @@ bool set(const std::string& file, const char* section, const char* key, const st
     mINI::INIStructure data;
     if (fileExists(temporary) && !ini.read(data))
         return false;
-    std::string value = number;
-    if (!(data.has(section) && data[section].has(key)) && comment && *comment)
+    for (const Line& line : lines)
     {
-        const size_t used = strlen(key) + 3 + number.size();
-        value += std::string(used < 36 ? 36 - used : 1, ' ') + "// " + comment;
+        std::string value = line.value;
+        if (!(data.has(line.section) && data[line.section].has(line.key)) && line.comment && *line.comment)
+        {
+            const size_t used = strlen(line.key) + 3 + line.value.size();
+            value += std::string(used < 36 ? 36 - used : 1, ' ') + "// " + line.comment;
+        }
+        data[line.section][line.key] = value;
     }
-    data[section][key] = value;
     std::string written;
     if (!ini.write(data, true) || !pf::cfgfile::readFile(temporary.c_str(), &written))
         return false;
@@ -80,6 +83,72 @@ bool set(const std::string& file, const char* section, const char* key, const st
     return remove(file.c_str()) == 0 && rename(temporary.c_str(), file.c_str()) == 0;
 }
 
+bool set(const std::string& file, const char* section, const char* key, const std::string& number,
+         const char* comment)
+{
+    return set(file, { Line{ section, key, number, comment } });
+}
+
+}
+
+namespace
+{
+
+// As the Mods tab writes a number (cfgui::formatModValue).
+std::string formatValue(double value)
+{
+    char text[32];
+    snprintf(text, sizeof text, "%g", value);
+    return text;
+}
+
+const Mod* modOf(const Source& src, const IniKey& key)
+{
+    for (int i = 0; i < Count; ++i)
+    {
+        const Mod& mod = get(Id(i));
+        if (&source(mod.source) == &src && !strcmp(def(mod).section, key.section) && !strcmp(def(mod).key, key.key))
+            return &mod;
+    }
+    return nullptr;
+}
+
+cfgui::ModKind kindOf(modreq::Kind kind)
+{
+    switch (kind)
+    {
+    case modreq::Kind::Int: return cfgui::ModKind::Int;
+    case modreq::Kind::Float: return cfgui::ModKind::Float;
+    case modreq::Kind::Enum: return cfgui::ModKind::Enum;
+    default: return cfgui::ModKind::Bool;
+    }
+}
+
+}
+
+std::string vanillaValue(const Mod& mod)
+{
+    return mod.setting == modreq::DisableTakeover ? "1" : "0";
+}
+
+std::string freshValue(const Mod& mod)
+{
+    return def(mod).kind == modreq::Kind::Bool ? vanillaValue(mod) : std::string(def(mod).shipped);
+}
+
+bool writeFresh(const Source& src, const std::string& file, const char* section, const char* key,
+                const std::string& value)
+{
+    std::vector<ini::Line> lines;
+    for (const IniKey& k : src.keys)
+    {
+        const bool chosen = section && !strcmp(k.section, section) && !strcmp(k.key, key);
+        const Mod* mod = modOf(src, k);
+        lines.push_back(ini::Line{ k.section, k.key, chosen ? value : mod ? freshValue(*mod) : std::string(k.def),
+                                   mod ? mod->comment : nullptr });
+    }
+    mkdir(file.substr(0, file.rfind('/')).c_str(), 0777);
+    return ini::set(file, lines);
 }
 
 std::vector<cfgui::ModView> views(const std::string& gameFolder)
@@ -104,7 +173,8 @@ std::vector<cfgui::ModView> views(const std::string& gameFolder)
             for (int i = 0; i < Count; ++i)
             {
                 const Mod& mod = get(Id(i));
-                if (&source(mod.source) == &src && !strcmp(def(mod).section, key.section) && !strcmp(def(mod).key, key.key))
+                if (&source(mod.source) == &src && !strcmp(def(mod).section, key.section) &&
+                    !strcmp(def(mod).key, key.key))
                     feature = i;
             }
             if (!key.supported || feature < 0)
@@ -117,10 +187,21 @@ std::vector<cfgui::ModView> views(const std::string& gameFolder)
                 continue;
             }
             const Mod& mod = get(Id(feature));
+            const modreq::Setting& setting = def(mod);
             const State s = state(mod, gameFolder);
             view.id = feature;
-            view.name = def(mod).name;
-            view.enabled = s.on;
+            view.name = setting.name;
+            view.kind = kindOf(setting.kind);
+            view.min = setting.min;
+            view.max = setting.max;
+            view.step = setting.step;
+            view.labels.assign(setting.labels.begin(), setting.labels.end());
+            view.reset = setting.shipped;
+            view.vanilla = vanillaValue(mod);
+            // No settings file: the values it would get on creation (writeFresh).
+            const double value = found ? s.value : atof(freshValue(mod).c_str());
+            view.value = formatValue(view.kind == cfgui::ModKind::Bool ? value != 0 : value);
+            view.enabled = found ? s.on : value != 0;
             if (!s.met)
                 view.requirements = s.requirements;
             if (src.downloadable())
@@ -137,26 +218,31 @@ std::vector<cfgui::ModView> views(const std::string& gameFolder)
     return result;
 }
 
-bool save(const Mod& mod, const std::string& gameFolder, bool on)
+bool save(const Mod& mod, const std::string& gameFolder, const std::string& value)
 {
-    const std::string file = pathIn(gameFolder, source(mod.source).iniPath);
-    std::string value;
-    const bool found = fileExists(file);
-    if (!found && !on)
+    const Source& src = source(mod.source);
+    const std::string file = pathIn(gameFolder, src.iniPath);
+    const State s = state(mod, gameFolder);
+    const bool found = s.iniFound && !s.unreadable;
+    const bool same = def(mod).kind == modreq::Kind::Bool ? (s.value != 0) == (value != "0")
+                                                          : formatValue(s.value) == value;
+    if ((found && same) || (!s.iniFound && value == freshValue(mod)))
         return true;
-    if (found && (ini::get(file, def(mod).section, def(mod).key, &value) ? isOn(value) : onByDefault(mod)) == on)
-        return true;
-    if (!found)
-        mkdir(file.substr(0, file.rfind('/')).c_str(), 0777);
-    if (!ini::set(file, def(mod).section, def(mod).key, on ? "1" : "0", mod.comment))
+    const bool written = found ? ini::set(file, def(mod).section, def(mod).key, value, mod.comment)
+                               : writeFresh(src, file, def(mod).section, def(mod).key, value);
+    if (!written)
     {
         pf::logError("mods: writing %s failed", file.c_str());
         return false;
     }
-    pf::logInfo("mods: %s %s %s (%s = %d in %s)", source(mod.source).mod, def(mod).name, on ? "on" : "off", def(mod).key,
-                on ? 1 : 0, file.c_str());
+    pf::logInfo("mods: %s %s %s = %s in %s%s", src.mod, def(mod).name, def(mod).key, value.c_str(), file.c_str(),
+                found ? "" : " (created with the mod's defaults)");
     return true;
 }
 
+bool save(const Mod& mod, const std::string& gameFolder, bool on)
+{
+    return save(mod, gameFolder, std::string(on ? "1" : "0"));
+}
 
 }}

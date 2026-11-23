@@ -31,7 +31,6 @@ const Setting s_table[] =
 
     // ---- Display ----
     ENUM("frame_rate", Display, 0, "30|60|0", "30 locks to 30 fps for steady pacing; 60 shows each frame for one vblank; 0 unlocks.", 0),
-    BOOL("widescreen", Display, 1, "On fills the 16:9 screen with the HUD at the edges; off is the original 4:3 with black bars.", 0),
     ENUM("gfx_preset", Display, 0, "vita|max", "Graphics the port is tuned for, or everything on (much slower). The Display menu changes them.", 0),
     ENUM("movies", Display, 1, "game|native|vp6|vp6only", "native: the .mp4s, Vita decoder; vp6: else native VP6 (vp6only: VP6 always); game: the game's own decoder.", 0),
 
@@ -324,7 +323,7 @@ const Setting s_table[] =
 #undef FAST
 
 // Keys that no longer exist: a cfg line for one is skipped without a message.
-const char* const s_retired[] = { "front_touch" };
+const char* const s_retired[] = { "front_touch", "widescreen" };
 
 const SettingAlias s_aliases[] =
 {

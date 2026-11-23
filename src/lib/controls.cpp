@@ -340,20 +340,18 @@ PadSample readPad()
 
 // ---- HUD touch zones ----
 
-static std::atomic<bool>     s_driving(false);
-static std::atomic<float>    s_hudZone[HudZoneCount][ZonePolygon::MaxPoints][2];
-static std::atomic<int>      s_hudZoneCount[HudZoneCount];
-static std::atomic<uint64_t> s_hudStampUs[HudZoneCount];
-static std::atomic<uint32_t> s_worldRequests(0);
+static std::atomic<bool>               s_freeRoam(false);
+static std::atomic<const ZonePolygon*> s_hudZones(nullptr);
+static std::atomic<uint32_t>           s_worldRequests(0);
 
-void setDriving(bool driving)
+void setFreeRoam(bool freeRoam)
 {
-    s_driving = driving;
+    s_freeRoam = freeRoam;
 }
 
-bool driving()
+bool freeRoam()
 {
-    return s_driving;
+    return s_freeRoam;
 }
 
 bool insidePolygon(const ZonePolygon& polygon, float x, float y)
@@ -372,25 +370,9 @@ bool insidePolygon(const ZonePolygon& polygon, float x, float y)
     return inside;
 }
 
-void setHudZone(HudZone zone, const ZonePolygon& polygon, uint64_t nowUs)
+void setHudZones(const ZonePolygon* zones)
 {
-    const int count = std::min(std::max(polygon.count, 0), ZonePolygon::MaxPoints);
-    for (int i = 0; i < count; ++i)
-    {
-        s_hudZone[zone][i][0] = polygon.points[i].x;
-        s_hudZone[zone][i][1] = polygon.points[i].y;
-    }
-    s_hudZoneCount[zone] = count;
-    s_hudStampUs[zone] = nowUs ? nowUs : 1;
-}
-
-static ZonePolygon hudZone(int zone)
-{
-    ZonePolygon polygon;
-    polygon.count = s_hudZoneCount[zone];
-    for (int i = 0; i < polygon.count; ++i)
-        polygon.points[i] = { s_hudZone[zone][i][0], s_hudZone[zone][i][1] };
-    return polygon;
+    s_hudZones = zones;
 }
 
 uint32_t takeWorldRequests()
@@ -505,12 +487,11 @@ Mapper::Mapper()
         tap.id = -1;
 }
 
-// Short still taps in a live HUD zone request its action.
+// Short still taps in a zone, in free roam, request its action.
 void Mapper::updateTaps(const PadSample& pad, uint64_t nowUs)
 {
     static const uint64_t TapMaxUs = 300000;
     static const float TapMaxMove = 0.04f;
-    static const uint64_t ZoneLifeUs = 500000;
 #ifdef DEV_TOOLS
     static const char* const ZoneNames[HudZoneCount] = { "World Map", "Read SMS", "Enter Shop", "Career Stats" };
 #endif
@@ -543,23 +524,26 @@ void Mapper::updateTaps(const PadSample& pad, uint64_t nowUs)
             continue;
         const bool quick = nowUs - tap.startUs <= TapMaxUs && tap.farthest <= TapMaxMove;
         tap.id = -1;
-        if (!quick || !s_driving)
-            continue;
-        for (int zone = 0; zone < HudZoneCount; ++zone)
-        {
-            const uint64_t stamp = s_hudStampUs[zone];
-            if (!stamp || nowUs - stamp > ZoneLifeUs)
-                continue;
-            const float x = tap.startX * PanelWidth, y = tap.startY * PanelHeight;
-            if (insidePolygon(hudZone(zone), x, y))
-            {
-                s_worldRequests |= 1u << zone;
+        const float x = tap.startX * PanelWidth, y = tap.startY * PanelHeight;
+        const ZonePolygon* zones = s_hudZones;
+        int zone = 0;
+        while (zones && zone < HudZoneCount && !insidePolygon(zones[zone], x, y))
+            ++zone;
+        const bool inZone = zones && zone < HudZoneCount;
+        if (s_freeRoam && quick && inZone)
+            s_worldRequests |= 1u << zone;
 #ifdef DEV_TOOLS
-                pf::logInfo("controls: tap at %.0f, %.0f px in the %s zone", double(x), double(y), ZoneNames[zone]);
+        const char* what = inZone ? ZoneNames[zone] : "no";
+        if (!s_freeRoam)
+            pf::logInfo("controls: touch at %.0f, %.0f px (%s zone) ignored: not free roam", double(x), double(y), what);
+        else if (!quick)
+            pf::logInfo("controls: touch at %.0f, %.0f px (%s zone) ignored: not a tap (%.0f ms, moved %.0f px)", double(x),
+                        double(y), what, double(nowUs - tap.startUs) / 1000.0, double(tap.farthest * PanelWidth));
+        else if (!inZone)
+            pf::logInfo("controls: tap at %.0f, %.0f px ignored: outside the zones", double(x), double(y));
+        else
+            pf::logInfo("controls: tap at %.0f, %.0f px in the %s zone", double(x), double(y), what);
 #endif
-                break;
-            }
-        }
     }
 }
 

@@ -121,12 +121,12 @@ private:
     std::vector<Entry> m_entries;
 };
 
-// Set by the pad hook in a race or free roam.
-void setDriving(bool driving);
-bool driving();
+// Set by the pad hook while driving in free roam.
+void setFreeRoam(bool freeRoam);
+bool freeRoam();
 
-// Free roam HUD touch zones: a short tap requests the zone's world action, whatever the buttons do. The pad hook
-// sends it as the game's joy event.
+// Free-roam touch zones, fixed on the screen: a short tap requests the zone's world action, whatever the buttons
+// do or the HUD shows. The pad hook sends it as the game's joy event.
 enum HudZone { HudMap, HudMessages, HudShop, HudCareer, HudZoneCount };
 struct ZonePoint
 {
@@ -143,8 +143,8 @@ struct ZonePolygon
 const float PanelWidth = 960.0f, PanelHeight = 544.0f;
 // Inside or on an edge (within half a pixel).
 bool insidePolygon(const ZonePolygon& polygon, float x, float y);
-// HUD draw, each frame (Mapper clock); unrenewed zones lapse.
-void setHudZone(HudZone zone, const ZonePolygon& polygon, uint64_t nowUs);
+// HudZoneCount polygons by HudZone, kept by pointer; null for none.
+void setHudZones(const ZonePolygon* zones);
 // Bit per HudZone (1 << zone) tapped since the last call.
 uint32_t takeWorldRequests();
 

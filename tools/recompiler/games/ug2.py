@@ -224,7 +224,7 @@ MOD_SWITCHES = [
     # ExtraOptions 5.1.0.1340 [Menu] ShowSpecialVinyls: the cave at 0x54625C follows this last category call
     (0x546257, 'e8c4f6ffff', None, 'modrt::exoVinyls', 'call native::exoptsVinylCategories eax ecx edx'),
     # ExtraOptions 5.1.0.1340 [Menu] DisableTakeover: SplashScreen ctor, the cave replacing the call at 0x4A91B6
-    (0x4a91b6, 'e845380600', None, 'modrt::exoTakeover', 'call native::exoptsTakeover eax ecx edx'),
+    (0x4a91b6, 'e845380600', None, 'modrt::exoTakeover', 'call native::exoptsTakeover eax ecx edx reads esi'),
     # ExtraOptions 5.1.0.1340 [Gameplay] EnableHiddenCameraModes: PlayerSettings::ScrollDriveCam 5 camera modes
     (0x50254e, '03000000', '05000000', 'modrt::exoCameras'),
     (0x502575, '04000000', '05000000', 'modrt::exoCameras'),

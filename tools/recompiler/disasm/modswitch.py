@@ -6,8 +6,9 @@ Kinds (GAME.MOD_SWITCHES entries: address, original bytes, the mod's bytes, flag
   guest bytes, which the port writes as the mod does.
 - flow: the mod's bytes decode to other instructions inside the original ones (jcc to jmp, NOP runs, a changed
   compare); the original analysis must stay valid for them.
-- call (option 'call NAME [REG...]', no mod bytes): a direct call becomes a call of the C++ function NAME, which
-  writes the registers REG and otherwise keeps the callee's convention.
+- call (option 'call NAME [REG...] [reads REG...]', no mod bytes): a direct call becomes a call of the C++ function
+  NAME, which writes the registers before 'reads' and otherwise keeps the callee's convention. The registers after
+  'reads' are passed in cpu for the call (their cpu copies are put back after it).
 """
 
 import re
@@ -20,7 +21,7 @@ from .codegen import ctx as C
 
 
 class Switch:
-    def __init__(self, kind, flag, start, span, mods, value=None, call=None):
+    def __init__(self, kind, flag, start, span, mods, value=None, call=None, reads=()):
         self.kind = kind
         self.flag = flag
         self.start = start          # index of the first original instruction
@@ -28,6 +29,7 @@ class Switch:
         self.mods = mods            # (original index, mod instruction)
         self.value = value          # (field address, bytes, signed) of a value switch
         self.call = call            # C++ function of a call switch
+        self.reads = reads          # registers it reads in cpu
         self.sentinel_mods = {}     # value switch: sentinel -> the instruction decoded with it
 
 
@@ -126,7 +128,11 @@ def add(image, cs, holders, entry, switches):
 
 def call_switch(fn, unit, address, option, flag):
     words = option.split()
-    name, writes = words[1], words[2:]
+    name, rest = words[1], words[2:]
+    writes = rest[:rest.index('reads')] if 'reads' in rest else rest
+    reads = rest[rest.index('reads') + 1:] if 'reads' in rest else []
+    if any(r not in C.REGS for r in writes + reads):
+        fail(address, 'unknown register in %r' % option)
     (i,) = unit
     ins = fn.instructions[i]
     if fn.branch[i][0] != 'call':
@@ -145,7 +151,7 @@ def call_switch(fn, unit, address, option, flag):
              % (name, ' '.join(r for r in C.REGS if read_after & C.REG_BIT[r])))
     if after & C.CPU_FLAG_MASK:
         fail(address, 'flags are read after the call')
-    return Switch('call', flag, i, 1, [], call=name)
+    return Switch('call', flag, i, 1, [], call=name, reads=reads)
 
 
 def byte_switch(image, cs, fn, unit, address, patched, flag, option):

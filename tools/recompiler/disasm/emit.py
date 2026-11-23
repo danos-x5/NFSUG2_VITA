@@ -38,7 +38,13 @@ def switched(module, fn, function_names, ctx, i, ins, code, expected, switch):
         call = '%s(app, cpu);' % name
         if sum(l.count(call) for l in code) != 1:
             raise AssertionError('0x%x: the call switch finds no single call of %s' % (ins.address, name))
-        mod = [l.replace(call, '%s(app, cpu);' % switch.call) for l in code]
+        native = '%s(app, cpu);' % switch.call
+        if switch.reads:
+            keep = ' '.join('const x86::reg32 keep_%s = cpu.%s; cpu.%s = %s;' % (r, r, r, ctx.reg(r))
+                            for r in switch.reads)
+            back = ' '.join('cpu.%s = keep_%s;' % (r, r) for r in switch.reads)
+            native = '{ %s %s %s }' % (keep, native, back)
+        mod = [l.replace(call, native) for l in code]
         return modswitch.block(switch.flag, mod, code)
     if switch.kind in ('operand', 'value'):
         (_, mod), = switch.mods

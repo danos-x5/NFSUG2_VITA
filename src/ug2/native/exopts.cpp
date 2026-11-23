@@ -67,6 +67,7 @@ void exoptsTrackAvailable(win32::WinApplication*, x86::CPU& cpu)
 // The last vinyl category, then the hidden one (thiscall, three arguments).
 void exoptsVinylCategories(win32::WinApplication* app, x86::CPU& cpu)
 {
+    const reg32 screen = cpu.ecx;
     sub_545920(app, cpu);
     if (cpu.terminate)
         return;
@@ -75,11 +76,11 @@ void exoptsVinylCategories(win32::WinApplication* app, x86::CPU& cpu)
     push(cpu, 0x93ec1ce9);
     push(cpu, 0x1c);
     cpu.esp -= 4;
-    cpu.ecx = cpu.esi;
+    cpu.ecx = screen;
     sub_545920(app, cpu);
 }
 
-// The splash screen's licence blurb (cdecl: FE object).
+// The splash screen's licence blurb (cdecl: FE object; esi the screen).
 void exoptsTakeover(win32::WinApplication* app, x86::CPU& cpu)
 {
     // ExtraOptions 5.1.0.1340 [Menu] DisableTakeover: SplashScreenCodeCave in place of FEngSetInvisible at 0x4A91B6

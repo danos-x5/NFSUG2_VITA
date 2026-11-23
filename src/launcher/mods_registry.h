@@ -11,7 +11,12 @@
 
 namespace ug2 { namespace mods {
 
+// Dev builds add an experiment: a car pack that only tests the download, with settings of the launcher's own.
+#ifdef DEV_SETTINGS
+enum Id { EuCarContent, BayviewGs300, BayviewCivic, BayviewFx45, Count };
+#else
 enum Id { EuCarContent, Count };
+#endif
 
 // One key of a mod's PC ini. A supported key has a feature in the registry below; flip the flag when one is added.
 struct IniKey
@@ -59,20 +64,27 @@ struct Source
     bool downloadable() const { return !download.url.empty() && !download.files.empty(); }
 };
 
+#ifdef DEV_SETTINGS
+enum SourceId { ExtraOptions, BayviewsBest, SourceCount };
+#else
 enum SourceId { ExtraOptions, SourceCount };
+#endif
 
-// A supported key: its name, section, key and requirements are the shared setting's (mods_require.h).
+// A supported key: its name, section, key and requirements are the shared setting's (mods_require.h), or for a
+// launcher-only entry its own.
 struct Mod
 {
     SourceId source;
-    modreq::SettingId setting;
+    modreq::SettingId setting;  // SettingCount with own
     const char* description;    // quoted from the mod's own readme
     const char* comment;        // our wording, for a line we write
     std::vector<const char*> overlaps;  // cfg keys that would control the same feature; none may exist
+    const modreq::Setting* own = nullptr;   // a setting the game never sees
+    const char* note = nullptr;             // our line after the description
 };
 
 const Mod& get(Id id);
-inline const modreq::Setting& def(const Mod& mod) { return modreq::setting(mod.setting); }
+inline const modreq::Setting& def(const Mod& mod) { return mod.own ? *mod.own : modreq::setting(mod.setting); }
 const Source& source(SourceId id);
 // Replaces a source's download; the host tests register fake ones.
 void setDownload(SourceId id, const Download& download);
@@ -91,6 +103,8 @@ bool get(const std::string& file, const char* section, const char* key, std::str
 std::string pathIn(const std::string& folder, const char* relative);
 bool fileExists(const std::string& file);
 bool isOn(const std::string& value);    // an Extra Options number, as it reads one
+// The mod's own default for the key, when the ini lacks it.
+bool onByDefault(const Mod& mod);
 
 struct State
 {

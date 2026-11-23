@@ -59,6 +59,8 @@ public:
     bool hasTag(size_t object, uint16_t id) const;
     uint32_t tag32(size_t object, uint16_t id) const;
     bool setTag32(size_t object, uint16_t id, uint32_t value);
+    // A tag's bytes to read or edit in place (same size), null when the object has none.
+    std::vector<uint8_t>* tagData(size_t object, uint16_t id);
     // The object and every object below it.
     std::vector<size_t> subtree(size_t object) const;
     // Hides these objects and their children; how many changed.

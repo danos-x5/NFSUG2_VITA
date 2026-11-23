@@ -3,9 +3,11 @@
 
 #include "controlsshell.h"
 #include "fepackage.h"
+#include "controlspack.h"
 #include "ownscreens.h"
 #include "psmap.h"
 #include "psprompt.h"
+#include "vitapicture.h"
 
 #include <lib/memmap.h>
 #include <platform/log.h>
@@ -13,6 +15,7 @@
 
 #include <cstring>
 #include <functional>
+#include <map>
 #include <string>
 #include <vector>
 
@@ -45,6 +48,14 @@ const reg32 GameMode = 0x850078;
 const reg32 PcControllerName = 0x793dcc;    // "UI_Options_PC_Controller.fng", pushed by Options > Controls (0x4B61A5)
 const reg32 PcControllerEntryName = 0x7f7e54;   // the screen table's pointer to the same string
 const reg32 EventCallback = 0x0050C630;     // cdecl (player, joy event, value)
+const reg32 LoadChunks = 0x577ab0;          // cdecl (data, bytes)
+const reg32 SetImage = 0x50c990;            // cdecl (image object, texture hash)
+const reg32 RowNumber = 0x520020;           // thiscall on the screen (row): its 1-based place in the list
+const reg32 ScrollBarUpdate = 0x538080;     // thiscall on the screen's scroll bar (1, rows - 1, row number)
+const reg32 ScrollBar = 0x6c, HasScrollBar = 0x146, RowCount = 0x12c;
+const reg32 PictureObject = 0xf1534c25;     // CONTROLLER_IMAGE
+const char* const PictureTexture = "CTRL_VITA_BODY";
+const float PictureShiftX = -37.0f, PictureWidth = 640.0f, PictureHeight = 320.0f;     // controls-overhaul's picture area
 const reg32 SlotMessage = 1, SlotUpdate = 3, SlotBase = 16;
 const reg32 MessageLeft = 0x9120409e, MessageRight = 0xb5971bf1, MessageAccept = 0xc407210;
 const reg32 MessageBack = 0x911ab364, MessageOutroDone = 0xe1fde1d1, ScreenLeaving = 0x138;
@@ -133,6 +144,9 @@ int s_settle = 0;
 int s_checkIn = 0;                  // frames until the baked edits are checked (log)
 reg32 s_vtable = 0, s_rowTable = 0, s_arrowlessTable = 0, s_text = 0, s_textArgument = 0;
 win32::MethodPtr s_eventCallback = nullptr;
+std::map<reg32, float> s_valueX;     // a value object's x as we last set it
+reg32 s_pictureTexture = 0;
+std::pair<reg32, int> s_scrollShown;     // highlighted row and window offset the scroll bar shows
 
 reg32 guestMemory(size_t bytes)
 {
@@ -367,29 +381,93 @@ void syncFocus()
         setEntries();
 }
 
-// Centres the entry values on one column.
-void centreValues()
+// Centre alignment; true when the flag changed.
+bool centreAlign(reg32 value)
 {
-    float reference = 0.0f;
-    bool have = false;
-    for (size_t i = 0; i < s_rows.size(); ++i)
+    const reg32 align = rc::ld32(value + TextAlign);
+    if ((align & (TextAlignCentre | TextAlignRight)) == TextAlignCentre)
+        return false;
+    rc::st32(value + TextAlign, (align & ~TextAlignRight) | TextAlignCentre);
+    return true;
+}
+
+// Every value slot centred before any row text is set.
+void alignAllValues(win32::WinApplication* app, x86::CPU& cpu)
+{
+    for (int n = 1; n <= 13; ++n)
     {
-        const reg32 value = rc::ld32(s_rows[i].row + ValueObject);
-        if (s_rows[i].kind != KindEntry || !value)
-            continue;
-        if (!have || i == 1)
-            reference = rc::ldf32a(rc::ld32(value + DataOffset) + DataX);
-        have = true;
+        if (const reg32 value = findObject(app, cpu, nameHash("OPTION_DATA_" + std::to_string(n))))
+            centreAlign(value);
     }
+}
+
+// Entry values centred left of wherever the game last put them.
+void centreValues(win32::WinApplication* app, x86::CPU& cpu)
+{
+    if (s_screen != ScreenCustomize)
+        return;
     for (const Row& r : s_rows)
     {
         const reg32 value = rc::ld32(r.row + ValueObject);
         if (r.kind != KindEntry || !value)
             continue;
-        rc::st32(value + TextAlign, (rc::ld32(value + TextAlign) & ~TextAlignRight) | TextAlignCentre);
-        rc::stf32a(rc::ld32(value + DataOffset) + DataX, reference - ValueCentreShift);
-        rc::st32(value + ObjectFlags, rc::ld32(value + ObjectFlags) | DirtyFlag);
+        const reg32 data = rc::ld32(value + DataOffset);
+        const float x = rc::ldf32a(data + DataX);
+        const auto last = s_valueX.find(value);
+        bool changed = centreAlign(value);
+        if (last == s_valueX.end() || last->second != x)
+        {
+            rc::stf32a(data + DataX, x - ValueCentreShift);
+            s_valueX[value] = x - ValueCentreShift;
+            changed = true;
+        }
+        if (changed)
+        {
+            rc::st32(value + ObjectFlags, rc::ld32(value + ObjectFlags) | DirtyFlag);
+            setPlain(app, cpu, value, " ");
+            rowTexts(app, cpu, r);
+        }
     }
+}
+
+// The game's scroll bar placed among all entries, not the slots.
+void updateScrollBar(win32::WinApplication* app, x86::CPU& cpu)
+{
+    if (s_screen != ScreenCustomize || !s_screenObject || !rc::ld8(s_screenObject + HasScrollBar))
+        return;
+    const reg32 row = rc::ld32(s_screenObject + HighlightedRow);
+    if (rowIndex(row) < 0)
+        return;
+    s_scrollShown = { row, s_window.offset };
+    const reg32 number = call(app, cpu, RowNumber, s_screenObject, { row });
+    const reg32 last = rc::ld32(s_screenObject + RowCount) - 1 + reg32(EntryCount - s_window.rows);
+    call(app, cpu, ScrollBarUpdate, s_screenObject + ScrollBar, { 1, last, number + reg32(s_window.offset) });
+}
+
+// The placeholder Vita picture in the screen's picture object.
+void showPicture(win32::WinApplication* app, x86::CPU& cpu)
+{
+    if (!s_pictureTexture)
+    {
+        const std::vector<uint8_t> rgba = vitapicture::bodyRgba();
+        const std::vector<uint8_t> dxt = vitapicture::encodeDxt3(rgba.data(), vitapicture::width(), vitapicture::height());
+        const std::vector<uint8_t> pack = controlspack::buildPack(PictureTexture, dxt.data(), dxt.size(), vitapicture::width(),
+                                                                  vitapicture::height());
+        const reg32 at = guestMemory(pack.size());
+        for (size_t i = 0; i < pack.size(); ++i)
+            rc::st8(at + reg32(i), pack[i]);
+        call(app, cpu, LoadChunks, 0, { at, reg32(pack.size()) });
+        s_pictureTexture = controlspack::nameHash(PictureTexture);
+        pf::logInfo("controlsshell: placeholder picture %s loaded, pack of %u bytes", PictureTexture, unsigned(pack.size()));
+    }
+    const reg32 image = findObject(app, cpu, PictureObject);
+    if (!image)
+        return;
+    call(app, cpu, SetImage, 0, { image, s_pictureTexture });
+    const reg32 data = rc::ld32(image + DataOffset);
+    pf::logInfo("controlsshell: picture object %08x flags %08x at x %.1f y %.1f size %.1f x %.1f", unsigned(image),
+                unsigned(rc::ld32(image + ObjectFlags)), rc::ldf32a(data + DataX), rc::ldf32a(data + DataX + 4),
+                rc::ldf32a(data + 0x38), rc::ldf32a(data + 0x3c));
 }
 
 reg32 rowTable(bool arrows)
@@ -460,9 +538,9 @@ void buildRows(win32::WinApplication* app, x86::CPU& cpu, reg32 screen)
         if (!hasArrows(r.kind))
             hideArrows(app, cpu, r.row);
     }
-    if (s_screen == ScreenCustomize)
-        centreValues();
     refreshRows(app, cpu);
+    centreValues(app, cpu);
+    updateScrollBar(app, cpu);
     s_settle = 4;
 }
 
@@ -504,6 +582,11 @@ void construct(win32::WinApplication* app, x86::CPU& cpu, Screen which)
         s_screen = which;
         s_screenObject = screen;
         s_package = rc::ld32(screen + 4);
+        s_valueX.clear();
+        if (which == ScreenCustomize)
+            alignAllValues(app, cpu);
+        if (which == ScreenJoypad)
+            showPicture(app, cpu);
         buildRows(app, cpu, screen);
         checkTitle(app, cpu);
         s_checkIn = 10;
@@ -548,6 +631,12 @@ void screenMessage(win32::WinApplication* app, x86::CPU& cpu)
         s_rows.clear();
     }
     app->dynamic_call(OptionsMessage, cpu);
+    if (cpu.terminate || s_screen != ScreenCustomize || screen != s_screenObject)
+        return;
+    const x86::CPU saved = cpu;
+    syncFocus();
+    updateScrollBar(app, cpu);
+    cpu = saved;
 }
 
 void screenRows(win32::WinApplication* app, x86::CPU& cpu)
@@ -633,6 +722,10 @@ void eventHook(win32::WinApplication* app, x86::CPU& cpu)
             {
                 s_window = next;
                 setEntries();
+                const x86::CPU saved = cpu;
+                refreshRows(app, cpu);
+                updateScrollBar(app, cpu);
+                cpu = saved;
             }
             s_frame = frame;
             s_direction = direction;
@@ -682,16 +775,27 @@ void bakeOptions(fepackage::Package& p, Screen which)
 
 void bakeJoypad(fepackage::Package& p)
 {
-    bake(p, ScreenJoypad, { nameHash("CONTROLLER_IMAGE"), 0x38747312, nameHash("PLAYER"), 0x010cba23, 0x97b71dde, 0xc90dc4ab,
-                            0x444969fd, 0x444969fe, 0xbaa4198e, 0xbaa4198f, 0xbaa41990, 0xbaa41991, 0xbaa41992, 0xbaa41993,
-                            0xbaa41994, 0xbaa41995, 0xbaa41996, 0x0f274b7e, 0x0f274b7f, 0x0f274b80, 0x0f274b81, 0x0f274b82 });
+    bake(p, ScreenJoypad, { nameHash("PLAYER"), 0x010cba23, 0x97b71dde, 0xc90dc4ab, 0x444969fd, 0x444969fe, 0xbaa4198e,
+                            0xbaa4198f, 0xbaa41990, 0xbaa41991, 0xbaa41992, 0xbaa41993, 0xbaa41994, 0xbaa41995, 0xbaa41996,
+                            0x0f274b7e, 0x0f274b7f, 0x0f274b80, 0x0f274b81, 0x0f274b82 });
+    for (size_t image : p.find(PictureObject))
+    {
+        std::vector<uint8_t>* sa = p.tagData(image, 0x4153);
+        if (!sa || sa->size() < 0x40)
+            continue;
+        float x, size[2] = { PictureWidth, PictureHeight };
+        memcpy(&x, &(*sa)[0x1c], 4);
+        x += PictureShiftX;
+        memcpy(&(*sa)[0x1c], &x, 4);
+        memcpy(&(*sa)[0x38], size, 8);
+    }
 }
 
 // The objects baked hidden, read back from the loaded screen.
 void checkHidden(win32::WinApplication* app, x86::CPU& cpu)
 {
     const std::vector<reg32> options = { nameHash("ColorCal_Blurb"), nameHash("Colour_Calibration_Backing"), nameHash("PLAYER") };
-    const std::vector<reg32> joypad = { nameHash("CONTROLLER_IMAGE"), 0xbaa4198e, nameHash("PLAYER") };
+    const std::vector<reg32> joypad = { 0xbaa4198e, 0x0f274b82, nameHash("PLAYER") };
     int hidden = 0, total = 0;
     for (reg32 hash : s_screen == ScreenJoypad ? joypad : options)
     {
@@ -762,6 +866,9 @@ void frame(win32::WinApplication* app, x86::CPU& cpu)
         if (!hasArrows(r.kind))
             hideArrows(app, cpu, r.row);
     }
+    centreValues(app, cpu);
+    if (s_screen == ScreenCustomize && s_scrollShown != std::make_pair(rc::ld32(s_screenObject + HighlightedRow), s_window.offset))
+        updateScrollBar(app, cpu);
     if (s_checkIn > 0 && --s_checkIn == 0)
         checkHidden(app, cpu);
     cpu = saved;

@@ -17,6 +17,9 @@ const uint32_t IdObjectData = 0x446a624f;   // "ObjD"
 const uint32_t IdButtons = 0x6e747542;      // "Butn"
 const uint32_t IdTargets = 0x67726154;      // "Targ": per message, the ids of the objects it goes to
 const uint16_t TagTargetList = 0x744d;      // "Mt": message hash, then object ids
+const uint32_t IdScript = 0x70726353;       // "Scrp"
+const uint16_t TagScriptHeader = 0x6853, TagTrackInfo = 0x4946, TagKeys = 0x644b;    // "Sh" (name hash, length, flags, tracks), "FI", "Kd"
+const uint8_t TrackColour = 6;
 const uint32_t Jdlz = 0x5a4c444a, Raww = 0x57574152;
 const uint16_t TagType = 0x744f, TagHash = 0x684f, TagParams = 0x504f, TagParent = 0x4150;
 
@@ -557,6 +560,96 @@ int Package::extendSeries(const std::string& prefix, int model, int count)
         }
         source = clone(source, nameHash(prefix + std::to_string(n)));
         ++made;
+    }
+    return made;
+}
+
+namespace {
+
+// Visits each colour track's keys after the first: the alpha of key k at keys[k * stride + 16].
+template <typename Visit>
+void colourTracks(std::vector<Tag>& tags, Visit visit)
+{
+    for (size_t i = 0; i + 1 < tags.size(); ++i)
+    {
+        if (tags[i].id != TagTrackInfo || tags[i].data.size() < 2 || tags[i].data[0] != TrackColour || tags[i].data[1] != 16)
+            continue;
+        for (size_t k = i + 1; k < tags.size() && tags[k].id != TagTrackInfo; ++k)
+        {
+            if (tags[k].id != TagKeys)
+                continue;
+            for (size_t at = 20; at + 20 <= tags[k].data.size(); at += 20)
+                visit(tags[k].data, at + 16);
+            break;
+        }
+    }
+}
+
+uint32_t scriptName(const std::vector<Tag>& tags)
+{
+    for (const Tag& t : tags)
+    {
+        if (t.id == TagScriptHeader && t.data.size() >= 4)
+            return get32(t.data.data());
+    }
+    return 0;
+}
+
+}
+
+bool Package::hasScript(size_t object, uint32_t script) const
+{
+    for (const Chunk& c : m_objects[object].chunks)
+    {
+        std::vector<Tag> tags;
+        if (c.id == IdScript && readTags(c.data, &tags) && scriptName(tags) == script)
+            return true;
+    }
+    return false;
+}
+
+std::vector<int32_t> Package::colourAlphaDeltas(size_t object, uint32_t script) const
+{
+    std::vector<int32_t> out;
+    for (const Chunk& c : m_objects[object].chunks)
+    {
+        std::vector<Tag> tags;
+        if (c.id != IdScript || !readTags(c.data, &tags) || scriptName(tags) != script)
+            continue;
+        colourTracks(tags, [&](std::vector<uint8_t>& keys, size_t at) { out.push_back(int32_t(get32(&keys[at]))); });
+    }
+    return out;
+}
+
+int Package::steadyColourScript(uint32_t script, uint32_t keepAs)
+{
+    int made = 0;
+    for (Object& o : m_objects)
+    {
+        for (size_t c = 0; c < o.chunks.size(); ++c)
+        {
+            std::vector<Tag> tags;
+            if (o.chunks[c].id != IdScript || !readTags(o.chunks[c].data, &tags) || scriptName(tags) != script)
+                continue;
+            bool varies = false;
+            colourTracks(tags, [&](std::vector<uint8_t>& keys, size_t at) { varies = varies || get32(&keys[at]) != 0; });
+            if (!varies)
+                continue;
+            Chunk copy = o.chunks[c];
+            std::vector<Tag> kept;
+            readTags(copy.data, &kept);
+            for (Tag& t : kept)
+            {
+                if (t.id == TagScriptHeader && t.data.size() >= 4)
+                    set32(t.data, 0, keepAs);
+            }
+            copy.data = writeTags(kept);
+            colourTracks(tags, [&](std::vector<uint8_t>& keys, size_t at) { set32(keys, at, 0); });
+            o.chunks[c].data = writeTags(tags);
+            o.chunks.insert(o.chunks.begin() + long(c + 1), copy);
+            ++c;
+            ++made;
+        }
     }
     return made;
 }

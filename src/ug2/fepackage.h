@@ -70,6 +70,11 @@ public:
     // prefix<model+1>..prefix<count> become copies of prefix<model>; older ones are renamed and hidden. The number made.
     int extendSeries(const std::string& prefix, int model, int count);
     void setHash(size_t object, uint32_t hash);
+    // Scripts named script whose colour keys change alpha: a copy named keepAs, then alpha held. The number made steady.
+    int steadyColourScript(uint32_t script, uint32_t keepAs);
+    // The alpha changes of every colour key (after the first) of the object's scripts named script.
+    std::vector<int32_t> colourAlphaDeltas(size_t object, uint32_t script) const;
+    bool hasScript(size_t object, uint32_t script) const;
     // The message target lists (Targ) holding this object id.
     std::vector<uint32_t> targetsOf(uint32_t guid) const;
     uint32_t topLevelCount() const { return m_topLevel; }

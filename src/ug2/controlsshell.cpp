@@ -725,9 +725,9 @@ void configure(win32::WinApplication& app)
                 controlsbake::options(p, ScreenTitles[which], which == ScreenCustomize, EntryCount);
             s_slots[which] = r.slots;
             pf::logInfo("controlsshell: %s baked: %u objects hidden, title text %08x, %d row slots (%d slot objects copied "
-                        "from slot %d), %d row bars fitted, %u buttons, instruction line object %ld", ScreenNames[which],
-                        unsigned(r.hidden), unsigned(ScreenTitles[which]), r.slots, r.cloned, controlsbake::SlotModel, r.bars,
-                        unsigned(p.buttonCount()), r.instruction);
+                        "from slot %d), %d row bars fitted, %u buttons, instruction line object %ld, %d highlights steady",
+                        ScreenNames[which], unsigned(r.hidden), unsigned(ScreenTitles[which]), r.slots, r.cloned,
+                        controlsbake::SlotModel, r.bars, unsigned(p.buttonCount()), r.instruction, r.steady);
         });
     }
     // Renames the string Options > Controls pushes; table keeps a copy.

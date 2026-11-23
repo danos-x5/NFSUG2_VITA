@@ -77,6 +77,11 @@ long instructionLine(fepackage::Package& p)
 
 }
 
+uint32_t flashScript()
+{
+    return nameHash("HighlightFlash");
+}
+
 uint32_t instructionHash()
 {
     return nameHash("CONTROLS_INSTRUCTION");
@@ -111,6 +116,7 @@ Result options(fepackage::Package& p, uint32_t title, bool customize, int entrie
         r.instruction = instructionLine(p);
     }
     roomForTexts(p, entries > 13 ? entries : 13);
+    r.steady = p.steadyColourScript(nameHash("Highlight"), flashScript());
     r.slots = countSlots(p);
     return r;
 }
@@ -146,6 +152,7 @@ Result joypad(fepackage::Package& p, uint32_t title)
         setFloat(sa, 0x38, PictureWidth);
         setFloat(sa, 0x3c, PictureHeight);
     }
+    r.steady = p.steadyColourScript(nameHash("Highlight"), flashScript());
     r.slots = countSlots(p);
     return r;
 }

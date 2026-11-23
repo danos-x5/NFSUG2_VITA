@@ -20,8 +20,11 @@ struct Result
     int cloned = 0;         // slot objects copied from SlotModel
     int bars = 0;           // row bars fitted
     long instruction = -1;  // the instruction line object, -1 for none
+    int steady = 0;         // looping Highlight scripts made steady (kept as HighlightFlash)
 };
 
+// The flashing highlight, kept under its own name for the bind wait.
+uint32_t flashScript();
 // CONTROLS_INSTRUCTION: the Customize instruction line's own object.
 uint32_t instructionHash();
 // Rows the package can show: every slot object up to n exists.

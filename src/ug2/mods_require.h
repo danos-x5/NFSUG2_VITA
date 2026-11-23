@@ -35,7 +35,10 @@ public:
     const char* key;
     Kind kind = Kind::Bool;
     const char* codeDefault = "1";      // what the mod uses when the key is missing
-    const char* shipped = "1";          // the value in the mod's own settings file: the Mods tab's default
+    const char* shipped = "1";          // the value in the mod's own settings file
+    // The value with which the mod's patches give the game's own bytes: the Mods tab's default and a new file's
+    // value. Empty when no value does: the key's Vanilla choice, which leaves it out of the file.
+    const char* vanilla = "0";
     double min = 0, max = 1, step = 1;  // the Mods tab's range
     std::vector<const char*> labels;    // Enum: one per value from min
 

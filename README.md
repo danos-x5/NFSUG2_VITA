@@ -102,12 +102,13 @@ The manager has two tabs, switched with L and R: **Mods** for PC mod features (s
 
 The start-up screen's Mods tab switches PC mod features the port has rebuilt itself, grouped by the mod they come
 from. Each feature keeps its setting in the mod's own settings file, shared with the PC game, so a PC mod
-user's file works as it is. The game is vanilla by default: with no settings file a mod is off. Without the file the
-rows show the values a fresh install of the mod has, and Save creates the whole file, every key at the mod's own value
-except the ones you changed; with an existing file only the changed keys are changed in place, every other line left
-as it was. As on the PC, an existing file without a key (or its section) gets the value the mod's code gives it, which
-is not always the one in the mod's own file (for example Extra Options turns `UnlockAllThings` on when the key is
-missing). Numbers step with Left and Right within the mod's range, Square sets a row back to the mod's own value, and
+user's file works as it is. The game is vanilla by default: with no settings file a mod is off, and a key (or section)
+missing from the file leaves the game as it is for that key, unlike the PC mod, which then uses its own default. Each
+row's default is the value that leaves the game unchanged; three Extra Options keys have none (`[LapControllers]
+Minimum`, `[Drift] MaximumMultiplier`, `[Gameplay] StartingCash`), so their first choice is Vanilla, which leaves the
+key out of the file. Without the file, Save creates it with every key at that vanilla value except the ones you
+changed; with an existing file only the changed keys are changed in place (Vanilla removes the key's line), every other
+line left as it was. Numbers step with Left and Right within the mod's range, Square sets a row back to vanilla, and
 holding Select does that for the whole tab.
 
 The settings files are under the game folder, `ux0:data/NeedForSpeedUnderground2/`, and can be edited by hand.
@@ -143,12 +144,12 @@ Existing PC mods will slowly be added to the port over its development.
 ### NFSU2 Extra Options
 
 With its settings file in place the game works as with Extra Options 5.1.0.1340 on the PC for the options in the Mods
-tab table, including the changes the mod makes whatever its keys say: the lap limits, the drift multiplier's
-thresholds, the starting cash of a new career and the neon brightness all take the file's values (or the mod's code
-defaults). The hotkeys, the weather, sound and window options and the rest stay unsupported and are never read. The
-port changes the same game code and data the mod changes, and reads the values the same way: a key that is not a
-number takes the mod's code default, a decimal that is not a number reads as 0. `AnyTrackInAnyRaceMode` and
-`UnlockAllThings` are read at start-up only; there is no hotkey.
+tab table, for each key the file has: a key that is missing leaves the game as it is, including the changes the mod
+would make whatever the key says (the lap limits, the drift multiplier's thresholds and score factor, the game region,
+the starting cash of a new career, the neon brightness). The hotkeys, the weather, sound and window options and the rest stay unsupported and are
+never read. The port changes the same game code and data the mod changes, and reads the values the same way: a key
+that is not a number takes the mod's code default, a decimal that is not a number reads as 0. `AnyTrackInAnyRaceMode`
+and `UnlockAllThings` are read at start-up only; there is no hotkey.
 
 ## Build
 

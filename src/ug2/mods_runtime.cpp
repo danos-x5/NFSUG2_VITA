@@ -18,6 +18,7 @@ namespace
 bool s_read = false;
 bool s_installed = false;
 bool s_active[FeatureCount] = {};
+bool s_present[FeatureCount] = {};
 double s_value[FeatureCount] = {};
 
 uint8_t byteOf(Feature f)
@@ -50,9 +51,11 @@ State state(Feature feature, const std::string& gameFolder)
     if (kind == pf::TextFile::Readable)
     {
         mINI::INIStructure data;
-        if (mINI::INIFile(file).read(data) && data.has(f.section) && data.get(f.section).has(f.key))
+        // ExtraOptions 5.1.0.1340 every key: deviation (user decision): missing is vanilla, not the code default
+        s.keyFound = mINI::INIFile(file).read(data) && data.has(f.section) && data.get(f.section).has(f.key);
+        if (s.keyFound)
             s.value = modreq::parse(f, data.get(f.section).get(f.key));
-        s.on = s.value != 0;
+        s.on = s.keyFound && s.value != 0;
     }
     s.met = f.requirementsMet(gameFolder);
     s.requirements = f.requirementsString(gameFolder);
@@ -73,6 +76,11 @@ bool active(Feature feature)
 bool installed()
 {
     return s_read && s_installed;
+}
+
+bool present(Feature feature)
+{
+    return installed() && s_present[feature];
 }
 
 double value(Feature feature)
@@ -118,29 +126,36 @@ int applyPatches(uint8_t* guestBase)
     }
     if (!installed())
         return count;
+    // ExtraOptions 5.1.0.1340 every key: deviation (user decision): a missing key turns all its changes off
 
-    // ExtraOptions 5.1.0.1340 [LapControllers] Minimum, Maximum: BYTE values % 128, written whatever the keys say
+    // ExtraOptions 5.1.0.1340 [LapControllers] Minimum, Maximum: BYTE values % 128; a key not written keeps the
+    // game's bytes, which the value switches then read
     const uint8_t lapMin = byteOf(LapMinimum) % 128, lapMax = byteOf(LapMaximum) % 128;
-    for (uint32_t a : LapMinimumBytes)
-        guestBase[a] = lapMin;
-    for (uint32_t a : LapMaximumBytes)
-        guestBase[a] = lapMax;
-    exoLapLimits = true;
-    count += 9;
+    if (present(LapMinimum))
+        for (uint32_t a : LapMinimumBytes)
+            guestBase[a] = lapMin;
+    if (present(LapMaximum))
+        for (uint32_t a : LapMaximumBytes)
+            guestBase[a] = lapMax;
+    exoLapLimits = present(LapMinimum) || present(LapMaximum);
+    count += (present(LapMinimum) ? 5 : 0) + (present(LapMaximum) ? 4 : 0);
 
     // ExtraOptions 5.1.0.1340 [Drift] MaximumMultiplier: BYTE % 10, 0 -> 1; thresholds, levels and score factor
     uint8_t driftMax = byteOf(DriftMaximumMultiplier) % 10;
     if (driftMax == 0)
         driftMax = 1;
-    for (int i = 0; i < 32; ++i)
-        put32(guestBase, DriftThresholds + 4 * i, uint32_t(DriftThresholdPoints[i]));
-    for (uint32_t a : DriftLevelBytes)
-        guestBase[a] = driftMax;
-    putFloat(guestBase, DriftFactor, float(driftMax) / 5.0f);
-    exoDriftLevels = true;
-    // ExtraOptions 5.1.0.1340 [Drift] MaximumMultiplier: the cave multiplies by 1.0 at x5, which changes no score
-    exoDriftFactor = driftMax != 5;
-    count += 4;
+    if (present(DriftMaximumMultiplier))
+    {
+        for (int i = 0; i < 32; ++i)
+            put32(guestBase, DriftThresholds + 4 * i, uint32_t(DriftThresholdPoints[i]));
+        for (uint32_t a : DriftLevelBytes)
+            guestBase[a] = driftMax;
+        putFloat(guestBase, DriftFactor, float(driftMax) / 5.0f);
+        exoDriftLevels = true;
+        // ExtraOptions 5.1.0.1340 [Drift] MaximumMultiplier: the cave multiplies by 1.0 at x5, which changes no score
+        exoDriftFactor = driftMax != 5;
+        count += 4;
+    }
     // ExtraOptions 5.1.0.1340 [Drift] ShowWithoutMultiplying, PlusSign, HideNiftyDriftMessages: != 0
     exoDriftAxB = active(DriftShowWithoutMultiplying);
     exoDriftPlus = active(DriftPlusSign);
@@ -155,7 +170,7 @@ int applyPatches(uint8_t* guestBase)
     exoFreeRunSelect = active(FreeRunTrackSelect);
     exoOutrunSelect = active(OutrunTrackSelect);
     // ExtraOptions 5.1.0.1340 [Menu] DisableTakeover: the takeover text shows when the key is 0
-    exoTakeover = !active(DisableTakeover);
+    exoTakeover = present(DisableTakeover) && !active(DisableTakeover);
     if (exoTakeover)
     {
         memcpy(guestBase + TakeoverText, TakeoverString, strlen(TakeoverString) + 1);
@@ -180,12 +195,18 @@ int applyPatches(uint8_t* guestBase)
     }
     // ExtraOptions 5.1.0.1340 [Gameplay] ShowPercentOn1LapRaces: != 0
     exoLapPercent = active(ShowPercentOn1LapRaces);
-    // ExtraOptions 5.1.0.1340 [Gameplay] GameRegion: BYTE % 13 into _BuildRegion, whatever the key says
-    guestBase[BuildRegion] = byteOf(GameRegion) % 13;
-    ++count;
-    // ExtraOptions 5.1.0.1340 [Gameplay] StartingCash: the int the cave stores, whatever the key says
-    exoStartingCashValue = int32_t(value(StartingCash));
-    exoStartingCash = true;
+    // ExtraOptions 5.1.0.1340 [Gameplay] GameRegion: BYTE % 13 into _BuildRegion
+    if (present(GameRegion))
+    {
+        guestBase[BuildRegion] = byteOf(GameRegion) % 13;
+        ++count;
+    }
+    // ExtraOptions 5.1.0.1340 [Gameplay] StartingCash: the int the cave stores
+    if (present(StartingCash))
+    {
+        exoStartingCashValue = int32_t(value(StartingCash));
+        exoStartingCash = true;
+    }
     // ExtraOptions 5.1.0.1340 [Gameplay] UnlockAllThings: _UnlockAllThings <- 1 and GetPartUnlockFilter's NOPs
     if (active(UnlockAllThings))
     {
@@ -193,18 +214,19 @@ int applyPatches(uint8_t* guestBase)
         exoUnlockAll = true;
         ++count;
     }
-    // ExtraOptions 5.1.0.1340 [Gameplay] NeonBrightness: float into RenderNeon's immediate, whatever the key says
-    putFloat(guestBase, NeonBrightnessBytes, float(value(NeonBrightness)));
-    exoNeon = true;
-    ++count;
+    // ExtraOptions 5.1.0.1340 [Gameplay] NeonBrightness: float into RenderNeon's immediate
+    if (present(NeonBrightness))
+    {
+        putFloat(guestBase, NeonBrightnessBytes, float(value(NeonBrightness)));
+        exoNeon = true;
+        ++count;
+    }
 
     // ExtraOptions 5.1.0.1340 [Fixes] DisappearingWheelsFix, ExperimentalSplitScreenFix: != 0
     exoWheels = active(DisappearingWheelsFix);
     exoSplitScreen = active(ExperimentalSplitScreenFix);
 
-    pf::logInfo("mods: %s %s: laps %u-%u, drift multiplier %u, region %u, starting cash %d, neon %g, %d changes",
-                exopts::Name, exopts::Version, lapMin, lapMax, driftMax, unsigned(guestBase[BuildRegion]),
-                exoStartingCashValue, double(float(value(NeonBrightness))), count);
+    pf::logInfo("mods: %s %s: %d changes", exopts::Name, exopts::Version, count);
     return count;
 }
 
@@ -221,6 +243,7 @@ std::vector<std::string> readModSettings(const std::string& gameFolder)
         const modrt::State s = modrt::state(modrt::Feature(i), gameFolder);
         modrt::s_active[i] = s.on && s.met;
         modrt::s_value[i] = s.value;
+        modrt::s_present[i] = s.keyFound;
         modrt::s_installed |= s.iniFound && !s.unreadable;
         const std::string file = gameFolder + "/" + f.iniPath;
         if (s.unreadable)
@@ -231,11 +254,13 @@ std::vector<std::string> readModSettings(const std::string& gameFolder)
         }
         else if (s.on && !s.met)
             pf::logError("mods: %s %s stays off, the settings file says on: %s", f.mod, f.name, s.requirements.c_str());
+        else if (!s.keyFound)
+            pf::logInfo("mods: %s %s vanilla (%s)", f.mod, f.name,
+                        s.iniFound ? "not in the settings file" : "no settings file");
         else if (f.kind == modreq::Kind::Bool)
-            pf::logInfo("mods: %s %s %s", f.mod, f.name,
-                        modrt::s_active[i] ? "on" : s.iniFound ? "off" : "off (no settings file)");
+            pf::logInfo("mods: %s %s %s", f.mod, f.name, modrt::s_active[i] ? "on" : "off");
         else
-            pf::logInfo("mods: %s %s %g%s", f.mod, f.name, s.value, s.iniFound ? "" : " (no settings file)");
+            pf::logInfo("mods: %s %s %g", f.mod, f.name, s.value);
     }
     modrt::s_read = true;
     return unreadable;

@@ -20,8 +20,9 @@ struct State
 {
     bool iniFound = false;
     bool unreadable = false;            // present but not readable text: off
-    double value = 0;                   // as the mod reads it; its code default when the key is missing
-    bool on = false;                    // the value is non-zero, as Extra Options reads a number
+    bool keyFound = false;              // the readable file has the key; without it the key is vanilla
+    double value = 0;                   // as the mod reads it, when keyFound
+    bool on = false;                    // keyFound and the value is non-zero, as Extra Options reads a number
     bool met = false;                   // Setting::requirementsMet
     std::string requirements;           // Setting::requirementsString
 };
@@ -31,6 +32,8 @@ bool runs(Feature feature, const std::string& gameFolder);
 bool active(Feature feature);
 // As read at start-up: the settings file is there and readable, so the mod's unconditional changes apply.
 bool installed();
+// As read at start-up: the file has the key (else the key leaves the game vanilla), and its value.
+bool present(Feature feature);
 double value(Feature feature);
 
 // ExtraOptions 5.1.0.1340 [Gameplay] UnlockRegionalCars: EU-only (CORSA, PEUGOT106), US-only (CIVIC, RSX) list ids.

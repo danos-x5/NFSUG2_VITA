@@ -105,16 +105,14 @@ bool get(const std::string& file, const char* section, const char* key, std::str
 
 std::string pathIn(const std::string& folder, const char* relative);
 bool fileExists(const std::string& file);
-// The mod's code default for the key, as when the ini lacks it, is non-zero.
-bool onByDefault(const Mod& mod);
 
 struct State
 {
     bool iniFound = false;
     bool unreadable = false;            // the ini exists but cannot be read (pf::readTextFile); the mod is off
     bool keyFound = false;              // the readable ini has the key
-    double value = 0;                   // as the mod reads it, its code default when missing
-    bool on = false;                    // the ini is readable and the value non-zero
+    double value = 0;                   // as the mod reads it, when keyFound; a missing key is vanilla
+    bool on = false;                    // keyFound and the value non-zero
     bool met = false;                   // modreq::Setting::requirementsMet
     std::string requirements;           // modreq::Setting::requirementsString
 };

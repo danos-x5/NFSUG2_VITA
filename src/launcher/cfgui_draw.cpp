@@ -687,16 +687,16 @@ void Configurator::drawModRows(Painter& p) const
         const bool stepped = view.kind == ModKind::Int || view.kind == ModKind::Float;
         const double n = atof(mod.current.c_str());
         const uint32_t on = selected ? White : Green, off = selected ? rgb(0x5c, 0x8f, 0x68) : DarkGrey;
-        p.arrow(x, cy, false, !stepped || n > view.min ? on : off);
+        const bool chosen = !mod.current.empty();
+        p.arrow(x, cy, false, !stepped || (chosen && (n > view.min || view.vanillaChoice)) ? on : off);
         x += 14;
         x += p.text(x, ty, clip(shownModValue(view, mod.current), 24), selected ? White : Green, FontNormal);
-        p.arrow(x + 8, cy, true, !stepped || n < view.max ? on : off);
+        p.arrow(x + 8, cy, true, !stepped || !chosen || n < view.max ? on : off);
         x += 14;
-        if (view.kind == ModKind::Bool && mod.current == view.vanilla)
+        if (mod.current == view.vanilla)
             p.text(x + 16, ty + 3, "(vanilla)", selected ? OnBar : DarkGrey, FontSmall);
         else if (view.kind != ModKind::Bool)
-            p.text(x + 16, ty + 3, mod.current == resetOf(view) ? "(default)"
-                                   : "default " + clip(shownModValue(view, resetOf(view)), 24),
+            p.text(x + 16, ty + 3, "vanilla " + clip(shownModValue(view, view.vanilla), 24),
                    selected ? OnBar : DarkGrey, FontSmall);
     }
     p.rect(0, panelTop - 4, Width, 1, Rule);

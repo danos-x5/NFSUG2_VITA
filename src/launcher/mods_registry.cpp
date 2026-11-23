@@ -192,16 +192,11 @@ void readValue(const std::string& file, const Mod& mod, State* s)
     s->iniFound = kind != pf::TextFile::Missing;
     s->unreadable = kind == pf::TextFile::Unreadable;
     s->keyFound = kind == pf::TextFile::Readable && ini::get(file, def(mod).section, def(mod).key, &value);
-    // Read as the mod reads it: a missing section or key takes its code default.
-    s->value = s->keyFound ? modreq::parse(def(mod), value) : modreq::codeDefault(def(mod));
-    s->on = kind == pf::TextFile::Readable && s->value != 0;
+    // ExtraOptions 5.1.0.1340 every key: deviation (user decision): missing is vanilla, not the code default
+    s->value = s->keyFound ? modreq::parse(def(mod), value) : 0;
+    s->on = s->keyFound && s->value != 0;
 }
 
-}
-
-bool onByDefault(const Mod& mod)
-{
-    return modreq::codeDefault(def(mod)) != 0;
 }
 
 const Mod& get(Id id)

@@ -35,7 +35,7 @@ std::string formatModValue(double value)
 
 std::string resetOf(const ModView& view)
 {
-    return view.reset.empty() ? "0" : view.reset;
+    return view.vanillaChoice ? view.reset : view.reset.empty() ? "0" : view.reset;
 }
 
 std::string steppedValue(const ModView& view, const std::string& value, int direction, int steps)
@@ -48,14 +48,20 @@ std::string steppedValue(const ModView& view, const std::string& value, int dire
         const int from = at < 0 || at >= count ? (direction > 0 ? -1 : count) : at;
         return formatModValue(view.min + ((from + direction) % count + count) % count);
     }
+    if (view.vanillaChoice && value.empty())
+        return direction > 0 ? formatModValue(view.min) : value;
     double next = now + double(direction) * steps * view.step;
     if (view.kind == ModKind::Float)
         next = std::round(next / view.step) * view.step;
+    if (view.vanillaChoice && next < view.min)
+        return std::string();
     return formatModValue(std::min(view.max, std::max(view.min, next)));
 }
 
 std::string shownModValue(const ModView& view, const std::string& value)
 {
+    if (view.vanillaChoice && value.empty())
+        return "Vanilla";
     if (view.kind == ModKind::Bool)
         return value == "0" ? "off" : "on";
     if (view.kind == ModKind::Enum)

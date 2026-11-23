@@ -60,6 +60,12 @@ bool set(const std::string& file, const std::vector<Line>& lines)
         return false;
     for (const Line& line : lines)
     {
+        if (line.value.empty())
+        {
+            if (data.has(line.section))
+                data[line.section].remove(line.key);
+            continue;
+        }
         std::string value = line.value;
         if (!(data.has(line.section) && data[line.section].has(line.key)) && line.comment && *line.comment)
         {
@@ -128,12 +134,7 @@ cfgui::ModKind kindOf(modreq::Kind kind)
 
 std::string vanillaValue(const Mod& mod)
 {
-    return mod.setting == modreq::DisableTakeover ? "1" : "0";
-}
-
-std::string freshValue(const Mod& mod)
-{
-    return def(mod).kind == modreq::Kind::Bool ? vanillaValue(mod) : std::string(def(mod).shipped);
+    return def(mod).vanilla;
 }
 
 bool writeFresh(const Source& src, const std::string& file, const char* section, const char* key,
@@ -144,8 +145,9 @@ bool writeFresh(const Source& src, const std::string& file, const char* section,
     {
         const bool chosen = section && !strcmp(k.section, section) && !strcmp(k.key, key);
         const Mod* mod = modOf(src, k);
-        lines.push_back(ini::Line{ k.section, k.key, chosen ? value : mod ? freshValue(*mod) : std::string(k.def),
-                                   mod ? mod->comment : nullptr });
+        const std::string v = chosen ? value : mod ? vanillaValue(*mod) : std::string(k.def);
+        if (!v.empty())
+            lines.push_back(ini::Line{ k.section, k.key, v, mod ? mod->comment : nullptr });
     }
     mkdir(file.substr(0, file.rfind('/')).c_str(), 0777);
     return ini::set(file, lines);
@@ -196,12 +198,15 @@ std::vector<cfgui::ModView> views(const std::string& gameFolder)
             view.max = setting.max;
             view.step = setting.step;
             view.labels.assign(setting.labels.begin(), setting.labels.end());
-            view.reset = setting.shipped;
+            // ExtraOptions 5.1.0.1340 every key: deviation (user decision): default, reset and new file are vanilla
+            view.reset = vanillaValue(mod);
             view.vanilla = vanillaValue(mod);
-            // No settings file: the values it would get on creation (writeFresh).
-            const double value = found ? s.value : atof(freshValue(mod).c_str());
-            view.value = formatValue(view.kind == cfgui::ModKind::Bool ? value != 0 : value);
-            view.enabled = found ? s.on : value != 0;
+            view.vanillaChoice = view.vanilla.empty();
+            if (s.keyFound)
+                view.value = formatValue(view.kind == cfgui::ModKind::Bool ? s.value != 0 : s.value);
+            else
+                view.value = view.vanilla;
+            view.enabled = s.keyFound ? s.on : view.vanilla != "0" && !view.vanilla.empty();
             if (!s.met)
                 view.requirements = s.requirements;
             if (src.downloadable())
@@ -224,9 +229,10 @@ bool save(const Mod& mod, const std::string& gameFolder, const std::string& valu
     const std::string file = pathIn(gameFolder, src.iniPath);
     const State s = state(mod, gameFolder);
     const bool found = s.iniFound && !s.unreadable;
-    const bool same = def(mod).kind == modreq::Kind::Bool ? (s.value != 0) == (value != "0")
-                                                          : formatValue(s.value) == value;
-    if ((found && same) || (!s.iniFound && value == freshValue(mod)))
+    const bool same = !s.keyFound ? value == vanillaValue(mod)
+                      : def(mod).kind == modreq::Kind::Bool ? (s.value != 0) == (value != "0")
+                                                            : formatValue(s.value) == value;
+    if ((found && same) || (!s.iniFound && value == vanillaValue(mod)))
         return true;
     const bool written = found ? ini::set(file, def(mod).section, def(mod).key, value, mod.comment)
                                : writeFresh(src, file, def(mod).section, def(mod).key, value);
@@ -235,8 +241,8 @@ bool save(const Mod& mod, const std::string& gameFolder, const std::string& valu
         pf::logError("mods: writing %s failed", file.c_str());
         return false;
     }
-    pf::logInfo("mods: %s %s %s = %s in %s%s", src.mod, def(mod).name, def(mod).key, value.c_str(), file.c_str(),
-                found ? "" : " (created with the mod's defaults)");
+    pf::logInfo("mods: %s %s %s = %s in %s%s", src.mod, def(mod).name, def(mod).key,
+                value.empty() ? "(removed: vanilla)" : value.c_str(), file.c_str(), found ? "" : " (created, vanilla)");
     return true;
 }
 

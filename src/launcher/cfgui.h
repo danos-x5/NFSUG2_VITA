@@ -93,7 +93,8 @@ struct ModView
     double min = 0, max = 1, step = 1;
     std::vector<std::string> labels;    // Enum: one per value from min
     std::string reset;                  // the value Square and Select's reset give; empty: "0"
-    std::string vanilla = "0";          // Bool: the value that leaves the game as it is
+    std::string vanilla = "0";          // the value that leaves the game as it is
+    bool vanillaChoice = false;         // Int: a first choice "Vanilla" (value empty) before min, the key left out
     std::vector<std::string> details;   // the description panel, paragraph by paragraph
     std::string requirements;           // unmet: the setting's requirementsString; the value stays editable
     bool enabled = false;               // as the ini says
@@ -110,9 +111,9 @@ struct ModView
 // The Mods tab's value text: "%g" of a number.
 std::string formatModValue(double value);
 std::string resetOf(const ModView& view);
-// One step (Enum: one label, wrapping) or several (Int, Float: clamped) from value.
+// One step (Enum: one label, wrapping) or several (Int, Float: clamped, below min the Vanilla choice) from value.
 std::string steppedValue(const ModView& view, const std::string& value, int direction, int steps);
-// As the row shows it: on/off, the Enum's label, or the number.
+// As the row shows it: on/off, the Enum's label, Vanilla, or the number.
 std::string shownModValue(const ModView& view, const std::string& value);
 
 // The Mods tab's file checks and downloads, kept out of the screen code; the launcher's is ModDownloads.

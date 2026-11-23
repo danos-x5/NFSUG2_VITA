@@ -16,20 +16,20 @@ struct Line
 {
     const char* section;
     const char* key;
-    std::string value;
+    std::string value;          // empty: remove the key
     const char* comment;        // written after a new line's value; null for none
 };
-// Sets the values, keeping any comment, the line ends and the final break; writes through file.tmp.
+// Sets the values, keeping any comment, the line ends and the final break; an empty value removes the key's line.
+// Writes through file.tmp.
 bool set(const std::string& file, const std::vector<Line>& lines);
 bool set(const std::string& file, const char* section, const char* key, const std::string& number,
          const char* comment);
 }
 
-// Bool keys: the value that leaves the game as it is. A new file's value: that, or the shipped value of a number.
+// The value that leaves the game as it is (modreq::Setting::vanilla); empty for a key's Vanilla choice.
 std::string vanillaValue(const Mod& mod);
-std::string freshValue(const Mod& mod);
-// A new settings file with every key of the source at its freshValue (an unsupported one at the shipped value), key
-// (when given) at value.
+// A new settings file with every supported key at its vanilla value (an empty one left out), an unsupported one at
+// the mod's own value, and key (when given) at value.
 bool writeFresh(const Source& src, const std::string& file, const char* section, const char* key,
                 const std::string& value);
 

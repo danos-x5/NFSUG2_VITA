@@ -64,6 +64,8 @@ NATIVE_OVERRIDES = [
     0x5b9570, 0x5b9420,
     # Menu up/down ignore the right stick (src/ug2/native/sub_571d50.cpp)
     0x571d50,
+    # Free look (src/ug2/freelook.cpp): chase camera update and look-at matrix
+    0x453570, 0x5ba9a0,
     # Medium graphics features: flares, shadow hull, headlight pass, particles
     0x490920, 0x5c5580, 0x60cee0, 0x5bdaa0, 0x48bdf0, 0x492e10,
     0x5c0e10, 0x4881d0, 0x5bb430, 0x61e700,

@@ -81,6 +81,10 @@ public:
     typedef void (*PollHook)(x86::reg32* buttons, int* pov);     // pov: the first of the hats
     static void setPollHook(PollHook hook);
 
+    // Each getState, guest thread: true reports the right stick centred.
+    typedef bool (*RightStickFilter)();
+    static void setRightStickFilter(RightStickFilter filter);
+
     // Synthetic pad merged into every reading: inputs ORed, nonzero sticks and a touch replace. Any thread.
     static void setInjectedPad(const controls::PadSample& pad);
 

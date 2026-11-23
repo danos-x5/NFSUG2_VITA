@@ -128,12 +128,23 @@ bool driving();
 // Free roam HUD touch zones: a short tap requests the zone's world action, whatever the buttons do. The pad hook
 // sends it as the game's joy event.
 enum HudZone { HudMap, HudMessages, HudShop, HudCareer, HudZoneCount };
-struct ScreenRect
+struct ZonePoint
 {
-    float x0, y0, x1, y1;       // 0..1 of the display
+    float x, y;                 // display pixels
 };
+// A zone's outline, in either winding.
+struct ZonePolygon
+{
+    static const int MaxPoints = 8;
+    int       count;
+    ZonePoint points[MaxPoints];
+};
+// The front panel in display pixels.
+const float PanelWidth = 960.0f, PanelHeight = 544.0f;
+// Inside or on an edge (within half a pixel).
+bool insidePolygon(const ZonePolygon& polygon, float x, float y);
 // HUD draw, each frame (Mapper clock); unrenewed zones lapse.
-void setHudZone(HudZone zone, const ScreenRect& rect, uint64_t nowUs);
+void setHudZone(HudZone zone, const ZonePolygon& polygon, uint64_t nowUs);
 // Bit per HudZone (1 << zone) tapped since the last call.
 uint32_t takeWorldRequests();
 

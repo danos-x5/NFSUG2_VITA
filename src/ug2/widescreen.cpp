@@ -2,6 +2,7 @@
 // units move to the screen edges; the player views get a hor+ projection. widescreen=off keeps the 4:3 game.
 
 #include "widescreen.h"
+#include "hud_touch.h"
 
 #include <lib/controls.h>
 #include <lib/gamepad.h>
@@ -17,7 +18,6 @@
 #include <cctype>
 #include <cmath>
 #include <cstdio>
-#include <cstring>
 #include <map>
 #include <native.h>
 #include <recomp.h>
@@ -146,26 +146,20 @@ bool fixedPlace(const std::string& package, x86::reg32 texture, Place* place)
     return true;
 }
 
-// Canvas rectangle to display fractions, with the current drawing map.
-win32::controls::ScreenRect displayRect(float x0, float y0, float x1, float y1)
+// The canvas mapping the next draw uses.
+hudtouch::DrawMap currentDraw()
 {
     const pf::gxm::Rect screen = pf::gxm::Device::windowRect(s_width, s_height);
-    const Map map = { rc::ldf32(SlotScale), rc::ldf32(SlotOffset) };
-    const double half = 0.5 * (screen.x1 - screen.x0);
-    auto px = [&](float x) { return screen.x0 + (x * map.scale - map.offset + 1.0) * half; };
-    auto py = [&](float y) { return screen.y0 + y / 480.0 * (screen.y1 - screen.y0); };
-    return { float(px(x0) / pf::gxm::DisplayWidth), float(py(y0) / pf::gxm::DisplayHeight),
-             float(px(x1) / pf::gxm::DisplayWidth), float(py(y1) / pf::gxm::DisplayHeight) };
+    return { float(screen.x0), float(screen.y0), float(screen.x1), float(screen.y1), rc::ldf32(SlotScale),
+             rc::ldf32(SlotOffset) };
 }
 
-// Free-roam HUD zones from textures: the minimap and the top-left ring's right, up and down arms (SMS, Shop, Career).
-// Arm half width and centre gap, canvas units.
-const float ArmHalf = 20.0f, ArmGap = 10.0f;
-
+// Free-roam HUD parts the zones follow: the minimap and the top-left ring, with how each was drawn.
 struct HudSeen
 {
     bool minimap = false, ring = false;
-    win32::controls::ScreenRect zones[win32::controls::HudZoneCount];  // by HudZone
+    hudtouch::DrawMap mapDraw, ringDraw;
+    win32::controls::ZonePoint mapCentre, ringCentre;    // display pixels, for the log
 };
 HudSeen s_hudSeen;
 
@@ -184,70 +178,73 @@ bool textureIs(x86::reg32 texture, const char* name)
 
 void recordHudZone(x86::reg32 render, const Box& box)
 {
-    using namespace win32::controls;
     const x86::reg32 texture = rc::ld32(render + 0x14);
     if (!texture || box.empty() || !s_ready)
         return;
-    const float margin = 6.0f;
-    if (textureIs(texture, "MINIMAP_MASK"))
-    {
-        s_hudSeen.minimap = true;
-        s_hudSeen.zones[HudMap] = displayRect(box.x0 - margin, box.y0 - margin, box.x1 + margin, box.y1 + margin);
-    }
-    else if (textureIs(texture, "ENGAGE_DPAD_BACKING"))
-    {
-        const float cx = 0.5f * (box.x0 + box.x1), cy = 0.5f * (box.y0 + box.y1);
-        s_hudSeen.ring = true;
-        s_hudSeen.zones[HudMessages] = displayRect(cx + ArmGap, cy - ArmHalf, box.x1 + margin, cy + ArmHalf);
-        s_hudSeen.zones[HudShop] = displayRect(cx - ArmHalf, box.y0 - margin, cx + ArmHalf, cy - ArmGap);
-        s_hudSeen.zones[HudCareer] = displayRect(cx - ArmHalf, cy + ArmGap, cx + ArmHalf, box.y1 + margin);
-    }
+    const bool minimap = textureIs(texture, "MINIMAP_MASK");
+    if (!minimap && !textureIs(texture, "ENGAGE_DPAD_BACKING"))
+        return;
+    const hudtouch::DrawMap draw = currentDraw();
+    const win32::controls::ZonePoint centre = hudtouch::toDisplay(draw, 0.5f * (box.x0 + box.x1), 0.5f * (box.y0 + box.y1));
+    (minimap ? s_hudSeen.minimap : s_hudSeen.ring) = true;
+    (minimap ? s_hudSeen.mapDraw : s_hudSeen.ringDraw) = draw;
+    (minimap ? s_hudSeen.mapCentre : s_hudSeen.ringCentre) = centre;
 }
 
 #ifdef DEV_TOOLS
 // Logs the zones when they appear or move.
-void logHudZones(const HudSeen& seen, uint64_t now)
+void logHudZones(const HudSeen& seen, const win32::controls::ZonePolygon* zones, uint64_t now)
 {
     using namespace win32::controls;
-    static const char* const Names[HudZoneCount] = { "World Map (minimap)", "Read SMS (right arm)",
-                                                     "Enter Shop (up arm)", "Career Stats (down arm)" };
-    static int s_last[HudZoneCount][4];
+    static const char* const Names[HudZoneCount] = { "World Map", "Read SMS", "Enter Shop", "Career Stats" };
+    static ZonePolygon s_last[HudZoneCount];
     static uint64_t s_lastUs = 0;
-    int px[HudZoneCount][4];
+    bool moved = false;
     for (int z = 0; z < HudZoneCount; ++z)
     {
-        const ScreenRect& r = seen.zones[z];
-        px[z][0] = int(std::lround(r.x0 * pf::gxm::DisplayWidth));
-        px[z][1] = int(std::lround(r.y0 * pf::gxm::DisplayHeight));
-        px[z][2] = int(std::lround(r.x1 * pf::gxm::DisplayWidth));
-        px[z][3] = int(std::lround(r.y1 * pf::gxm::DisplayHeight));
+        for (int i = 0; i < zones[z].count; ++i)
+            moved = moved || std::fabs(zones[z].points[i].x - s_last[z].points[i].x) >= 1.0f ||
+                    std::fabs(zones[z].points[i].y - s_last[z].points[i].y) >= 1.0f;
     }
     const bool fresh = !s_lastUs || now - s_lastUs > 500000;
     s_lastUs = now;
-    if (!fresh && memcmp(px, s_last, sizeof(px)) == 0)
+    if (!fresh && !moved)
         return;
-    memcpy(s_last, px, sizeof(px));
+    std::copy(zones, zones + HudZoneCount, s_last);
+    pf::logInfo("screen: HUD touch zones live: ring centre %.0f,%.0f px, minimap centre %.0f,%.0f px "
+                "(screenshot %.0f,%.0f and %.0f,%.0f)", double(seen.ringCentre.x), double(seen.ringCentre.y),
+                double(seen.mapCentre.x), double(seen.mapCentre.y), double(hudtouch::RingCentreX),
+                double(hudtouch::RingCentreY), double(hudtouch::MinimapCentreX), double(hudtouch::MinimapCentreY));
     for (int z = 0; z < HudZoneCount; ++z)
     {
-        const ScreenRect& r = seen.zones[z];
-        pf::logInfo("screen: HUD touch zone %s: %.3f,%.3f..%.3f,%.3f of the display, px %d,%d..%d,%d", Names[z],
-                    double(r.x0), double(r.y0), double(r.x1), double(r.y1), px[z][0], px[z][1], px[z][2], px[z][3]);
+        std::string points;
+        char point[32];
+        for (int i = 0; i < zones[z].count; ++i)
+        {
+            snprintf(point, sizeof(point), " (%.0f,%.0f)", double(zones[z].points[i].x), double(zones[z].points[i].y));
+            points += point;
+        }
+        pf::logInfo("screen: HUD touch zone %s px:%s", Names[z], points.c_str());
     }
 }
 #endif
 
 void publishHudZones()
 {
+    using namespace win32::controls;
     const HudSeen seen = s_hudSeen;
     s_hudSeen = HudSeen();
     if (!seen.ring || !seen.minimap)
         return;
     const uint64_t now = pf::ticksUs();
+    ZonePolygon zones[HudZoneCount];
+    for (int z = 0; z < HudZoneCount; ++z)
+        zones[z] = hudtouch::placeZone(HudZone(z), z == HudMap ? seen.mapDraw : seen.ringDraw);
 #ifdef DEV_TOOLS
-    logHudZones(seen, now);
+    logHudZones(seen, zones, now);
 #endif
-    for (int z = 0; z < win32::controls::HudZoneCount; ++z)
-        win32::controls::setHudZone(win32::controls::HudZone(z), seen.zones[z], now);
+    for (int z = 0; z < HudZoneCount; ++z)
+        setHudZone(HudZone(z), zones[z], now);
 }
 
 void setMap(const Map& map)

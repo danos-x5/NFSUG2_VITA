@@ -488,10 +488,14 @@ public:
 class Texture : public Object
 {
 public:
-    Texture(Device* device, const render::TextureDesc& desc, DWORD format, DWORD usage, DWORD pool);
+    // proxy: a multisampled render target with no storage until a resolve or copy lends it one (lend).
+    Texture(Device* device, const render::TextureDesc& desc, DWORD format, DWORD usage, DWORD pool, bool proxy = false);
     ~Texture() override;
 
-    render::TextureStorage* storage() const    { return m_storage; }
+    render::TextureStorage* storage() const    { return m_lender ? m_lender->m_storage : m_storage; }
+    bool proxy() const                          { return m_proxy; }
+    // Proxy: draws into it and copies out of it use source's storage from now on.
+    void lend(Texture* source);
     const render::TextureDesc& desc() const    { return m_desc; }
     DWORD format() const                        { return m_format; }
     Device* device() const                      { return m_device; }
@@ -546,6 +550,8 @@ private:
     std::vector<KeptLevel*> m_kept;         // the linear copy kept after the last unlock (KeptLevels lock)
     std::vector<Surface*>   m_surfaces;
     bool                    m_opaque = false;   // copied from the back buffer, which has no alpha
+    bool                    m_proxy = false;
+    Texture*                m_lender = nullptr;     // proxy: holds one reference
 };
 
 class Surface : public Object
@@ -1418,6 +1424,10 @@ private:
 
     void defaults();
     void resetBackBuffer(const D3DPRESENT_PARAMETERS& params);
+    // The proxy (Texture::proxy) a whole copy lends a texture to.
+    Texture* lendingProxy(Surface* source, Surface* dest, const RECT* sourceRect, const RECT* destRect) const;
+    // A copy of a lent proxy onto itself.
+    void dropSelfCopy(render::DrawCall& d, const render::TextureStorage* const* textures, const render::Scene* s);
     // Frame open: on a new msaa count, replaces every listed depth.
     void applyMsaa(uint32_t frameIndex);
     // A depth surface whose depth follows the msaa count.
@@ -1499,6 +1509,7 @@ private:
 
     bool                    m_fastLayer = false;        // d3d_fast_layer: the caches below and State's layout
     bool                    m_sceneCached = false;      // the last scene is still the one of the bound targets
+    bool                    m_proxyTarget = false;      // the bound target is a multisample proxy (Texture::proxy)
     uint32_t                m_sceneFrame = 0, m_sceneCount = 0, m_sceneEpoch = 0;   // frame, scene count, texture epoch
     uint32_t                m_markFrame = 0, m_markEpoch = 0;   // m_marked holds what this frame marked at this epoch
     const void*             m_marked[render::MaxSamplers + 2] = {};

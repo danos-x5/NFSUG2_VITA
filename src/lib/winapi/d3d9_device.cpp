@@ -2,6 +2,7 @@
 // of platform/render.h; Present hands the frame to the device (render thread on the Vita).
 
 #include <winapi/d3d9_internal.h>
+#include <winapi/d3d9_msaa.h>
 #include <winapi/d3d9_probe.h>
 #include <winapi/support.h>
 #include <lib/memlog.h>
@@ -244,6 +245,7 @@ void Device::bindSlot(T*& slot, T* object)
 
 void Device::resetBackBuffer(const D3DPRESENT_PARAMETERS& params)
 {
+    bridge::setMsaaSamples(requestedSamples(params.MultiSampleType, params.MultiSampleQuality));
     m_params = params;
     if (!m_params.BackBufferWidth || !m_params.BackBufferHeight)
     {
@@ -668,6 +670,8 @@ __attribute__((always_inline)) inline render::Scene* Device::scene()
     if (t && t->role() == Surface::RoleLevel && t->container())
     {
         target.color = t->container()->storage();
+        if (!target.color)
+            return nullptr;
         target.face = uint8_t(t->face());
         width = uint16_t(t->width());
         height = uint16_t(t->height());
@@ -946,11 +950,27 @@ __attribute__((always_inline)) inline HRESULT Device::draw(
         r.deviceSamplers = 0;
         r.deviceStates = 0;
     }
+    if (__builtin_expect(m_proxyTarget, 0))
+        dropSelfCopy(d, textures, s);
     memcpy(r.textures, textures, sizeof(textures));
     markRead(*f, textures, vertexStorage, indexStorage);
     ++m_drawCount;
     ++m_sceneDraws;
     return D3D_OK;
+}
+
+// Empties a proxy draw that reads its own texture.
+void Device::dropSelfCopy(render::DrawCall& d, const render::TextureStorage* const* textures, const render::Scene* s)
+{
+    for (uint32_t i = 0; i < render::MaxSamplers; ++i)
+    {
+        if (textures[i] && textures[i] == s->target.color)
+        {
+            d.count = 0;
+            D3D_LOG_ONCE("d3d9: a draw into a multisample proxy reads the texture it draws into: dropped");
+            return;
+        }
+    }
 }
 
 VertexDeclaration* Device::fvfDeclaration(DWORD fvf)
@@ -1325,11 +1345,29 @@ HRESULT Device::CreateRenderTarget(WinApplication* app, x86::CPU& cpu, UINT widt
                                    DWORD multiSample, DWORD quality, BOOL lockable, x86::reg32* surface,
                                    x86::reg32 sharedHandle)
 {
-    RC_USE(multiSample);
     RC_USE(quality);
     RC_USE(lockable);
     if (!surface)
         return D3DERR_INVALIDCALL;
+    if (multiSample != MultisampleNone)
+    {
+        // Multisampled (SPEED2.EXE's FSAA light-trails target): the renderer multisamples the texture it resolves to.
+        render::TextureDesc desc;
+        desc.format = textureFormat(format);
+        desc.levels = 1;
+        desc.cube = false;
+        desc.target = true;
+        desc.width = uint16_t(width);
+        desc.height = uint16_t(height);
+        desc.linear = false;
+        Texture* t = new Texture(this, desc, format, D3DUSAGE_RENDERTARGET, 0, true);
+        publish(app, t);
+        *surface = t->surface(app, 0, 0)->guest();
+        t->release();
+        D3D_LOG_ONCE("d3d9: CreateRenderTarget %ux%u multisample %u quality %u: a proxy without storage", width,
+                     height, unsigned(multiSample), unsigned(quality));
+        return D3D_OK;
+    }
     // A render target texture whose only reference is its surface.
     x86::reg32 texture = 0;
     const HRESULT result = CreateTexture(app, cpu, width, height, 1, D3DUSAGE_RENDERTARGET, format, 0, &texture,
@@ -1377,6 +1415,7 @@ HRESULT Device::SetRenderTarget(WinApplication* app, x86::CPU& cpu, DWORD index,
         return D3DERR_INVALIDCALL;
     bindSlot(m_state.target, surface);
     m_sceneCached = false;
+    m_proxyTarget = surface->role() == Surface::RoleLevel && surface->container()->proxy();
     // A new render target resets the viewport to the whole target.
     m_ctx.viewportSet(D3DVIEWPORT9{ 0, 0, surface->width(), surface->height(), 0.0f, 1.0f });
     m_viewportChanged = true;
@@ -1421,12 +1460,35 @@ bool newCopyKind(uint32_t key)
 
 }
 
+// The proxy a whole copy lends a texture to, or null.
+Texture* Device::lendingProxy(Surface* source, Surface* dest, const RECT* sourceRect, const RECT* destRect) const
+{
+    const auto plain = [](Surface* s) {
+        return s->role() == Surface::RoleLevel && s->container() && !s->container()->desc().cube && s->level() == 0
+            && s->container()->desc().target;
+    };
+    if (sourceRect || destRect || !plain(source) || !plain(dest) || source->width() != dest->width()
+        || source->height() != dest->height() || source->container()->proxy() == dest->container()->proxy())
+        return nullptr;
+    Texture* proxy = source->container()->proxy() ? source->container() : dest->container();
+    Texture* other = proxy == source->container() ? dest->container() : source->container();
+    return proxy->storage() == other->storage() ? nullptr : proxy;
+}
+
 // A textured quad drawn into the destination, in a scene of its own after the draws before it.
 HRESULT Device::StretchRect(WinApplication* app, x86::CPU& cpu, Surface* source, const RECT* sourceRect,
                             Surface* dest, const RECT* destRect, DWORD filter)
 {
     if (!source || !dest)
         return D3DERR_INVALIDCALL;
+    if (Texture* proxy = lendingProxy(source, dest, sourceRect, destRect))
+    {
+        proxy->lend((proxy == source->container() ? dest : source)->container());
+        m_sceneCached = false;
+        D3D_LOG_ONCE("d3d9: StretchRect %ux%u %s a multisample proxy: it draws into the texture from now on",
+                     dest->width(), dest->height(), proxy == source->container() ? "out of" : "into");
+        return D3D_OK;
+    }
     const render::TextureStorage* from = nullptr;
     if (source->role() == Surface::RoleBackBuffer)
         from = render::backBufferTexture();

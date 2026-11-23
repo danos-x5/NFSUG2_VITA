@@ -228,8 +228,9 @@ new name.
 
 The graphics settings can be changed in the game's own Display menu, and they are kept between sessions. The
 resolution stays at 960x544. Above the Medium detail setting the Vita will definitely struggle with performance.
-Full Screen Anti-Aliasing (Off by default, 2x or 4x) smooths edges in the 3D view; 2x and 4x cost GPU time and
-memory, 4x the most.
+The Advanced Display menu's Full Screen Anti-Aliasing (off by default; its first step is 2x, the second 4x) smooths
+edges in the 3D view; 2x and 4x cost GPU time and memory, 4x the most. Level of Detail 4 turns on 2x and 5 turns on 4x,
+as in the PC game.
 
 ## Mods
 

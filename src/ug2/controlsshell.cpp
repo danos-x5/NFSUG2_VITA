@@ -3,12 +3,14 @@
 
 #include "controlsshell.h"
 #include "fepackage.h"
+#include "controlsbake.h"
 #include "controlspack.h"
 #include "ownscreens.h"
 #include "psprompt.h"
 #include "vitapicture.h"
 
 #include <lib/memmap.h>
+#include <platform/config.h>
 #include <platform/log.h>
 #include <recomp.h>
 
@@ -48,12 +50,7 @@ const reg32 PcControllerEntryName = 0x7f7e54;   // the screen table's pointer to
 const reg32 LoadChunks = 0x577ab0;          // cdecl (data, bytes)
 const reg32 SetImage = 0x50c990;            // cdecl (image object, texture hash)
 const reg32 RowCount = 0x12c, VisibleRows = 0x134;     // the list's rows + 1 (the scroll bar takes rows), and lines shown
-const int SlotModel = 12;                   // the last row slot of UI_Options.fng, copied for the rows beyond it
-const reg32 PictureObject = 0xf1534c25;     // CONTROLLER_IMAGE
 const char* const PictureTexture = "CTRL_VITA_BODY";
-const reg32 RowBar = 0xa67c3fe2, RowBarRight = 0xd8fdd418, RowBarLeft = 0xd8fdd419;     // a row group's bar and end caps
-const float BarCenter = 3.115f, BarWidth = 523.35f;
-const float PictureShiftX = -37.0f, PictureWidth = 640.0f, PictureHeight = 320.0f;     // controls-overhaul's picture area
 const reg32 SlotMessage = 1, SlotUpdate = 3, SlotBase = 16;
 const reg32 MessageLeft = 0x9120409e, MessageRight = 0xb5971bf1, MessageAccept = 0xc407210;
 const reg32 MessageBack = 0x911ab364, MessageOutroDone = 0xe1fde1d1, ScreenLeaving = 0x138;
@@ -416,7 +413,7 @@ void showPicture(win32::WinApplication* app, x86::CPU& cpu)
         s_pictureTexture = controlspack::nameHash(PictureTexture);
         pf::logInfo("controlsshell: placeholder picture %s loaded, pack of %u bytes", PictureTexture, unsigned(pack.size()));
     }
-    const reg32 image = findObject(app, cpu, PictureObject);
+    const reg32 image = findObject(app, cpu, controlsbake::PictureObject);
     if (!image)
         return;
     call(app, cpu, SetImage, 0, { image, s_pictureTexture });
@@ -500,6 +497,28 @@ void buildRows(win32::WinApplication* app, x86::CPU& cpu, reg32 screen)
                 unsigned(rc::ld32(screen + RowCount) - 1), unsigned(rc::ld32(screen + VisibleRows)));
 }
 
+// Logs the instruction line object; the wait text with debug_instruction=wait.
+void logInstruction(win32::WinApplication* app, x86::CPU& cpu, bool build)
+{
+    const reg32 line = findObject(app, cpu, controlsbake::instructionHash());
+    if (!line)
+    {
+        pf::logError("controlsshell: no instruction line object %08x", unsigned(controlsbake::instructionHash()));
+        return;
+    }
+#ifdef DEV_SETTINGS
+    static const std::string mode = pf::Config::getString("debug_instruction", "");
+    if (build && mode == "wait")
+        setHash(app, cpu, line, controlsbake::TextPressButton);
+#endif
+    const reg32 data = rc::ld32(line + DataOffset);
+    pf::logInfo("controlsshell: instruction line %08x hash %08x text %08x at x %.1f y %.1f colour %u,%u,%u,%u align %08x flags %08x%s",
+                unsigned(line), unsigned(controlsbake::instructionHash()), unsigned(rc::ld32(line + ObjectTextHash)),
+                rc::ldf32a(data + DataX), rc::ldf32a(data + DataX + 4), unsigned(rc::ld32(data)), unsigned(rc::ld32(data + 4)),
+                unsigned(rc::ld32(data + 8)), unsigned(rc::ld32(data + 12)), unsigned(rc::ld32(line + TextAlign)),
+                unsigned(rc::ld32(line + ObjectFlags)), build ? " (built)" : " (shown)");
+}
+
 void checkTitle(win32::WinApplication* app, x86::CPU& cpu)
 {
     const reg32 title = findObject(app, cpu, TitleObject);
@@ -545,6 +564,8 @@ void construct(win32::WinApplication* app, x86::CPU& cpu, Screen which)
             showPicture(app, cpu);
         buildRows(app, cpu, screen);
         checkTitle(app, cpu);
+        if (which == ScreenCustomize)
+            logInstruction(app, cpu, true);
         s_checkIn = 10;
         pf::logInfo("controlsshell: %s screen %08x built, %u rows (%d slots), game mode %u", ScreenNames[which],
                     unsigned(screen), unsigned(s_rows.size()), s_slots[which], unsigned(rc::ld32(GameMode)));
@@ -657,106 +678,6 @@ void arrowlessSlot(win32::WinApplication* app, x86::CPU& cpu)
     cpu = saved;
 }
 
-// Rows the package can show: every slot object up to n exists.
-int countSlots(const fepackage::Package& p)
-{
-    int n = 0;
-    auto has = [&](int k)
-    {
-        for (const char* prefix : { "OPTION_NAME_", "OPTION_DATA_", "OPTION_BACKING_", "LEFT_ARROW_", "RIGHT_ARROW_" })
-        {
-            if (p.find(nameHash(prefix + std::to_string(k))).empty())
-                return false;
-        }
-        return true;
-    };
-    while (has(n + 1))
-        ++n;
-    return n;
-}
-
-// Bakes hidden objects, the title and longer row texts.
-void bake(fepackage::Package& p, Screen which, std::initializer_list<reg32> hidden)
-{
-    size_t count = 0;
-    for (reg32 hash : hidden)
-        count += p.hide(hash);
-    for (size_t title : p.find(TitleObject))
-        p.setTag32(title, 0x4853, ScreenTitles[which]);
-    int cloned = 0;
-    if (which == ScreenCustomize)
-    {
-        for (const char* prefix : { "OPTION_NAME_", "OPTION_DATA_", "OPTION_BACKING_", "LEFT_ARROW_", "RIGHT_ARROW_" })
-            cloned += p.extendSeries(prefix, SlotModel, EntryCount);
-    }
-    for (int n = 1; n <= 13 || n <= EntryCount; ++n)
-    {
-        for (const char* prefix : { "OPTION_NAME_", "OPTION_DATA_" })
-        {
-            for (size_t o : p.find(nameHash(prefix + std::to_string(n))))
-            {
-                if (p.tag32(o, 0x6253) < 64)
-                    p.setTag32(o, 0x6253, 64);
-            }
-        }
-    }
-    s_slots[which] = countSlots(p);
-    pf::logInfo("controlsshell: %s baked: %u objects hidden, title text %08x, %d row slots (%d slot objects copied from slot %d), "
-                "%u buttons", ScreenNames[which], unsigned(count), unsigned(ScreenTitles[which]), s_slots[which], cloned, SlotModel,
-                unsigned(p.buttonCount()));
-}
-
-void bakeOptions(fepackage::Package& p, Screen which)
-{
-    bake(p, which, { nameHash("ColorCal_Logo"), nameHash("ColorCal_Blurb"), nameHash("Colour_Calibration_Backing"),
-                     nameHash("PLAYER"), 0x010cba23, 0x97b71dde, 0xc90dc4ab, 0x444969fd, 0x444969fe });
-}
-
-void setFloat(std::vector<uint8_t>* data, size_t at, float value)
-{
-    if (data && data->size() >= at + 4)
-        memcpy(&(*data)[at], &value, 4);
-}
-
-// controls-overhaul's fitRows: the PS2 row bar width and centring, baked.
-void fitRowBars(fepackage::Package& p)
-{
-    int fitted = 0;
-    for (size_t group = 0; group < p.objectCount(); ++group)
-    {
-        if (p.type(group) != 5)
-            continue;
-        const std::vector<size_t> parts = p.subtree(group);
-        if (parts.size() != 4 || p.hash(parts[1]) != RowBar || p.hash(parts[2]) != RowBarRight || p.hash(parts[3]) != RowBarLeft)
-            continue;
-        setFloat(p.tagData(parts[1], 0x4153), 0x1c, BarCenter);
-        setFloat(p.tagData(parts[1], 0x4153), 0x38, BarWidth);
-        setFloat(p.tagData(parts[2], 0x4153), 0x1c, BarCenter + BarWidth / 2 + 18);
-        setFloat(p.tagData(parts[3], 0x4153), 0x1c, BarCenter - BarWidth / 2 - 18);
-        ++fitted;
-    }
-    pf::logInfo("controlsshell: %d row bars fitted to the PS2 width", fitted);
-}
-
-void bakeJoypad(fepackage::Package& p)
-{
-    bake(p, ScreenJoypad, { nameHash("PLAYER"), 0x010cba23, 0x97b71dde, 0xc90dc4ab, 0x444969fd, 0x444969fe, 0xbaa4198e,
-                            0xbaa4198f, 0xbaa41990, 0xbaa41991, 0xbaa41992, 0xbaa41993, 0xbaa41994, 0xbaa41995, 0xbaa41996,
-                            0x0f274b7e, 0x0f274b7f, 0x0f274b80, 0x0f274b81, 0x0f274b82 });
-    fitRowBars(p);
-    for (size_t image : p.find(PictureObject))
-    {
-        std::vector<uint8_t>* sa = p.tagData(image, 0x4153);
-        if (!sa || sa->size() < 0x40)
-            continue;
-        float x, size[2] = { PictureWidth, PictureHeight };
-        memcpy(&x, &(*sa)[0x1c], 4);
-        x += PictureShiftX;
-        memcpy(&(*sa)[0x1c], &x, 4);
-        memcpy(&(*sa)[0x38], size, 8);
-    }
-}
-
 // The objects baked hidden, read back from the loaded screen.
 void checkHidden(win32::WinApplication* app, x86::CPU& cpu)
 {
@@ -800,10 +721,13 @@ void configure(win32::WinApplication& app)
         ownscreens::addScreen(ScreenNames[s], FakeConstructor + 0x10 * reg32(s));
         ownscreens::addCopy(ScreenSources[s], ScreenNames[s], [which](fepackage::Package& p)
         {
-            if (which == ScreenJoypad)
-                bakeJoypad(p);
-            else
-                bakeOptions(p, which);
+            const controlsbake::Result r = which == ScreenJoypad ? controlsbake::joypad(p, ScreenTitles[which]) :
+                controlsbake::options(p, ScreenTitles[which], which == ScreenCustomize, EntryCount);
+            s_slots[which] = r.slots;
+            pf::logInfo("controlsshell: %s baked: %u objects hidden, title text %08x, %d row slots (%d slot objects copied "
+                        "from slot %d), %d row bars fitted, %u buttons, instruction line object %ld", ScreenNames[which],
+                        unsigned(r.hidden), unsigned(ScreenTitles[which]), r.slots, r.cloned, controlsbake::SlotModel, r.bars,
+                        unsigned(p.buttonCount()), r.instruction);
         });
     }
     // Renames the string Options > Controls pushes; table keeps a copy.
@@ -831,7 +755,11 @@ void frame(win32::WinApplication* app, x86::CPU& cpu)
     }
     centreValues(app, cpu);
     if (s_checkIn > 0 && --s_checkIn == 0)
+    {
         checkHidden(app, cpu);
+        if (s_screen == ScreenCustomize)
+            logInstruction(app, cpu, false);
+    }
     cpu = saved;
 }
 

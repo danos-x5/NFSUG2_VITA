@@ -512,6 +512,7 @@ const win32::MethodPtr StateHooks[StateCount] = {
     stateHook<5>, stateHook<6>, stateHook<7>, stateHook<8>,
 };
 
+#ifdef DEV_TOOLS
 // Writes the shown frame as BMP; returns its colour hash.
 uint64_t writeShown(const char* path)
 {
@@ -600,6 +601,7 @@ void shotAt(int raceFrame, int frame, int afterLoad)
                     unsigned(hash));
     }
 }
+#endif
 
 // At a frame end: no world time passes while a race loads.
 void frameEnded()
@@ -621,6 +623,7 @@ void frameEnded()
         s_loadEnd = rc::ld32(FramesRendered);
     }
     s_frameState = state;
+#ifdef DEV_TOOLS
     static const int s_hold = pf::Config::getInt("debug_hold_frame", 0);
     shotAt(state == RacingState && s_raceStart ? int(rc::ld32(FramesRendered) - s_raceStart) : -1,
            int(rc::ld32(FramesRendered)), s_loadEnd ? int(rc::ld32(FramesRendered) - s_loadEnd) : -1);
@@ -629,6 +632,7 @@ void frameEnded()
         pf::logInfo("boot: holding the game thread at race frame %d", s_hold);
         holdForever();
     }
+#endif
 }
 
 // QueryPerformanceCounter, then 0x57EAD0's inputs for VirtualTicks per frame.

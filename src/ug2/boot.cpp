@@ -5,6 +5,9 @@
 #include "bench.h"
 #include "drive.h"
 #include "frontend.h"
+#ifdef DEV_TOOLS
+#include "../dev/screenshot.h"
+#endif
 
 #include <platform/config.h>
 #include <platform/log.h>
@@ -516,40 +519,16 @@ const win32::MethodPtr StateHooks[StateCount] = {
 // Writes the shown frame as BMP; returns its colour hash.
 uint64_t writeShown(const char* path)
 {
-    uint64_t hash = 0;
 #if defined(__vita__)
     SceDisplayFrameBuf shown;
     shown.size = sizeof(shown);
     if (sceDisplayGetFrameBuf(&shown, SCE_DISPLAY_SETBUF_NEXTFRAME) >= 0 && shown.base)
-    {
-        const uint32_t w = shown.width, h = shown.height, row = w * 3;
-        std::vector<uint8_t> bmp(54 + row * h);
-        const uint32_t header[13] = { uint32_t(bmp.size()), 0, 54, 40, w, h, 1 | 24 << 16, 0, row * h, 2835, 2835, 0, 0 };
-        bmp[0] = 'B';
-        bmp[1] = 'M';
-        memcpy(bmp.data() + 2, header, sizeof(header));
-        const uint32_t* pixels = static_cast<const uint32_t*>(shown.base);
-        hash = 1469598103934665603ull;
-        for (uint32_t y = 0; y < h; ++y)
-            for (uint32_t x = 0; x < w; ++x)
-            {
-                const uint32_t c = pixels[(h - 1 - y) * shown.pitch + x];
-                uint8_t* o = bmp.data() + 54 + y * row + x * 3;
-                o[0] = uint8_t(c >> 16);
-                o[1] = uint8_t(c >> 8);
-                o[2] = uint8_t(c);
-                hash = (hash ^ (c & 0xffffffu)) * 1099511628211ull;
-            }
-        if (FILE* f = fopen(path, "wb"))
-        {
-            fwrite(bmp.data(), 1, bmp.size(), f);
-            fclose(f);
-        }
-    }
+        return screenshot::write(path, static_cast<const uint32_t*>(shown.base), shown.width, shown.height,
+                                 shown.pitch);
 #else
     (void)path;
 #endif
-    return hash;
+    return 0;
 }
 
 // debug_hold_frame: keeps the shown frame on screen and writes it to hold.bmp.

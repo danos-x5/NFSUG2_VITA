@@ -3,6 +3,7 @@
 
 #include "padbind.h"
 #include "pad_defaults.h"
+#include "controlsshell.h"
 #include "ownscreens.h"
 #include "psprompt.h"
 
@@ -175,6 +176,7 @@ void peekMessageHook(win32::WinApplication* app, x86::CPU& cpu)
     s_peekMessage(app, cpu);
     program();
     ownscreens::frame(app, cpu);
+    controlsshell::frame(app, cpu);
     if (s_namesSlot)
     {
         logNames(app, cpu, s_namesSlot);
@@ -210,6 +212,7 @@ void configure(win32::WinApplication& app)
     s_log = pf::Config::getBool("pad_log", false);
     pad_defaults::install();
     psprompt::configure(app);
+    controlsshell::configure(app);
     const char* script = pf::Config::getString("pad_script", "");
     s_scripted = *script && s_script.load(script);
     s_peekMessage = app.replaceMethod(rc::ld32(PeekMessageSlot), peekMessageHook);

@@ -1,15 +1,15 @@
 #ifndef UG2_FREELOOK_MATH_H_
 #define UG2_FREELOOK_MATH_H_
 
-// Free look maths: stick direction to view yaw, the look-back half, and turning the chase camera rig like Look Back.
+// Free look maths: stick direction to view yaw, and turning the chase camera rig about the car as Look Back does.
 
 #include <cmath>
+#include <cstdint>
 
 namespace ug2 { namespace freelook_math {
 
 const float DeadZone = 0.30f;           // radial, of full deflection
 const float SnapDegrees = 8.0f;         // stick this close to straight up or down reads exactly 0 or 180
-const float BackHysteresis = 5.0f;      // degrees past 90 before the look-back half changes
 
 struct Vec
 {
@@ -47,17 +47,17 @@ inline Aim aim(float x, float y, float deadZone = DeadZone)
     return { true, yaw };
 }
 
-// Look-back half for this yaw, with hysteresis at 90 degrees.
-inline bool backHalf(float yaw, bool wasBack)
-{
-    const float edge = 90.0f + (wasBack ? -BackHysteresis : BackHysteresis);
-    return std::fabs(yaw) > edge;
-}
-
-// Yaw still to turn after the game's own mirror.
+// Turn giving yaw, after the game's own Look Back mirror (or not).
 inline float residual(float yaw, bool mirrored)
 {
     return mirrored ? wrap(yaw - 180.0f) : wrap(yaw);
+}
+
+// esp at the update's look-at call (0x453b44), from the update's entry esp.
+inline uint32_t lookAtEsp(uint32_t entryEsp)
+{
+    const uint32_t frame = ((entryEsp - 4) & ~uint32_t(0xF)) - 0x1A4 - 0xC;
+    return frame - 0x10 - 4;
 }
 
 inline float dot(const Vec& a, const Vec& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }

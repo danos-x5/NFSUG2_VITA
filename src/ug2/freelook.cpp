@@ -1,5 +1,5 @@
-// Free look: the stick's direction turns the chase camera rig about the car like Look Back; the rear half raises
-// the game's look-back flag, so down is vanilla.
+// Free look: the stick's direction turns the chase camera rig about the car, the turn Look Back makes at 180
+// degrees. The game's own Look Back is never touched.
 
 #include "freelook.h"
 #include "freelook_math.h"
@@ -28,34 +28,31 @@ const reg32 ReplayState = 0x0085EF6C;       // byte; the game ignores Look Back 
 // Chase camera mover (vtable 0x787f28, update 0x453570) and the camera director that creates it (0x5f1fd0).
 const reg32 MoverType = 0x0C;               // 1: the player's chase camera, the one Look Back reaches
 const reg32 MoverDirector = 0x20;
-const reg32 MoverNoMirror = 0x30;           // nonzero: look-back keeps the rig unmirrored
+const reg32 MoverNoMirror = 0x30;           // nonzero: Look Back keeps the rig unmirrored
 const reg32 MoverView = 0x4C;
-const reg32 MoverLookBack = 0x51;           // byte: the rig is mirrored behind the car
+const reg32 MoverLookBack = 0x51;           // byte: the game's Look Back mirrors the rig
 const reg32 DirectorMirrors = 0x2B;         // byte; zero keeps the rig unmirrored
 const reg32 DirectorMover = 0x238;          // the active mover
-const reg32 DirectorOldMovers = 0x23C;      // two movers kept after a camera change
 
 // The update's look-at call (0x453b44): its frame from the callee's esp.
-const reg32 LookAtReturn = 0x00453B49;
 const reg32 FrameFrom = 0x54, FrameTo = 0x44, FrameRig = 0x184;     // eye, target, rig matrix (car space to world)
 
 const uint32_t StaleFrames = 4;
 
 struct State
 {
-    reg32    camera = 0;
-    uint32_t frame = 0;         // of the camera's last update
-    bool     live = false;
-    bool     held = false;      // the stick is out of its dead zone
-    float    yaw = 0;           // view yaw, degrees right of ahead
-    bool     back = false;      // the rear half: free look holds the game's look-back flag
-    uint8_t  gameBack = 0;      // the flag as the game set it
-    uint8_t  written = 0;       // the flag as free look last set it
-    uint32_t logFrame = 0;
+    reg32       camera = 0;
+    uint32_t    frame = 0;          // of the camera's last update
+    bool        live = false;
+    bool        held = false;       // the stick is out of its dead zone
+    float       yaw = 0;            // view yaw, degrees right of ahead
+    uint32_t    logFrame = 0;
+    bool        turned = false;     // the look-at hook has turned this camera
+    const char* declined = nullptr; // the reason last logged
 };
 
 State s_state;
-reg32 s_camera = 0;
+Update s_update = {};
 std::atomic<float> s_input[2];
 
 bool rawStick()
@@ -78,6 +75,15 @@ float stickDegrees(float x, float y)
     return float(std::atan2(double(x), double(-y)) * (180.0 / 3.14159265358979323846));
 }
 
+void decline(const char* why, reg32 esp)
+{
+    if (!logging() || s_state.declined == why)
+        return;
+    s_state.declined = why;
+    pf::logInfo("freelook: look-at not turned: %s (esp %08X, expected %08X)", why, unsigned(esp),
+                unsigned(s_update.lookAtEsp));
+}
+
 bool paused()
 {
     const reg32 coordinator = rc::ld32(RaceCoordinator);
@@ -89,23 +95,12 @@ bool hideRightStick()
     return s_state.live && frontend::frameCounter() - s_state.frame <= StaleFrames;
 }
 
-void setLookBack(reg32 camera, uint8_t value)
-{
-    rc::st8(camera + MoverLookBack, value);
-    s_state.written = value;
-}
-
-void release(reg32 camera, const char* why)
+void release(const char* why)
 {
     State& s = s_state;
-    if (s.held && camera)
-    {
-        setLookBack(camera, s.gameBack);
-        if (logging())
-            pf::logInfo("freelook: release (%s): chase view, game look back %u", why, unsigned(s.gameBack));
-    }
+    if (s.held && logging())
+        pf::logInfo("freelook: release (%s): chase view", why);
     s.held = false;
-    s.back = false;
     s.yaw = 0;
 }
 
@@ -138,7 +133,7 @@ void update(reg32 camera)
     {
         if (camera == s.camera)
         {
-            release(camera, "camera replaced");
+            release("camera replaced");
             setLive(false, camera);
             s.camera = 0;
         }
@@ -147,21 +142,12 @@ void update(reg32 camera)
     if (camera != s.camera || frame - s.frame > StaleFrames)
     {
         if (camera == s.camera)
-            release(camera, "no camera update for a while");
-        else
-        {
-            const reg32 old = s.camera;
-            const bool kept = rc::ld32(director + DirectorOldMovers) == old ||
-                              rc::ld32(director + DirectorOldMovers + 4) == old;
-            if (old && kept)
-                release(old, "camera changed");
-            if (logging() && old)
-                pf::logInfo("freelook: camera %08X -> %08X", unsigned(old), unsigned(camera));
-        }
-        s.held = s.back = false;
+            release("no camera update for a while");
+        else if (logging() && s.camera)
+            pf::logInfo("freelook: camera %08X -> %08X", unsigned(s.camera), unsigned(camera));
+        s.held = s.turned = false;
         s.yaw = 0;
         s.camera = camera;
-        s.gameBack = s.written = rc::ld8(camera + MoverLookBack);
     }
     s.frame = frame;
     if (paused())
@@ -171,34 +157,27 @@ void update(reg32 camera)
     }
     if (rc::ld32(camera + MoverType) != 1 || rc::ld8(ReplayState))
     {
-        release(camera, "not the race chase camera");
+        release("not the race chase camera");
         setLive(false, camera);
         return;
     }
     setLive(true, camera);
 
-    const uint8_t flag = rc::ld8(camera + MoverLookBack);
-    if (!s.held || flag != s.written)
-    {
-        if (s.held && logging())
-            pf::logInfo("freelook: game look back %u -> %u", unsigned(s.gameBack), unsigned(flag));
-        s.gameBack = flag;
-    }
     const float x = s_input[0], y = s_input[1];
     const fm::Aim aim = fm::aim(x, y);
     if (!aim.held)
     {
-        release(camera, "stick centred");
+        release("stick centred");
         return;
     }
-    const bool back = fm::backHalf(aim.yaw, s.held && s.back);
-    if (logging() && (!s.held || back != s.back))
-        pf::logInfo("freelook: %s: stick %.2f,%.2f at %.1f deg, yaw %.1f, look back %u", s.held ? "half" : "snap",
-                    x, y, stickDegrees(x, y), aim.yaw, unsigned(back));
+    if (!s.held)
+    {
+        s.declined = nullptr;
+        if (logging())
+            pf::logInfo("freelook: snap: stick %.2f,%.2f at %.1f deg, yaw %.1f", x, y, stickDegrees(x, y), aim.yaw);
+    }
     s.held = true;
     s.yaw = aim.yaw;
-    s.back = back;
-    setLookBack(camera, back ? 1 : 0);
 }
 
 }
@@ -214,43 +193,57 @@ bool live()
     return hideRightStick();
 }
 
-reg32 enter(reg32 camera)
+Update enter(reg32 camera, reg32 esp)
 {
-    const reg32 saved = s_camera;
-    s_camera = camera;
+    const Update outer = s_update;
+    s_update = { camera, fm::lookAtEsp(esp) };
     if (camera)
         update(camera);
-    return saved;
+    return outer;
 }
 
-void leave(reg32 saved)
+void leave(const Update& outer)
 {
-    s_camera = saved;
+    s_update = outer;
 }
 
 void beforeLookAt(win32::WinApplication*, x86::CPU& cpu)
 {
-    const State& s = s_state;
-    const reg32 camera = s_camera;
-    if (!camera || camera != s.camera || !s.live || !s.held || rc::ld32(cpu.esp) != LookAtReturn)
+    State& s = s_state;
+    const reg32 camera = s_update.camera;
+    if (!camera || camera != s.camera || !s.live || !s.held)
         return;
+    if (cpu.esp != s_update.lookAtEsp)
+    {
+        decline("another look-at inside the update", cpu.esp);
+        return;
+    }
     const reg32 from = rc::ld32(cpu.esp + 8), to = rc::ld32(cpu.esp + 12), up = rc::ld32(cpu.esp + 16);
     if (from != cpu.esp + FrameFrom || to != cpu.esp + FrameTo)
+    {
+        decline("eye or target not in the update's frame", cpu.esp);
         return;
+    }
     const reg32 director = rc::ld32(camera + MoverDirector);
     const bool mirrored = rc::ld8(camera + MoverLookBack) && !rc::ld32(camera + MoverNoMirror) &&
                           (!director || rc::ld8(director + DirectorMirrors));
     const float turn = fm::residual(s.yaw, mirrored);
-    const bool log = logging() && frontend::frameCounter() - s.logFrame >= 6;
-    if (log)
+    if (logging() && frontend::frameCounter() - s.logFrame >= 6)
     {
         const float x = s_input[0], y = s_input[1];
-        s_state.logFrame = frontend::frameCounter();
-        pf::logInfo("freelook: stick %.2f,%.2f at %.1f deg, yaw %.1f, look back %u (game %u, mirrored %u), turn %.1f",
-                    x, y, stickDegrees(x, y), s.yaw, unsigned(s.back), unsigned(s.gameBack), unsigned(mirrored), turn);
+        s.logFrame = frontend::frameCounter();
+        pf::logInfo("freelook: stick %.2f,%.2f at %.1f deg, yaw %.1f, game look back %u, turn %.1f", x, y,
+                    stickDegrees(x, y), s.yaw, unsigned(mirrored), turn);
     }
     if (turn == 0.0f)
+    {
+        decline(mirrored ? "stick down with Look Back held: the game's own view" : "stick up: the chase view", cpu.esp);
         return;
+    }
+    if (!s.turned && logging())
+        pf::logInfo("freelook: first turn of camera %08X: yaw %.1f, turn %.1f", unsigned(camera), s.yaw, turn);
+    s.turned = true;
+    s.declined = nullptr;
 
     float m[16];
     for (int i = 0; i < 16; ++i)

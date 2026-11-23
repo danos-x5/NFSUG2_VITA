@@ -67,6 +67,11 @@ public:
     size_t hide(uint32_t hash);
     // Copies an object subtree after itself; the copy's index.
     size_t clone(size_t object, uint32_t newHash);
+    // prefix<model+1>..prefix<count> become copies of prefix<model>; older ones are renamed and hidden. The number made.
+    int extendSeries(const std::string& prefix, int model, int count);
+    void setHash(size_t object, uint32_t hash);
+    // The message target lists (Targ) holding this object id.
+    std::vector<uint32_t> targetsOf(uint32_t guid) const;
     uint32_t topLevelCount() const { return m_topLevel; }
     uint32_t buttonCount() const;
 
@@ -80,6 +85,7 @@ private:
     const Tag* findTag(size_t object, uint16_t id) const;
     Tag* findTag(size_t object, uint16_t id);
     std::vector<uint8_t> header() const;
+    void addTargets(const std::vector<std::pair<uint32_t, uint32_t>>& ids);
 
     std::vector<Chunk> m_top;           // top-level chunks; the Obj chunk and PkHd are rebuilt
     size_t m_objChunk = 0, m_headerChunk = 0;

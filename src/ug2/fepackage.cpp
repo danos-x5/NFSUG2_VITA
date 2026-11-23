@@ -15,6 +15,8 @@ const uint32_t IdObjects = 0xcc6a624f;      // "Obj\xcc"
 const uint32_t IdObject = 0xea624f46;       // "FOb\xea"
 const uint32_t IdObjectData = 0x446a624f;   // "ObjD"
 const uint32_t IdButtons = 0x6e747542;      // "Butn"
+const uint32_t IdTargets = 0x67726154;      // "Targ": per message, the ids of the objects it goes to
+const uint16_t TagTargetList = 0x744d;      // "Mt": message hash, then object ids
 const uint32_t Jdlz = 0x5a4c444a, Raww = 0x57574152;
 const uint16_t TagType = 0x744f, TagHash = 0x684f, TagParams = 0x504f, TagParent = 0x4150;
 
@@ -473,6 +475,7 @@ size_t Package::clone(size_t object, uint32_t newHash)
         added.push_back({ true, Chunk(), at });
     }
     m_entries.insert(m_entries.begin() + long(last + 1), added.begin(), added.end());
+    addTargets(ids);
     if (!hasTag(first, TagParent))
         ++m_topLevel;
     for (Entry& e : m_entries)
@@ -481,6 +484,81 @@ size_t Package::clone(size_t object, uint32_t newHash)
             set32(e.chunk.data, 0, get32(e.chunk.data.data()) + buttons);
     }
     return first;
+}
+
+void Package::addTargets(const std::vector<std::pair<uint32_t, uint32_t>>& ids)
+{
+    for (Chunk& c : m_top)
+    {
+        std::vector<Tag> tags;
+        if (c.id != IdTargets || !readTags(c.data, &tags))
+            continue;
+        for (Tag& t : tags)
+        {
+            if (t.id != TagTargetList || t.data.size() < 4)
+                continue;
+            const size_t count = t.data.size() / 4;
+            for (const auto& id : ids)
+            {
+                for (size_t k = 1; k < count; ++k)
+                {
+                    if (get32(&t.data[4 * k]) == id.first)
+                    {
+                        put32(t.data, id.second);
+                        break;
+                    }
+                }
+            }
+        }
+        c.data = writeTags(tags);
+    }
+}
+
+std::vector<uint32_t> Package::targetsOf(uint32_t id) const
+{
+    std::vector<uint32_t> out;
+    for (const Chunk& c : m_top)
+    {
+        std::vector<Tag> tags;
+        if (c.id != IdTargets || !readTags(c.data, &tags))
+            continue;
+        for (const Tag& t : tags)
+        {
+            for (size_t k = 1; t.id == TagTargetList && k < t.data.size() / 4; ++k)
+            {
+                if (get32(&t.data[4 * k]) == id)
+                    out.push_back(get32(t.data.data()));
+            }
+        }
+    }
+    return out;
+}
+
+void Package::setHash(size_t object, uint32_t hash)
+{
+    setTag32(object, TagHash, hash);
+    if (Tag* params = findTag(object, TagParams))
+        set32(params->data, 4, hash);
+}
+
+int Package::extendSeries(const std::string& prefix, int model, int count)
+{
+    const std::vector<size_t> models = find(nameHash(prefix + std::to_string(model)));
+    if (models.empty())
+        return 0;
+    size_t source = models[0];
+    int made = 0;
+    for (int n = model + 1; n <= count; ++n)
+    {
+        for (size_t old : find(nameHash(prefix + std::to_string(n))))
+        {
+            setHash(old, nameHash(prefix + std::to_string(n) + "_UNUSED"));
+            hide(hash(old));
+        }
+        source = clone(source, nameHash(prefix + std::to_string(n)));
+        ++made;
+    }
+    return made;
 }
 
 }}

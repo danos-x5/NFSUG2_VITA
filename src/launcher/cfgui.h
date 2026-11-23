@@ -166,6 +166,7 @@ public:
     std::string popupText() const;                          // the download screens' message, else empty
     std::string progressText() const;                       // below the progress bar
     float progressFraction() const { return m_progress.fraction; }
+    bool progressPrompt() const { return !m_stopping && !m_complete; }    // Circle Cancel under the bar
 
     void selectKey(const char* key);                        // tests and screenshots; shows dev settings if needed
     void setConfigFile(const std::string& path, pf::cfgfile::FileState state, const std::string& warning);
@@ -277,6 +278,7 @@ private:
     int m_download = -1;                // the mod index being fetched
     bool m_askDownload = false;         // the switch asked for a download this update
     bool m_stopping = false;            // cancelled, waiting for the work to end
+    bool m_complete = false;            // installed; the dialog waits for any button
     ModFiles::Progress m_progress;
     std::string m_error;
 };

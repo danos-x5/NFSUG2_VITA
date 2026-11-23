@@ -737,7 +737,7 @@ void Configurator::drawProgress(Painter& p) const
     if (fraction > 0.0f)
         p.roundRect(barX, barY, std::max(float(barH), barW * fraction), barH, barH / 2.0f, Green);
     p.centred(y + 104, progressText(), Label, FontSmall);
-    if (m_stopping)
+    if (!progressPrompt())
         return;
     const int width = 24 + 8 + p.textWidth("Cancel", FontSmall), left = (Width - width) / 2;
     p.face(left + 10, y + 155, 10, Face::Circle);

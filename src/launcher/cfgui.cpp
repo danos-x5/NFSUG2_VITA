@@ -603,6 +603,7 @@ Outcome Configurator::update(const Input& input, uint64_t nowUs)
         {
             m_progress = ModFiles::Progress();
             m_stopping = false;
+            m_complete = false;
             if (m_files->start(m_mods[m_download].view.id, &m_error))
                 enter(Screen::Downloading);
             else
@@ -616,8 +617,26 @@ Outcome Configurator::update(const Input& input, uint64_t nowUs)
     case Screen::Downloading:
     case Screen::ConfirmStop:
     {
+        if (m_complete)
+        {
+            if (pressed || released)
+            {
+                m_files->finish();
+                enter(Screen::Manager);
+            }
+            return Outcome::Running;
+        }
         m_progress = m_files->progress();
         const ModFiles::Phase phase = m_progress.phase;
+        if (phase == ModFiles::Phase::Done && m_files->requirementsMet(m_mods[m_download].view.id))
+        {
+            endDownload(true);
+            m_complete = true;
+            m_progress.fraction = 1.0f;
+            if (m_screen == Screen::ConfirmStop)
+                enter(Screen::Downloading);
+            return Outcome::Running;
+        }
         if (phase == ModFiles::Phase::Done || phase == ModFiles::Phase::Failed || phase == ModFiles::Phase::Cancelled)
         {
             m_files->finish();
@@ -774,6 +793,8 @@ std::string Configurator::popupText() const
 
 std::string Configurator::progressText() const
 {
+    if (m_complete)
+        return "Install complete";
     if (m_stopping)
         return "Cancelling...";
     switch (m_progress.phase)

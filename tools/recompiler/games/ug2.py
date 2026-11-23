@@ -101,6 +101,9 @@ NATIVE_OVERRIDES = [
     # Unloads that wait for pending draw flushes (src/ug2/native/load_hooks.cpp): chunk unload, solid unload,
     # texture pack unload, streamed texture unload
     0x577b10, 0x493f20, 0x494dd0, 0x494b10,
+    # Display menu Anti-Aliasing row (src/ug2/fsaa.cpp): message handler, label and value texts; present parameters
+    # (cdecl; width, height), after which the renderer takes the level's samples
+    0x49c160, 0x49c1b0, 0x5b9a60,
 ]
 
 # Calls emitted inline with generate.py --inline-ftol2 (codegen/control.py INLINE): address -> helper.
@@ -122,7 +125,8 @@ PURE_NATIVES = [
 EXTRA_ENTRIES = [0x7201c2, 0x7201fe, 0x72023c, 0x72025f, 0x7202fb, 0x720376, 0x7203bd]
 
 # Widescreen. Slots past .rdata (zero bytes inside its raw size) written by widescreen.cpp:
-# 0x7E7FE0 2D x scale, 0x7E7FE4 2D x offset, 0x7E7FE8 controls picture width, 0x7E7FEC / 0x7E7FF0 projection.
+# 0x7E7FE0 2D x scale, 0x7E7FE4 2D x offset, 0x7E7FE8 controls picture width, 0x7E7FEC / 0x7E7FF0 projection;
+# 0x7E7FF4 (never written) is the FSAA level the game's renderer reads.
 PATCHES = [
     # 2D polygon 0x5C5020 and line quads 0x50DCD0: x scale [0x79AC10] (1/320) -> [0x7E7FE0]
     (0x50dd10, '10ac7900', 'e07f7e00'),
@@ -158,6 +162,23 @@ PATCHES = [
     # Projection 0x5C7EC0: x scale 1/tan -> [0x7E7FEC]/tan, vertical half angle factor 0.5 -> [0x7E7FF0]
     (0x5c7fea, '50427800', 'ec7f7e00'),
     (0x5c7ffc, '60427800', 'f07f7e00'),
+    # Anti-Aliasing (src/ug2/fsaa.cpp): the port's renderer multisamples, so the game's own FSAA path reads [0x7E7FF4]
+    # (always 0) instead of g_FSAALevel [0x870D08]: present parameters (0x5B9A60), the multisampled light-trails
+    # target (0x5BB840), D3DRS_MULTISAMPLEANTIALIAS (0x5C25D2), depth drops (0x5C6C0F, 0x5CBB1C), light-trails copies
+    # (0x5CBB00), the level reset after a failed Reset (0x5D1CD5). The menu, registry, presets and clamps keep it.
+    (0x5b9b2d, '080d8700', 'f47f7e00'),
+    (0x5bba76, '080d8700', 'f47f7e00'),
+    (0x5c25d3, '080d8700', 'f47f7e00'),
+    (0x5c6c11, '080d8700', 'f47f7e00'),
+    (0x5cbb1e, '080d8700', 'f47f7e00'),
+    (0x5cbb97, '080d8700', 'f47f7e00'),
+    (0x5cbcad, '080d8700', 'f47f7e00'),
+    (0x5d1cd6, '080d8700', 'f47f7e00'),
+    # The Display screen 0x4B6510 builds the FSAA row (vtable 0x7924A8) as a text row, not a slider: size 0x98 -> 0x54,
+    # constructor 0x51E840 -> 0x51E230, add 0x54F410 -> 0x54EF30. fsaa.cpp gives the vtable the text row's methods.
+    (0x4b6b27, '98000000', '54000000'),
+    (0x4b6b66, 'd67c0600', 'c6760600'),
+    (0x4b6b7e, '8e880900', 'ae830900'),
 ]
 THREAD_SEGMENTS = []
 

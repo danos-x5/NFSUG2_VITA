@@ -574,6 +574,7 @@ HRESULT Direct3D::CheckDeviceFormat(WinApplication* app, x86::CPU& cpu, UINT ada
     }
 }
 
+// NONMASKABLE has 3 quality levels: the game's FSAA levels off, 2x and 4x, which bridge::setMsaaSamples renders.
 HRESULT Direct3D::CheckDeviceMultiSampleType(WinApplication* app, x86::CPU& cpu, UINT adapter, DWORD type,
                                              DWORD format, BOOL windowed, DWORD multiSample, DWORD* qualityLevels)
 {
@@ -583,9 +584,10 @@ HRESULT Direct3D::CheckDeviceMultiSampleType(WinApplication* app, x86::CPU& cpu,
     RC_USE(type);
     RC_USE(format);
     RC_USE(windowed);
+    const DWORD NonMaskable = 1;
     if (qualityLevels)
-        *qualityLevels = 1;
-    return multiSample == 0 ? D3D_OK : D3DERR_NOTAVAILABLE;
+        *qualityLevels = multiSample == NonMaskable ? 3 : 1;
+    return multiSample == 0 || multiSample == NonMaskable ? D3D_OK : D3DERR_NOTAVAILABLE;
 }
 
 HRESULT Direct3D::CheckDepthStencilMatch(WinApplication* app, x86::CPU& cpu, UINT adapter, DWORD type,

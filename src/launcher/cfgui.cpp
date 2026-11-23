@@ -743,7 +743,7 @@ namespace
 
 std::string megabytes(uint64_t bytes, bool roundUp)
 {
-    const uint64_t mb = 1024 * 1024;
+    const uint64_t mb = 1000000;
     if (roundUp)
         return std::to_string((bytes + mb - 1) / mb) + " MB";
     char text[32];

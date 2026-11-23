@@ -30,7 +30,7 @@ using Phase = cfgui::ModFiles::Phase;
 
 const int Attempts = 4;                 // a dropped connection resumes with Range this many times in all
 const size_t HashBytes = 512 * 1024;
-const uint64_t Megabyte = 1024 * 1024;
+const uint64_t Megabyte = 1000000;
 
 bool fileSize(const std::string& path, uint64_t* bytes)
 {

@@ -15,7 +15,6 @@
 
 #include <cstring>
 #include <functional>
-#include <map>
 #include <string>
 #include <vector>
 
@@ -144,7 +143,9 @@ int s_settle = 0;
 int s_checkIn = 0;                  // frames until the baked edits are checked (log)
 reg32 s_vtable = 0, s_rowTable = 0, s_arrowlessTable = 0, s_text = 0, s_textArgument = 0;
 win32::MethodPtr s_eventCallback = nullptr;
-std::map<reg32, float> s_valueX;     // a value object's x as we last set it
+float s_valueReference = 0.0f;       // row 1's value x after the game's first layout, as controls-overhaul took it
+bool s_haveReference = false;
+int s_resetLogs = 0;
 reg32 s_pictureTexture = 0;
 std::pair<reg32, int> s_scrollShown;     // highlighted row and window offset the scroll bar shows
 
@@ -401,11 +402,29 @@ void alignAllValues(win32::WinApplication* app, x86::CPU& cpu)
     }
 }
 
-// Entry values centred left of wherever the game last put them.
+// The value x controls-overhaul used: row 1's after the first layout.
+void takeValueReference()
+{
+    s_haveReference = false;
+    for (size_t i = 0; i < s_rows.size() && i < 2; ++i)
+    {
+        const reg32 value = rc::ld32(s_rows[i].row + ValueObject);
+        if (s_rows[i].kind == KindEntry && value)
+        {
+            s_valueReference = rc::ldf32a(rc::ld32(value + DataOffset) + DataX);
+            s_haveReference = true;
+        }
+    }
+    pf::logInfo("controlsshell: value column reference x %.1f, values centred at %.1f", s_valueReference,
+                s_valueReference - ValueCentreShift);
+}
+
+// Entry values centred on controls-overhaul's column.
 void centreValues(win32::WinApplication* app, x86::CPU& cpu)
 {
-    if (s_screen != ScreenCustomize)
+    if (s_screen != ScreenCustomize || !s_haveReference)
         return;
+    const float target = s_valueReference - ValueCentreShift;
     for (const Row& r : s_rows)
     {
         const reg32 value = rc::ld32(r.row + ValueObject);
@@ -413,15 +432,19 @@ void centreValues(win32::WinApplication* app, x86::CPU& cpu)
             continue;
         const reg32 data = rc::ld32(value + DataOffset);
         const float x = rc::ldf32a(data + DataX);
-        const auto last = s_valueX.find(value);
-        bool changed = centreAlign(value);
-        if (last == s_valueX.end() || last->second != x)
+        if (x != target)
         {
-            rc::stf32a(data + DataX, x - ValueCentreShift);
-            s_valueX[value] = x - ValueCentreShift;
-            changed = true;
+#ifdef DEV_SETTINGS
+            if (s_resetLogs < 40 && x != s_valueReference)
+            {
+                ++s_resetLogs;
+                pf::logInfo("controlsshell: value %08x of row %d at x %.1f, set to %.1f", unsigned(value), rowIndex(r.row), x, target);
+            }
+#endif
+            rc::stf32a(data + DataX, target);
+            rc::st32(value + ObjectFlags, rc::ld32(value + ObjectFlags) | DirtyFlag);
         }
-        if (changed)
+        if (centreAlign(value))
         {
             rc::st32(value + ObjectFlags, rc::ld32(value + ObjectFlags) | DirtyFlag);
             setPlain(app, cpu, value, " ");
@@ -538,6 +561,7 @@ void buildRows(win32::WinApplication* app, x86::CPU& cpu, reg32 screen)
         if (!hasArrows(r.kind))
             hideArrows(app, cpu, r.row);
     }
+    takeValueReference();
     refreshRows(app, cpu);
     centreValues(app, cpu);
     updateScrollBar(app, cpu);
@@ -582,7 +606,7 @@ void construct(win32::WinApplication* app, x86::CPU& cpu, Screen which)
         s_screen = which;
         s_screenObject = screen;
         s_package = rc::ld32(screen + 4);
-        s_valueX.clear();
+        s_haveReference = false;
         if (which == ScreenCustomize)
             alignAllValues(app, cpu);
         if (which == ScreenJoypad)
@@ -635,6 +659,7 @@ void screenMessage(win32::WinApplication* app, x86::CPU& cpu)
         return;
     const x86::CPU saved = cpu;
     syncFocus();
+    centreValues(app, cpu);
     updateScrollBar(app, cpu);
     cpu = saved;
 }
@@ -724,6 +749,7 @@ void eventHook(win32::WinApplication* app, x86::CPU& cpu)
                 setEntries();
                 const x86::CPU saved = cpu;
                 refreshRows(app, cpu);
+                centreValues(app, cpu);
                 updateScrollBar(app, cpu);
                 cpu = saved;
             }

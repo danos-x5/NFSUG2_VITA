@@ -142,7 +142,7 @@ PURE_NATIVES = [
 # 16-bit pairs.
 EXTRA_ENTRIES = [0x7201c2, 0x7201fe, 0x72023c, 0x72025f, 0x7202fb, 0x720376, 0x7203bd]
 
-# Widescreen. Slots past .rdata (zero bytes inside its raw size) written by widescreen.cpp:
+# Fixed patches, always applied. Widescreen: slots past .rdata (zero bytes inside its raw size) written by widescreen.cpp:
 # 0x7E7FE0 2D x scale, 0x7E7FE4 2D x offset, 0x7E7FE8 controls picture width, 0x7E7FEC / 0x7E7FF0 projection.
 PATCHES = [
     # 2D polygon 0x5C5020 and line quads 0x50DCD0: x scale [0x79AC10] (1/320) -> [0x7E7FE0]
@@ -179,6 +179,20 @@ PATCHES = [
     # Projection 0x5C7EC0: x scale 1/tan -> [0x7E7FEC]/tan, vertical half angle factor 0.5 -> [0x7E7FF0]
     (0x5c7fea, '50427800', 'ec7f7e00'),
     (0x5c7ffc, '60427800', 'f07f7e00'),
+    # ExtraOptions 5.1.0.1340 [Fixes] DamageFix: Collision::CheckForWildCollision jne -> jmp, as test al, al; jne ->
+    # cmp al, al; je (always taken; 0x59FC27 sets the flags first): a jmp would split the function at 0x59FC1E
+    (0x59fc11, '84c07509', '38c07409'),
+    # ExtraOptions 5.1.0.1340 [Fixes] MegalowPartsFix: GetAmbientZone stores zone 0x1A (MegalowPartsFixCodeCave);
+    # ecx is 0 here, so cl = 1 makes the lea give 0x1A with the same store and flags
+    (0x46b3f5, '0f95c1', 'b10190'),
+    # ExtraOptions 5.1.0.1340 [Fixes] MegalowPartsFix: the Megalow shop zone check never matches
+    # (LoadingTips::CalcGameTipToSee 0x4C4D40, 0x5243D0, 0x530400, 0x5415E0, 0x556E60, 0x562790)
+    (0x4c4d87, 'd0d0c87f', 'ffffffff'),
+    (0x52442a, 'd0d0c87f', 'ffffffff'),
+    (0x53043a, 'd0d0c87f', 'ffffffff'),
+    (0x54163b, 'd0d0c87f', 'ffffffff'),
+    (0x556f1d, 'd0d0c87f', 'ffffffff'),
+    (0x5627bd, 'd0d0c87f', 'ffffffff'),
 ]
 THREAD_SEGMENTS = []
 

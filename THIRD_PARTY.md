@@ -96,6 +96,9 @@ game's code and data that Extra Options makes (`src/ug2/mods_runtime.cpp`, `MOD_
 its behaviour, and contains none of Extra Options' code. The splash screen line it shows and the Mods tab's
 descriptions are quoted from the mod.
 
+The always-on fixes in `PATCHES` (`tools/recompiler/games/ug2.py`) follow the behaviour of Extra Options 5.1.0.1340's
+DamageFix and MegalowPartsFix, by the ExOpts Team; the patches are the port's own.
+
 ## Need for Speed Underground 2
 
 Game code, binaries and assets are the property of Electronic Arts Inc. and its licensors and are not part of this

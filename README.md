@@ -122,6 +122,9 @@ The settings files are under the game folder, `ux0:data/NeedForSpeedUnderground2
 
 With nothing changed the game runs locked to 30 frames a second, in widescreen, with the touch screen as a replacement for a mouse.
 
+Two fixes from NFSU2 Extra Options are always on and have no setting: cracked glass and other car damage show
+outside the crash camera too (DamageFix), and the Megalow performance shop shows its own scenery (MegalowPartsFix).
+
 The first time the game starts it writes a settings file, `ux0:data/NeedForSpeedUnderground2/NeedForSpeedUnderground2.cfg`.
 Every setting in it is listed at its default behind a `#`. To change one, remove the `#` at the start of its line,
 edit the value and start the game again, for example:

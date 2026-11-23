@@ -123,6 +123,11 @@ std::vector<cfgui::ModView> views(const std::string& gameFolder)
             view.enabled = s.on;
             if (!s.met)
                 view.requirements = s.requirements;
+            if (src.downloadable())
+            {
+                view.downloadName = src.mod;
+                view.downloadSpace = src.download.spaceNeeded();
+            }
             view.details.push_back(mod.description);
             result.push_back(view);
         }

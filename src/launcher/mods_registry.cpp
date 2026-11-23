@@ -17,7 +17,7 @@ namespace ug2 { namespace mods {
 namespace
 {
 
-const Source s_sources[SourceCount] =
+Source s_sources[SourceCount] =
 {
     {
         exopts::Name,
@@ -90,6 +90,7 @@ const Source s_sources[SourceCount] =
             { "Misc", "EnableMusic", "1", false },
             { "Misc", "AllowMultipleInstances", "0", false },
         },
+        {},
     },
 };
 
@@ -147,6 +148,19 @@ const Mod& get(Id id)
 const Source& source(SourceId id)
 {
     return s_sources[id];
+}
+
+void setDownload(SourceId id, const Download& download)
+{
+    s_sources[id].download = download;
+}
+
+uint64_t Download::installedBytes() const
+{
+    uint64_t total = 0;
+    for (const FileLocation& file : files)
+        total += file.bytes;
+    return total;
 }
 
 std::string fileName(const Source& source)

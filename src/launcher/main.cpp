@@ -5,6 +5,9 @@
 #include "default_cfg.h"
 #include "mods_edit.h"
 #include "notice.h"
+#ifdef NFSU_MOD_DOWNLOAD
+#include "mods_download.h"
+#endif
 #include "save.h"
 #include <platform/cfgfile.h>
 #include <platform/log.h>
@@ -154,6 +157,14 @@ void configure(Screen& screen, const std::string& configPath, const std::string&
     }
     cfgui::Configurator ui(text, mods::views(GameFolder), NFSU_VERSION);
     ui.setConfigFile(configPath, state, notice::cfgUnreadable(configPath));
+#ifdef NFSU_MOD_DOWNLOAD
+    launcher::ModDownloads::Options options;
+    options.gameFolder = GameFolder;
+    options.caFile = "app0:launcher/cacert.pem";
+    options.lock = &launcher::systemLock();
+    launcher::ModDownloads downloads(options);
+    ui.setModFiles(&downloads);
+#endif
     ui.begin(sceKernelGetProcessTimeWide());
     cfgui::Outcome outcome;
     bool opened = false;

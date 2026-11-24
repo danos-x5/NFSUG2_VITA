@@ -72,7 +72,7 @@ long instructionLine(fepackage::Package& p, const fepackage::Package* donor, std
     if (ours.valid && theirs.valid && position(*donor, nameHash(InstructionLabel), &x, &y))
     {
         *gap = y - theirs.bottom;
-        setFloat(p.tagData(line, TagData), 0x20, ours.bottom + *gap);
+        setFloat(p.tagData(line, TagData), 0x20, ours.bottom + *gap - InstructionRaise);
     }
     p.setTag32(line, TagTextId, TextConfigure);
     if (p.tag32(line, TagBuffer) < 64)

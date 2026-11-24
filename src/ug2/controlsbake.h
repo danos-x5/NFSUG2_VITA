@@ -15,6 +15,7 @@ const uint32_t PictureObject = 0xf1534c25;     // CONTROLLER_IMAGE
 const uint32_t TitleGroupObject = 0x8d7e0c53;  // the group holding the title and the panel
 const uint32_t TitleMasterObject = 0xa753c46c;  // TITLE_MASTER: the first row's label box
 const int OptionsLines = 8, PcControllerLines = 7;     // lines the options screen (0x4CF750) and PC controller screen show
+const float InstructionRaise = 4.0f;           // units the line sits above the PC gap, set by eye on screen
 
 // The list's place from the package: TITLE_MASTER's top and height (the row step), and the last visible row's bottom.
 struct ListLayout

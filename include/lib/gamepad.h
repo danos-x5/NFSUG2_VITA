@@ -88,6 +88,8 @@ public:
     static void getRightStick(float* x, float* y);
     // The same shaped with controls::FixedStickShape (garage, free look).
     static void getFixedRightStick(float* x, float* y);
+    // The last pad reading: inputs, raw sticks lx, ly, rx, ry.
+    static void getPad(uint32_t* inputs, float (&sticks)[4]);
 
     // Front touch as the mouse: last position (0..1 of the pointer area) and the left button.
     struct Touch

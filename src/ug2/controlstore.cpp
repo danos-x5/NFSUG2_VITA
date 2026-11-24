@@ -154,6 +154,35 @@ void setCustom(Backend& backend, const Record& record)
     writeType(backend, TypeCustom);
 }
 
+namespace {
+
+bool keepIfChanged(Backend& backend, const Record& before, Record next)
+{
+    Record clean = before;
+    controlsdata::onePerAction(&clean);
+    controlsdata::onePerAction(&next);
+    if (next == clean)
+        return false;
+    setCustom(backend, next);
+    return true;
+}
+
+}
+
+bool bindEntry(Backend& backend, controlsdata::Entry entry, controlsdata::Control control)
+{
+    const Record before = active(backend);
+    Record next = before;
+    return controlsdata::bindControl(&next, entry, control) && keepIfChanged(backend, before, next);
+}
+
+bool removeEntry(Backend& backend, controlsdata::Entry entry)
+{
+    const Record before = active(backend);
+    Record next = before;
+    return controlsdata::unbindEntry(&next, entry) && keepIfChanged(backend, before, next);
+}
+
 Record forProfile(Backend& backend)
 {
     return custom(backend);

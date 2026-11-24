@@ -43,7 +43,7 @@ struct ScreenPrompt
 
 const ScreenPrompt ScreenPrompts[] =
 {
-    { "", { 0, nullptr } },
+    { "UI_ControlsCustomize.fng", { 0x7758F62D, "JOY_EVENT_FENG_BUTTON1" } },
 };
 
 // Bits the PC bar fill never gives a text.

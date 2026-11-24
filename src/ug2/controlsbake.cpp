@@ -88,6 +88,26 @@ long instructionLine(fepackage::Package& p, const fepackage::Package* donor, std
     return long(line);
 }
 
+// PC Pulse on each value slot; colour only, not PC positions.
+int pulseScripts(fepackage::Package& p, const fepackage::Package* donor, int rows)
+{
+    const std::vector<size_t> model = donor ? donor->find(nameHash("OPTION_DATA_1")) : std::vector<size_t>();
+    if (model.size() != 1)
+        return 0;
+    int made = 0;
+    for (int n = 1; n <= rows; ++n)
+    {
+        for (size_t o : p.find(nameHash("OPTION_DATA_" + std::to_string(n))))
+            made += p.addColourScript(o, *donor, model[0], pulseScript()) ? 1 : 0;
+    }
+    return made;
+}
+
+}
+
+uint32_t pulseScript()
+{
+    return nameHash("Pulse");
 }
 
 uint32_t flashScript()
@@ -185,6 +205,7 @@ Result options(fepackage::Package& p, uint32_t title, bool customize, int entrie
         for (const char* prefix : SlotPrefixes)
             r.cloned += p.extendSeries(prefix, SlotModel, entries);
         r.instruction = instructionLine(p, donor, &r.error, &r.gap);
+        r.pulses = pulseScripts(p, donor, entries);
     }
     roomForTexts(p, entries > 13 ? entries : 13);
     r.steady = p.steadyColourScript(nameHash("Highlight"), flashScript());

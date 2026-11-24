@@ -66,6 +66,8 @@ bool                    s_typedDown[256];   // typed keys down, by DirectInput c
 bool                    s_appendOnly;       // the game's editor has no cursor: no End before clearing
 Gamepad::PollHook       s_pollHook;         // not guarded: set before the game starts
 std::atomic<float>      s_rightStick[2];    // the last pump's right stick
+std::atomic<float>      s_leftStick[2];     // the last pump's left stick
+std::atomic<uint32_t>   s_lastInputs;       // the last pump's inputs, injected included
 controls::PadSample     s_injected;         // setInjectedPad
 Gamepad::Touch          s_touch;            // getTouch
 bool                    s_touchSeen;
@@ -267,6 +269,9 @@ void pump()
             pad.sticks[i] = s_injected.sticks[i];
     s_rightStick[0] = pad.sticks[2];
     s_rightStick[1] = pad.sticks[3];
+    s_leftStick[0] = pad.sticks[0];
+    s_leftStick[1] = pad.sticks[1];
+    s_lastInputs = pad.inputs;
     if (s_injected.touchCount)
     {
         memcpy(pad.touches, s_injected.touches, sizeof(pad.touches));
@@ -476,6 +481,15 @@ void Gamepad::getRightStick(float* x, float* y)
 {
     *x = s_rightStick[0];
     *y = s_rightStick[1];
+}
+
+void Gamepad::getPad(uint32_t* inputs, float (&sticks)[4])
+{
+    *inputs = s_lastInputs;
+    sticks[0] = s_leftStick[0];
+    sticks[1] = s_leftStick[1];
+    sticks[2] = s_rightStick[0];
+    sticks[3] = s_rightStick[1];
 }
 
 void Gamepad::getFixedRightStick(float* x, float* y)

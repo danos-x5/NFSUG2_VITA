@@ -63,7 +63,7 @@ Active s_active;
 bool   s_stored = false;        // registry.txt has Controls_Type: the slot follows s_active
 bool   s_slotLogged = false;
 
-reg32 padSlot()
+reg32 findPadSlot()
 {
     for (reg32 slot = Slots; slot < Slots + SlotCount * SlotSize; slot += SlotSize)
     {
@@ -154,6 +154,16 @@ void refresh(const char* why)
 
 }
 
+reg32 padSlot()
+{
+    return findPadSlot();
+}
+
+void storeChanged(const char* why)
+{
+    refresh(why);
+}
+
 Backend& backend()
 {
     static RegistryBackend s;
@@ -162,7 +172,7 @@ Backend& backend()
 
 bool readSlot(Record* r)
 {
-    const reg32 slot = padSlot();
+    const reg32 slot = findPadSlot();
     if (!slot)
         return false;
     memset(r, 0, sizeof(*r));
@@ -182,7 +192,7 @@ void writeSlot(const Record& source)
 {
     Record r = source;
     data::onePerAction(&r);
-    const reg32 slot = padSlot();
+    const reg32 slot = findPadSlot();
     if (!slot)
         return;
     for (int i = 0; i < 4; ++i)
@@ -271,7 +281,7 @@ void patchProfileSave(reg32 out)
         return;
     }
     const Record record = forProfile(backend());
-    const reg32 pad = padSlot();
+    const reg32 pad = findPadSlot();
     if (pad)
     {
         const int slot = int((pad - Slots) / SlotSize);

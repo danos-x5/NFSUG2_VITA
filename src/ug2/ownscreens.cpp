@@ -69,18 +69,24 @@ reg32 findRecord(reg32 hash)
     return 0;
 }
 
+bool readRecord(reg32 record, fepackage::Package* out)
+{
+    const reg32 chunk = rc::ld32(record + 0x10), size = rc::ld32(chunk + 4);
+    std::vector<uint8_t> packed(size > 4 ? size - 4 : 0), bytes;
+    for (reg32 i = 0; i < packed.size(); ++i)
+        packed[i] = rc::ld8(chunk + 12 + i);
+    return fepackage::unpack(packed.data(), packed.size(), &bytes) && out->parse(bytes);
+}
+
 bool registerCopy(win32::WinApplication* app, x86::CPU& cpu, Copy& copy)
 {
     const reg32 record = findRecord(fepackage::nameHash(copy.source));
     if (!record)
         return false;
     copy.done = true;
-    const reg32 chunk = rc::ld32(record + 0x10), size = rc::ld32(chunk + 4);
-    std::vector<uint8_t> packed(size > 4 ? size - 4 : 0), bytes;
-    for (reg32 i = 0; i < packed.size(); ++i)
-        packed[i] = rc::ld8(chunk + 12 + i);
+    const reg32 size = rc::ld32(rc::ld32(record + 0x10) + 4);
     fepackage::Package package;
-    if (!fepackage::unpack(packed.data(), packed.size(), &bytes) || !package.parse(bytes))
+    if (!readRecord(record, &package))
     {
         pf::logError("ownscreens: %s (record %08x, %u bytes) does not unpack or parse; %s not registered", copy.source.c_str(),
                      unsigned(record), unsigned(size), copy.name.c_str());
@@ -102,6 +108,12 @@ bool registerCopy(win32::WinApplication* app, x86::CPU& cpu, Copy& copy)
     return true;
 }
 
+}
+
+bool loadPackage(const std::string& name, fepackage::Package* out)
+{
+    const reg32 record = findRecord(fepackage::nameHash(name));
+    return record && readRecord(record, out);
 }
 
 reg32 guestName(const std::string& name)

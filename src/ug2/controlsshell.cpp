@@ -721,8 +721,12 @@ void configure(win32::WinApplication& app)
         ownscreens::addScreen(ScreenNames[s], FakeConstructor + 0x10 * reg32(s));
         ownscreens::addCopy(ScreenSources[s], ScreenNames[s], [which](fepackage::Package& p)
         {
+            fepackage::Package donor;
+            const bool haveDonor = which == ScreenCustomize && ownscreens::loadPackage(controlsbake::InstructionDonor, &donor);
             const controlsbake::Result r = which == ScreenJoypad ? controlsbake::joypad(p, ScreenTitles[which]) :
-                controlsbake::options(p, ScreenTitles[which], which == ScreenCustomize, EntryCount);
+                controlsbake::options(p, ScreenTitles[which], which == ScreenCustomize, EntryCount, haveDonor ? &donor : nullptr);
+            if (which == ScreenCustomize && r.instruction < 0)
+                pf::logError("controlsshell: no instruction line: %s", r.error.c_str());
             s_slots[which] = r.slots;
             pf::logInfo("controlsshell: %s baked: %u objects hidden, title text %08x, %d row slots (%d slot objects copied "
                         "from slot %d), %d row bars fitted, %u buttons, instruction line object %ld, %d highlights steady",

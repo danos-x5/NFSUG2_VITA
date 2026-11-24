@@ -17,8 +17,7 @@ const uint32_t TitleObject = 0x42adb44c;
 const uint32_t RowBar = 0xa67c3fe2, RowBarRight = 0xd8fdd418, RowBarLeft = 0xd8fdd419;     // a row group's bar and end caps
 const float BarCenter = 3.115f, BarWidth = 523.35f;
 const float PictureShiftX = -37.0f, PictureWidth = 640.0f, PictureHeight = 320.0f;     // controls-overhaul's picture area
-const float InstructionX = 37.0f, InstructionY = 293.0f;     // controls-overhaul's line, in the title group's units
-const uint16_t TagData = 0x4153, TagTextId = 0x4853, TagBuffer = 0x6253, TagJustify = 0x6a53, TagText = 0x7453;
+const uint16_t TagData = 0x4153, TagTextId = 0x4853, TagBuffer = 0x6253, TagText = 0x7453;
 const char* const SlotPrefixes[] = { "OPTION_NAME_", "OPTION_DATA_", "OPTION_BACKING_", "LEFT_ARROW_", "RIGHT_ARROW_" };
 
 void setFloat(std::vector<uint8_t>* data, size_t at, float value)
@@ -50,18 +49,21 @@ void roomForTexts(fepackage::Package& p, int rows)
     }
 }
 
-// A copy of the calibration text (Help's grey, font and size, no scripted colour), placed under the list.
-long instructionLine(fepackage::Package& p)
+// The PC controller screen's instruction label itself, copied in with its font, colour and scripts.
+long instructionLine(fepackage::Package& p, const fepackage::Package* donor, std::string* error)
 {
-    const std::vector<size_t> model = p.find(nameHash("ColorCal_Blurb"));
-    if (model.empty())
+    const std::vector<size_t> label = donor ? donor->find(nameHash(InstructionLabel)) : std::vector<size_t>();
+    if (label.size() != 1)
+    {
+        *error = donor ? "the donor has no single Instructions_Label" : "no donor package";
         return -1;
-    const size_t line = p.clone(model[0], instructionHash());
-    p.setFlags(line, p.flags(line) & ~fepackage::FlagHidden);
-    setFloat(p.tagData(line, TagData), 0x1c, InstructionX);
-    setFloat(p.tagData(line, TagData), 0x20, InstructionY);
+    }
+    const std::vector<size_t> added = p.copyFrom(*donor, label[0], 0x5a5a5a5a, error);
+    if (added.empty())
+        return -1;
+    const size_t line = added[0];
+    p.setHash(line, instructionHash());
     p.setTag32(line, TagTextId, TextConfigure);
-    p.setTag32(line, TagJustify, 1);
     if (p.tag32(line, TagBuffer) < 64)
         p.setTag32(line, TagBuffer, 64);
     if (std::vector<uint8_t>* text = p.tagData(line, TagText))
@@ -104,7 +106,7 @@ int countSlots(const fepackage::Package& p)
     return n;
 }
 
-Result options(fepackage::Package& p, uint32_t title, bool customize, int entries)
+Result options(fepackage::Package& p, uint32_t title, bool customize, int entries, const fepackage::Package* donor)
 {
     Result r;
     common(p, &r, title, { nameHash("ColorCal_Logo"), nameHash("ColorCal_Blurb"), nameHash("Colour_Calibration_Backing"),
@@ -113,7 +115,7 @@ Result options(fepackage::Package& p, uint32_t title, bool customize, int entrie
     {
         for (const char* prefix : SlotPrefixes)
             r.cloned += p.extendSeries(prefix, SlotModel, entries);
-        r.instruction = instructionLine(p);
+        r.instruction = instructionLine(p, donor, &r.error);
     }
     roomForTexts(p, entries > 13 ? entries : 13);
     r.steady = p.steadyColourScript(nameHash("Highlight"), flashScript());

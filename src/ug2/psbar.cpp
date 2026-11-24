@@ -32,7 +32,7 @@ const reg32 DataOffset = 0x2C, ObjectFlags = 0x1C, DirtyFlag = 0x400000;
 const char* const Bar = "UI_PC_Help_Bar.fng", *const Donor = "UI_OptionsController.fng";
 const char* const DonorArchive = "C:\\FRONTEND\\FrontB.lzc";
 const reg32 FlowState = 0x008654A4, GameMode = 0x00850078;
-const reg32 DataX = 0x1C;
+const reg32 DataX = 0x1C, DataAlpha = 0x0C, SwitcherCurrent = 0x3C;
 
 Prompt s_second = { 0, nullptr };
 bool s_secondShown = false;
@@ -45,6 +45,8 @@ bool s_trackSide = false;
 Layout s_layout = LayoutInGame;
 Prompt s_items[ItemCount];
 bool s_pairShown[LayoutCount][ItemCount] = {};
+reg32 s_switcherSaved = 0;
+reg32 s_bankAlpha[2] = { ~0u, ~0u };
 
 std::string readString(reg32 address)
 {
@@ -237,6 +239,42 @@ bool showPair(win32::WinApplication* app, x86::CPU& cpu, reg32 package, int item
     return true;
 }
 
+// No bank or name on the track side; both back in the front end.
+void bank(win32::WinApplication* app, x86::CPU& cpu, reg32 bar, reg32 package, bool trackSide)
+{
+    const Switcher now = { rc::ld32(bar + SwitcherCurrent), s_switcherSaved };
+    const Switcher next = switcherFor(trackSide, now);
+    if (next.current != now.current)
+    {
+        rc::st32(bar + SwitcherCurrent, next.current);
+        if (devLog())
+            pf::logInfo("psbar: bank/name switcher %s (object %08x)", trackSide ? "stopped on the track side" : "resumed", unsigned(next.current ? next.current : now.current));
+    }
+    s_switcherSaved = next.saved;
+    const reg32 hashes[2] = { PcMoney, PcName };
+    for (int i = 0; i < 2; ++i)
+    {
+        const reg32 object = find(app, cpu, package, hashes[i]);
+        const reg32 data = object ? rc::ld32(object + DataOffset) : 0;
+        if (!data)
+            continue;
+        if (trackSide)
+        {
+            if (s_bankAlpha[i] == ~0u)
+                s_bankAlpha[i] = rc::ld32(data + DataAlpha);
+            rc::st32(data + DataAlpha, 0);
+            call(app, cpu, HideObject, { object });
+            rc::st32(object + ObjectFlags, rc::ld32(object + ObjectFlags) | DirtyFlag);
+        }
+        else if (s_bankAlpha[i] != ~0u)
+        {
+            rc::st32(data + DataAlpha, s_bankAlpha[i]);
+            s_bankAlpha[i] = ~0u;
+            rc::st32(object + ObjectFlags, rc::ld32(object + ObjectFlags) | DirtyFlag);
+        }
+    }
+}
+
 // Prompts in the panel's button row; no bar.
 void showInGame(win32::WinApplication* app, x86::CPU& cpu, reg32 package)
 {
@@ -377,6 +415,7 @@ void afterFill(win32::WinApplication* app, x86::CPU& cpu, reg32 bar)
         return;
     }
     const bool shown = rc::ld8(bar + 0x6C) != 0;
+    bank(app, cpu, bar, package, s_trackSide);
     if (!shown || s_trackSide)
     {
         call(app, cpu, HideObject, { root });
@@ -425,6 +464,7 @@ void visibility(win32::WinApplication* app, x86::CPU& cpu, reg32 bar, bool show)
     const reg32 root = find(app, cpu, package, PsRoot);
     if (!root)
         return;
+    bank(app, cpu, bar, package, s_trackSide);
     if (!show || s_trackSide)
     {
         call(app, cpu, HideObject, { root });

@@ -189,6 +189,25 @@ int inGamePrompts(uint32_t flags, MessageOfBit messageOfBit, TextOfBit textOfBit
     return item;
 }
 
+// The PC bar's bank/name switcher (0x537E60) fades these two in turn; hidden on the track side.
+const uint32_t PcMoney = 0xEB3A688A, PcName = 0xEB406FEC;
+
+struct Switcher
+{
+    uint32_t current;   // bar +0x3C: the object shown now, 0 stops the switcher (0x537F50)
+    uint32_t saved;     // ours while it is stopped
+};
+
+// The switcher on the track side (stopped) or in the front end.
+inline Switcher switcherFor(bool trackSide, Switcher s)
+{
+    if (trackSide)
+        return { 0, s.current ? s.current : s.saved };
+    if (s.saved && !s.current)
+        return { s.saved, 0 };
+    return { s.current, 0 };
+}
+
 const float PairGap = 30.0f;          // icon left edge to word left edge
 const float PairCharWidth = 8.0f;     // estimated word width per character
 

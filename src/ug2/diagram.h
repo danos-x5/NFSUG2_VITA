@@ -54,9 +54,10 @@ float labelY(Slot slot);
 bool rightColumn(Slot slot);
 float labelRoom();
 
+// Touch labels are empty when a button shows the action.
 Label labelFor(const controlsdata::Binds& binds, Slot slot);
 bool assigned(const Label& label);
-// Unassigned controls get no leader; touch zones always do.
+// Leaders for assigned controls; touch only when no button has it.
 Plan planFor(const controlsdata::Binds& binds);
 std::string cacheKey(const Plan& plan);
 int layerCount(const Plan& plan);

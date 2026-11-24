@@ -71,6 +71,21 @@ uint32_t buttonAction(const Binds& b, Slot slot)
     }
 }
 
+bool onDrawnButton(const Binds& b, uint32_t action)
+{
+    for (int i = 0; i < ControlSlots; ++i)
+    {
+        if (buttonAction(b, Slot(i)) == action)
+            return true;
+    }
+    return false;
+}
+
+Label touchLabel(const Binds& b, uint32_t action)
+{
+    return onDrawnButton(b, action) ? Label{ NoText, NoText } : Label{ actionText(action), NoText };
+}
+
 std::string textString(const Text& t, const Lookup& lookup)
 {
     const std::string game = t.hash ? lookup(t.hash) : std::string();
@@ -231,10 +246,10 @@ Label labelFor(const Binds& b, Slot slot)
     {
     case SlotLeftStick:     return stickLabel(stickRole(b, 0));
     case SlotRightStick:    return stickLabel(stickRole(b, 1));
-    case SlotTouchMap:      return { actionText(WorldMap), NoText };
-    case SlotTouchSms:      return { actionText(ReadSms), NoText };
-    case SlotTouchShop:     return { actionText(EnterShop), NoText };
-    case SlotTouchCareer:   return { actionText(CareerStats), NoText };
+    case SlotTouchMap:      return touchLabel(b, WorldMap);
+    case SlotTouchSms:      return touchLabel(b, ReadSms);
+    case SlotTouchShop:     return touchLabel(b, EnterShop);
+    case SlotTouchCareer:   return touchLabel(b, CareerStats);
     default:                return { actionText(buttonAction(b, slot)), NoText };
     }
 }
@@ -248,7 +263,7 @@ Plan planFor(const Binds& b)
 {
     Plan plan;
     for (int i = 0; i < SlotCount; ++i)
-        plan.leader[i] = isTouch(Slot(i)) || assigned(labelFor(b, Slot(i)));
+        plan.leader[i] = assigned(labelFor(b, Slot(i)));
     return plan;
 }
 

@@ -10,7 +10,7 @@ namespace {
 
 const uint16_t TagData = 0x4153;     // an object's start data
 const size_t DataY = 0x20;           // its y in that data
-const float IconDrop = 3.0f / 1.1333f;   // 3 Vita pixels lower than the PS2 places the bar's button icons
+const float IconDrop = 1.0f / 1.1333f;   // 1 Vita pixel lower than the PS2 places the bar's button icons
 
 }
 

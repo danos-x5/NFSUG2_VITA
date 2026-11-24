@@ -34,7 +34,7 @@ const char* const DonorArchive = "C:\\FRONTEND\\FrontB.lzc";
 
 Prompt s_second = { 0, nullptr };
 bool s_secondShown = false;
-HelpVerdict s_help = { true, "not decided yet" };
+HelpVerdict s_help = { true, "general", "not decided yet" };
 reg32 s_buffer = 0;
 bool s_missingLogged = false;
 
@@ -129,11 +129,22 @@ void hideExtras(win32::WinApplication* app, x86::CPU& cpu, reg32 package)
     }
 }
 
-// The help hash of the screen's table entry: ours first, then the game's table (28-byte entries, name first, help hash at +8).
-HelpVerdict helpOf(const std::string& screen)
+// The screen object of the fill's caller: it keeps itself in esi (edi in one caller), and +4 is the package name given to the fill.
+reg32 liveScreen(const x86::CPU& cpu, reg32 nameArg)
+{
+    for (reg32 candidate : { cpu.esi, cpu.edi })
+    {
+        if (candidate >= 0x00100000 && candidate < 0x7F000000 && (candidate & 3) == 0 && rc::ld32(candidate + 4) == nameArg)
+            return candidate;
+    }
+    return 0;
+}
+
+// The help id from the screen's table entry: ours first, then the game's table (28-byte entries, name first, help id at +8).
+reg32 tableHelp(const std::string& screen)
 {
     if (screen.empty())
-        return helpVerdict(false, 0, false);
+        return 0;
     const reg32 hash = ownscreens::hashOfName(screen);
     reg32 entry = ownscreens::entryOf(hash);
     for (reg32 i = 0; !entry && i < 400; ++i)
@@ -144,10 +155,7 @@ HelpVerdict helpOf(const std::string& screen)
         if (ownscreens::hashOfName(readString(name)) == hash)
             entry = row;
     }
-    if (!entry)
-        return helpVerdict(false, 0, false);
-    const reg32 help = rc::ld32(entry + 8);
-    return helpVerdict(true, help, help && !tableText(help).empty());
+    return entry ? rc::ld32(entry + 8) : 0;
 }
 
 void secondSlot(win32::WinApplication* app, x86::CPU& cpu, reg32 package, bool show)
@@ -211,18 +219,20 @@ void beforeFill(win32::WinApplication* app, x86::CPU& cpu)
     s_second = secondPrompt(screenName ? screen.c_str() : nullptr, flags, [&](uint32_t bit) { return originalBit(app, cpu, BitMessage, bit); },
                             [&](uint32_t bit) { return originalBit(app, cpu, BitText, bit); });
     rc::st32(cpu.esp + 4, 0);
-    s_help = helpOf(screenName ? screen : std::string());
+    const reg32 live = screenName ? liveScreen(cpu, screenName) : 0;
+    const reg32 help = live ? rc::ld32(live + 0x28) : tableHelp(screen);
+    s_help = helpVerdict(help, help && !tableText(help).empty(), flags);
+    static std::string s_helpKey;
+    const std::string helpKey = screen + "|" + std::to_string(help) + "|" + std::to_string(flags & TipBit) + "|" + (live ? "live" : "table");
+    if (devLog() && helpKey != s_helpKey)
+        pf::logInfo("psbar: screen '%s' help id %08x (%s), flags %08x: Help %s, %s help (%s)", screen.c_str(), unsigned(help), live ? "live screen" : "table entry",
+                    unsigned(flags), s_help.available ? "shown" : "hidden", s_help.kind, s_help.why);
+    s_helpKey = helpKey;
     static std::string s_last;
     static reg32 s_lastFlags = ~0u, s_lastSecond = ~0u;
     if (devLog() && (screen != s_last || flags != s_lastFlags || s_second.text != s_lastSecond))
         pf::logInfo("psbar: fill screen '%s' flags %08x second prompt text %08x token %s", screen.c_str(), unsigned(flags), unsigned(s_second.text),
                     s_second.token ? s_second.token : "none");
-    static std::string s_helpLast;
-    static bool s_helpLastSet = false;
-    if (devLog() && (screen != s_helpLast || !s_helpLastSet))
-        pf::logInfo("psbar: screen '%s': Help %s (%s)", screen.c_str(), s_help.available ? "available" : "not available", s_help.why);
-    s_helpLast = screen;
-    s_helpLastSet = true;
     s_last = screen;
     s_lastFlags = flags;
     s_lastSecond = s_second.text;

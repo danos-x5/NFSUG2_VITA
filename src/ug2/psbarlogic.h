@@ -86,23 +86,27 @@ const uint32_t PsRoot = 0x02DDF58C, PsName = 0xEB406FEC ^ Salt, PsMoney = 0xEB3A
 const uint32_t PsHelpWord = 0x00169268, PsHelpIcon = 0x35E8F0B2, PsSecondWord = 0x010CBA23, PsSecondIcon = 0x97B71DDE;
 const uint32_t PcRealGroup = 0x3B949CD0;    // the PC art group the fill shows; renamed so the fill finds nothing
 
-// Whether Help does anything on a screen: its table entry carries a help hash that resolves to a text. screenKnown is false
-// when no table entry has the screen's name.
+// Whether Help does anything on a screen. Two kinds: the general help popup, driven by the screen's help id (screen +0x28,
+// set from its table entry) when the language table has a text for it, and the screen's own response to the help event
+// (the Tip item bit 0x400000, PAD_BUTTON4, which the tuning screens set). liveHelp is the screen's help id, 0 when unknown.
+const uint32_t TipBit = 0x00400000;
+
 struct HelpVerdict
 {
     bool        available;
+    const char* kind;       // "general", "tip" or "none"
     const char* why;
 };
 
-inline HelpVerdict helpVerdict(bool screenKnown, uint32_t helpHash, bool resolves)
+inline HelpVerdict helpVerdict(uint32_t liveHelp, bool resolves, uint32_t flags)
 {
-    if (!screenKnown)
-        return { false, "no screen table entry" };
-    if (!helpHash)
-        return { false, "the screen's help hash is 0" };
-    if (!resolves)
-        return { false, "the help hash has no text" };
-    return { true, "the help hash resolves to a text" };
+    if (liveHelp && resolves)
+        return { true, "general", "the screen's help id resolves to a text" };
+    if (flags & TipBit)
+        return { true, "tip", "the screen offers the Tip item (PAD_BUTTON4)" };
+    if (!liveHelp)
+        return { false, "none", "the screen's help id is 0 and it offers no Tip" };
+    return { false, "none", "the screen's help id has no text and it offers no Tip" };
 }
 
 // The text a prompt shows: its button token, then the language word.

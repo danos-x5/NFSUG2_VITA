@@ -25,6 +25,8 @@ bool loadFromArchive(const std::string& guestPath, const std::string& name, fepa
 void addReplacement(const std::string& name, const Replace& edit);
 // The chunk the loader should register instead of this one, else 0 (a chunk to register as it is).
 x86::reg32 replacementFor(x86::reg32 chunk);
+// Our chunk registered for this one, else 0; forgets it.
+x86::reg32 unloadFor(x86::reg32 chunk);
 struct ReplacementState
 {
     bool done = false;          // the loader was handed our chunk

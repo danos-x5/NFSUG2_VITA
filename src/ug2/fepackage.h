@@ -20,6 +20,8 @@ bool unpack(const uint8_t* data, size_t size, std::vector<uint8_t>* out);
 // FRONTB chunk 0x30210: name hash, then a RAWW block.
 std::vector<uint8_t> packageChunk(const std::string& name, const std::vector<uint8_t>& package);
 
+const uint32_t ChunkRawPackage = 0x30203;  // FRONTB chunk holding an unpacked package
+
 struct Tag
 {
     uint16_t id;        // two characters, "Ot" is 0x744f
@@ -37,6 +39,10 @@ struct Object
     std::vector<Chunk> chunks;      // ObjD (data left empty, see tags), scripts, message responses
     std::vector<Tag> tags;          // the ObjD chunk's tags
 };
+
+class Package;
+// Finds a package by name in an unpacked chunk list (packed 0x30210 or raw 0x30203 chunks, as FrontB.lzc and GlobalB.lzc hold).
+bool findPackage(const std::vector<uint8_t>& chunks, const std::string& name, Package* out);
 
 class Package
 {
@@ -56,6 +62,8 @@ public:
     uint32_t parent(size_t object) const;      // 0 at the top level
     uint32_t flags(size_t object) const;
     void setFlags(size_t object, uint32_t flags);
+    // Renames an object: the Oh tag and the hash in OP.
+    void setHash(size_t object, uint32_t hash);
     bool hasTag(size_t object, uint16_t id) const;
     uint32_t tag32(size_t object, uint16_t id) const;
     bool setTag32(size_t object, uint16_t id, uint32_t value);
@@ -69,7 +77,6 @@ public:
     size_t clone(size_t object, uint32_t newHash);
     // prefix<model+1>..prefix<count> become copies of prefix<model>; older ones are renamed and hidden. The number made.
     int extendSeries(const std::string& prefix, int model, int count);
-    void setHash(size_t object, uint32_t hash);
     // Scripts named script whose colour keys change alpha: a copy named keepAs, then alpha held. The number made steady.
     int steadyColourScript(uint32_t script, uint32_t keepAs);
     // The alpha changes of every colour key (after the first) of the object's scripts named script.
@@ -77,6 +84,12 @@ public:
     bool hasScript(size_t object, uint32_t script) const;
     // The message target lists (Targ) holding this object id.
     std::vector<uint32_t> targetsOf(uint32_t guid) const;
+    // Resource names (RsNm) in index order.
+    std::vector<std::string> resourceNames() const;
+    // Copies an object subtree out of another package after this one's objects, as a new top-level object. Resources are
+    // matched by name and appended when missing; hashes this package already has get hash ^ salt; MsgR chunks are dropped.
+    // The copy's object indices in subtree order; empty with the reason in error on failure.
+    std::vector<size_t> copyFrom(const Package& other, size_t object, uint32_t salt, std::string* error);
     uint32_t topLevelCount() const { return m_topLevel; }
     uint32_t buttonCount() const;
 
@@ -95,7 +108,7 @@ private:
     std::vector<Chunk> m_top;           // top-level chunks; the Obj chunk and PkHd are rebuilt
     size_t m_objChunk = 0, m_headerChunk = 0;
     std::vector<uint8_t> m_rawHeader;   // the PkHd body as read
-    bool m_renamed = false;
+    bool m_renamed = false, m_headerChanged = false;
     std::string m_name, m_path;
     uint32_t m_version = 0, m_zero = 0, m_resources = 0, m_topLevel = 0;
     std::vector<Entry> m_entries;       // the Obj chunk's children in order

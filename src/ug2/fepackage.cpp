@@ -15,6 +15,8 @@ const uint32_t IdObjects = 0xcc6a624f;      // "Obj\xcc"
 const uint32_t IdObject = 0xea624f46;       // "FOb\xea"
 const uint32_t IdObjectData = 0x446a624f;   // "ObjD"
 const uint32_t IdButtons = 0x6e747542;      // "Butn"
+const uint32_t IdResources = 0xcc736552;    // "Res\xcc": RsNm names, RsRq one 24-byte record per resource
+const uint32_t IdResNames = 0x6d4e7352, IdResRequests = 0x71527352, IdMessages = 0x5267734d;  // "RsNm", "RsRq", "MsgR"
 const uint32_t IdTargets = 0x67726154;      // "Targ": per message, the ids of the objects it goes to
 const uint16_t TagTargetList = 0x744d;      // "Mt": message hash, then object ids
 const uint32_t IdScript = 0x70726353;       // "Scrp"
@@ -200,6 +202,34 @@ std::vector<uint8_t> packageChunk(const std::string& name, const std::vector<uin
     return out;
 }
 
+bool findPackage(const std::vector<uint8_t>& chunks, const std::string& name, Package* out)
+{
+    const uint32_t wanted = nameHash(name);
+    for (size_t at = 0; at + 8 <= chunks.size();)
+    {
+        const uint32_t id = get32(&chunks[at]), size = get32(&chunks[at + 4]);
+        if (size > chunks.size() - at - 8)
+            return false;
+        std::vector<uint8_t> bytes;
+        bool have = false;
+        if (id == ChunkRawPackage)
+        {
+            bytes.assign(chunks.begin() + long(at + 8), chunks.begin() + long(at + 8 + size));
+            have = true;
+        }
+        else if (id == ChunkPackage && size > 4 + 0x10 && get32(&chunks[at + 8]) == wanted)
+            have = unpack(&chunks[at + 12], size - 4, &bytes);
+        Package candidate;
+        if (have && candidate.parse(bytes) && nameHash(candidate.name()) == wanted)
+        {
+            *out = candidate;
+            return true;
+        }
+        at += 8 + size;
+    }
+    return false;
+}
+
 bool Package::parse(const std::vector<uint8_t>& bytes)
 {
     *this = Package();
@@ -270,7 +300,7 @@ bool Package::parse(const std::vector<uint8_t>& bytes)
 
 std::vector<uint8_t> Package::header() const
 {
-    if (!m_renamed && get32(m_rawHeader.data() + 12) == m_topLevel)
+    if (!m_renamed && !m_headerChanged && get32(m_rawHeader.data() + 12) == m_topLevel)
         return m_rawHeader;
     std::vector<uint8_t> out;
     put32(out, m_version);
@@ -394,6 +424,14 @@ void Package::setFlags(size_t object, uint32_t flags)
     Tag* t = findTag(object, TagParams);
     if (t && t->data.size() >= 12)
         set32(t->data, 8, flags);
+}
+
+void Package::setHash(size_t object, uint32_t value)
+{
+    setTag32(object, TagHash, value);
+    Tag* t = findTag(object, TagParams);
+    if (t && t->data.size() >= 8)
+        set32(t->data, 4, value);
 }
 
 std::vector<size_t> Package::subtree(size_t object) const
@@ -537,13 +575,6 @@ std::vector<uint32_t> Package::targetsOf(uint32_t id) const
     return out;
 }
 
-void Package::setHash(size_t object, uint32_t hash)
-{
-    setTag32(object, TagHash, hash);
-    if (Tag* params = findTag(object, TagParams))
-        set32(params->data, 4, hash);
-}
-
 int Package::extendSeries(const std::string& prefix, int model, int count)
 {
     const std::vector<size_t> models = find(nameHash(prefix + std::to_string(model)));
@@ -652,6 +683,188 @@ int Package::steadyColourScript(uint32_t script, uint32_t keepAs)
         }
     }
     return made;
+}
+
+namespace {
+
+struct ResourceTable
+{
+    size_t chunk = size_t(-1), names = 0, requests = 0;     // chunk: index in the top chunks; names, requests: index among its children
+    std::vector<Chunk> children;
+};
+
+bool readResources(const std::vector<Chunk>& top, ResourceTable* out)
+{
+    for (size_t i = 0; i < top.size(); ++i)
+    {
+        if (top[i].id != IdResources)
+            continue;
+        out->chunk = i;
+        if (!readChunks(top[i].data.data(), top[i].data.size(), &out->children))
+            return false;
+        bool haveNames = false, haveRequests = false;
+        for (size_t c = 0; c < out->children.size(); ++c)
+        {
+            if (out->children[c].id == IdResNames && !haveNames)
+                out->names = c, haveNames = true;
+            if (out->children[c].id == IdResRequests && !haveRequests)
+                out->requests = c, haveRequests = true;
+        }
+        return haveNames && haveRequests && out->children[out->requests].data.size() >= 4;
+    }
+    return false;
+}
+
+std::vector<std::string> namesOf(const ResourceTable& t)
+{
+    std::vector<std::string> out;
+    const std::vector<uint8_t>& names = t.children[t.names].data;
+    const uint32_t count = get32(t.children[t.requests].data.data());
+    size_t at = 0;
+    for (uint32_t i = 0; i < count && at <= names.size(); ++i)
+    {
+        const size_t end = std::find(names.begin() + long(at), names.end(), uint8_t(0)) - names.begin();
+        out.push_back(std::string(names.begin() + long(at), names.begin() + long(end)));
+        at = end + 1;
+    }
+    return out;
+}
+
+}
+
+std::vector<std::string> Package::resourceNames() const
+{
+    ResourceTable table;
+    return readResources(m_top, &table) ? namesOf(table) : std::vector<std::string>();
+}
+
+std::vector<size_t> Package::copyFrom(const Package& other, size_t object, uint32_t salt, std::string* error)
+{
+    std::vector<size_t> none;
+    ResourceTable mine, theirs;
+    if (!readResources(m_top, &mine) || !readResources(other.m_top, &theirs))
+    {
+        *error = "a package has no resource table";
+        return none;
+    }
+    std::vector<std::string> myNames = namesOf(mine);
+    const std::vector<std::string> theirNames = namesOf(theirs);
+    const std::vector<size_t> source = other.subtree(object);
+
+    std::vector<std::pair<uint32_t, uint32_t>> resources;     // their index, our index
+    bool changed = false;
+    for (size_t i : source)
+    {
+        const uint32_t type = other.type(i);
+        const Tag* params = other.findTag(i, TagParams);
+        if ((type != 1 && type != 2) || !params || params->data.size() < 16)
+            continue;
+        const uint32_t index = get32(params->data.data() + 12);
+        bool known = false;
+        for (const auto& r : resources)
+            known = known || r.first == index;
+        if (known)
+            continue;
+        if (index >= theirNames.size() || theirNames[index].empty())
+        {
+            *error = "object has resource index " + std::to_string(index) + " the donor does not list";
+            return none;
+        }
+        size_t at = 0;
+        while (at < myNames.size() && myNames[at] != theirNames[index])
+            ++at;
+        if (at == myNames.size())
+        {
+            std::vector<uint8_t>& names = mine.children[mine.names].data;
+            std::vector<uint8_t>& requests = mine.children[mine.requests].data;
+            size_t used = 0;
+            for (const std::string& n : myNames)
+                used += n.size() + 1;
+            names.resize(used);
+            const uint32_t offset = uint32_t(used);
+            names.insert(names.end(), theirNames[index].begin(), theirNames[index].end());
+            names.push_back(0);
+            while (names.size() % 4)
+                names.push_back(0);
+            std::vector<uint8_t> record(theirs.children[theirs.requests].data.begin() + long(4 + 24 * index),
+                                        theirs.children[theirs.requests].data.begin() + long(4 + 24 * (index + 1)));
+            set32(record, 4, offset);
+            requests.insert(requests.end(), record.begin(), record.end());
+            set32(requests, 0, uint32_t(myNames.size() + 1));
+            myNames.push_back(theirNames[index]);
+            ++m_resources;
+            changed = true;
+        }
+        resources.push_back({ index, uint32_t(at) });
+    }
+    if (changed)
+    {
+        std::vector<uint8_t> body;
+        for (const Chunk& c : mine.children)
+            writeChunk(body, c.id, c.data);
+        m_top[mine.chunk].data = body;
+    }
+
+    std::vector<uint32_t> taken;
+    for (size_t i = 0; i < m_objects.size(); ++i)
+        taken.push_back(hash(i));
+    uint32_t next = 0;
+    for (size_t i = 0; i < m_objects.size(); ++i)
+        next = std::max(next, guid(i) + 1);
+    std::vector<std::pair<uint32_t, uint32_t>> ids;
+    for (size_t i : source)
+        ids.push_back({ other.guid(i), next++ });
+
+    std::vector<size_t> added;
+    for (size_t n = 0; n < source.size(); ++n)
+    {
+        Object copy = other.m_objects[source[n]];
+        copy.chunks.erase(std::remove_if(copy.chunks.begin(), copy.chunks.end(), [](const Chunk& c) { return c.id == IdMessages; }),
+                          copy.chunks.end());
+        m_objects.push_back(copy);
+        const size_t at = m_objects.size() - 1;
+        Tag* params = findTag(at, TagParams);
+        set32(params->data, 0, ids[n].second);
+        const uint32_t old = other.hash(source[n]);
+        const bool collides = std::find(taken.begin(), taken.end(), old) != taken.end();
+        if (collides)
+        {
+            set32(params->data, 4, old ^ salt);
+            setTag32(at, TagHash, old ^ salt);
+        }
+        if (params->data.size() >= 16)
+        {
+            for (const auto& r : resources)
+            {
+                if ((other.type(source[n]) == 1 || other.type(source[n]) == 2) && get32(params->data.data() + 12) == r.first)
+                {
+                    set32(params->data, 12, r.second);
+                    break;
+                }
+            }
+        }
+        if (n == 0)
+        {
+            auto& tags = m_objects[at].tags;
+            tags.erase(std::remove_if(tags.begin(), tags.end(), [](const Tag& t) { return t.id == TagParent; }), tags.end());
+        }
+        else if (Tag* p = findTag(at, TagParent))
+        {
+            for (const auto& id : ids)
+            {
+                if (get32(p->data.data()) == id.first)
+                {
+                    set32(p->data, 0, id.second);
+                    break;
+                }
+            }
+        }
+        m_entries.push_back({ true, Chunk(), at });
+        added.push_back(at);
+    }
+    ++m_topLevel;
+    m_headerChanged = true;
+    return added;
 }
 
 }}

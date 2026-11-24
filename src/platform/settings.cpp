@@ -65,6 +65,7 @@ const Setting s_table[] =
 
     // ---- Developer: boot, front end ----
     BOOL("ui_log", Developer, 0, "Log the user interface positions the game sets.", 0),
+    BOOL("ps2_prompts", Developer, 1, "PS2-style prompts: button icons in every menu text and Help on Triangle; off is the PC menus.", 0),
     BOOL("pad_log", Developer, 0, "Log the pad bindings and the buttons pressed.", 0),
     STR("pad_script", Developer, "", "Scripted pad input for tests.", 0),
     BOOL("boot_race", Developer, 0, "Skip the menus and start a test race.", 0),

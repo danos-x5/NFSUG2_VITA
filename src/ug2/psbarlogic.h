@@ -99,15 +99,21 @@ const char* const OwnHelpScreens[] =
     "UI_PerformanceTuning_Drivetrain.fng", "UI_PerformanceTuning_Setting.fng",
 };
 
+// Package names compare without case (the game hashes them upper-cased).
+inline bool sameName(const char* a, const char* b)
+{
+    if (!a || !b)
+        return false;
+    for (; *a && *b && (*a | 0x20) == (*b | 0x20); ++a, ++b)
+        ;
+    return !*a && !*b;
+}
+
 inline bool hasOwnHelp(const char* screen)
 {
     for (const char* name : OwnHelpScreens)
     {
-        const char* a = name;
-        const char* b = screen ? screen : "";
-        for (; *a && *b && (*a | 0x20) == (*b | 0x20); ++a, ++b)
-            ;
-        if (!*a && !*b)
+        if (sameName(name, screen))
             return true;
     }
     return false;
@@ -133,10 +139,27 @@ inline HelpVerdict helpVerdict(uint32_t liveHelp, bool resolves, uint32_t flags,
     return { false, "none", "the screen's help id has no text and it offers no Tip" };
 }
 
-// Game flow state (0x8654A4) 4..8: region load to unload.
-inline bool trackSide(uint32_t flowState)
+// In-race and free-roam overlays: no bar, prompts in the panel's button row. Every other screen keeps the bar.
+const char* const PanelRowScreens[] =
 {
-    return flowState >= 4 && flowState <= 8;
+    "UI_Pause.fng", "UI_PauseOptions.fng", "UI_PauseOptionsMain.fng",
+    "UI_PostRace.fng", "UI_PostRaceStats.fng", "UI_PostRaceResults.fng", "UI_PostRace_TournResults.fng",
+    "UI_PostRace_TournStandings.fng", "UI_PostRaceReward.fng", "UI_SponsorPopup.fng", "UI_Sponsorship_new.fng",
+    "UI_OLPreRaceStart.fng", "UI_ReplayControl.fng",
+    "UI_SMS_Mailbox.fng", "UI_InGame_WorldMap.fng",
+    "UI_Status_Master.fng", "UI_Status_Career.fng", "UI_Status_Region.fng", "UI_Status_DVD.fng",
+    "UI_EngageMessageDialog.fng", "UI_EngageEventDialog.fng", "UI_EngageRaceDialog.fng", "UI_EngageShopDialog.fng",
+    "UI_Showcase_Preview.fng", "UI_Showcase_DPAD.fng",
+};
+
+inline bool panelRowScreen(const char* screen)
+{
+    for (const char* name : PanelRowScreens)
+    {
+        if (sameName(name, screen))
+            return true;
+    }
+    return false;
 }
 
 // The PC's in-game layouts of its bar items (0x5428B0): flag 0x10000 picks one by script name.
@@ -195,7 +218,7 @@ inline bool visibilityChanged(int applied, bool shown)
     return applied != (shown ? 1 : 0);
 }
 
-// The PC bar's bank/name switcher (0x537E60) fades these two in turn; hidden on the track side.
+// The PC bar's bank/name switcher (0x537E60) fades these two in turn; hidden on panel-row screens.
 const uint32_t PcMoney = 0xEB3A688A, PcName = 0xEB406FEC;
 
 struct Switcher
@@ -204,10 +227,10 @@ struct Switcher
     uint32_t saved;     // ours while it is stopped
 };
 
-// The switcher on the track side (stopped) or in the front end.
-inline Switcher switcherFor(bool trackSide, Switcher s)
+// The switcher on a panel-row screen (stopped) or with the bar.
+inline Switcher switcherFor(bool panelRow, Switcher s)
 {
-    if (trackSide)
+    if (panelRow)
         return { 0, s.current ? s.current : s.saved };
     if (s.saved && !s.current)
         return { s.saved, 0 };

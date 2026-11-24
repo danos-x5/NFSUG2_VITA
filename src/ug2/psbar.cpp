@@ -31,7 +31,7 @@ const reg32 StringFormat = 0x00786E70, ProfileName = 0x0083A9E0;
 const reg32 DataOffset = 0x2C, ObjectFlags = 0x1C, DirtyFlag = 0x400000;
 const char* const Bar = "UI_PC_Help_Bar.fng", *const Donor = "UI_OptionsController.fng";
 const char* const DonorArchive = "C:\\FRONTEND\\FrontB.lzc";
-const reg32 FlowState = 0x008654A4, GameMode = 0x00850078;
+const reg32 GameMode = 0x00850078;
 const reg32 DataX = 0x1C, DataAlpha = 0x0C, SwitcherCurrent = 0x3C;
 const reg32 BarObject = 0x008384D8, BarShown = 0x6C;
 
@@ -42,7 +42,7 @@ reg32 s_buffer = 0;
 bool s_missingLogged = false;
 
 InGameBuilt s_inGame;
-bool s_trackSide = false;
+bool s_panelRow = false;
 Layout s_layout = LayoutInGame;
 Prompt s_items[ItemCount];
 bool s_pairShown[LayoutCount][ItemCount] = {};
@@ -241,16 +241,16 @@ bool showPair(win32::WinApplication* app, x86::CPU& cpu, reg32 package, int item
     return true;
 }
 
-// No bank or name on the track side; both back in the front end.
-void bank(win32::WinApplication* app, x86::CPU& cpu, reg32 bar, reg32 package, bool trackSide)
+// No bank or name on panel-row screens; both back elsewhere.
+void bank(win32::WinApplication* app, x86::CPU& cpu, reg32 bar, reg32 package, bool panelRow)
 {
     const Switcher now = { rc::ld32(bar + SwitcherCurrent), s_switcherSaved };
-    const Switcher next = switcherFor(trackSide, now);
+    const Switcher next = switcherFor(panelRow, now);
     if (next.current != now.current)
     {
         rc::st32(bar + SwitcherCurrent, next.current);
         if (devLog())
-            pf::logInfo("psbar: bank/name switcher %s (object %08x)", trackSide ? "stopped on the track side" : "resumed", unsigned(next.current ? next.current : now.current));
+            pf::logInfo("psbar: bank/name switcher %s (object %08x)", panelRow ? "stopped on a panel-row screen" : "resumed", unsigned(next.current ? next.current : now.current));
     }
     s_switcherSaved = next.saved;
     const reg32 hashes[2] = { PcMoney, PcName };
@@ -260,7 +260,7 @@ void bank(win32::WinApplication* app, x86::CPU& cpu, reg32 bar, reg32 package, b
         const reg32 data = object ? rc::ld32(object + DataOffset) : 0;
         if (!data)
             continue;
-        if (trackSide)
+        if (panelRow)
         {
             if (s_bankAlpha[i] == ~0u)
                 s_bankAlpha[i] = rc::ld32(data + DataAlpha);
@@ -359,20 +359,19 @@ void beforeFill(win32::WinApplication* app, x86::CPU& cpu)
     s_second = secondPrompt(screenName ? screen.c_str() : nullptr, flags, [&](uint32_t bit) { return originalBit(app, cpu, BitMessage, bit); },
                             [&](uint32_t bit) { return originalBit(app, cpu, BitText, bit); });
     rc::st32(cpu.esp + 4, 0);
-    const reg32 flowState = rc::ld32(FlowState);
-    s_trackSide = trackSide(flowState) && s_inGame.pairs;
+    s_panelRow = panelRowScreen(screen.c_str()) && s_inGame.pairs;
     s_layout = layoutOf(flags);
-    if (s_trackSide)
+    if (s_panelRow)
     {
         const reg32 itemFlags = rc::ld32(GameMode) == 0x200 ? flags & ~0x4000u : flags;
         inGamePrompts(itemFlags, [&](uint32_t bit) { return originalBit(app, cpu, BitMessage, bit); },
                       [&](uint32_t bit) { return originalBit(app, cpu, BitText, bit); }, s_items);
     }
     static std::string s_stateKey;
-    const std::string stateKey = screen + "|" + std::to_string(flowState) + "|" + std::to_string(flags);
+    const std::string stateKey = screen + "|" + std::to_string(flags);
     if (devLog() && stateKey != s_stateKey)
-        pf::logInfo("psbar: screen '%s' flow state %u: %s; flags %08x, PC layout %s (%s)", screen.c_str(), unsigned(flowState),
-                    s_trackSide ? "in-game, prompts in the panel's button row" : "front end, the PS2 bar", unsigned(flags), LayoutScripts[s_layout],
+        pf::logInfo("psbar: screen '%s': %s; flags %08x, PC layout %s (%s)", screen.c_str(),
+                    s_panelRow ? "listed, no bar, prompts in the panel's button row" : "not listed, the PS2 bar", unsigned(flags), LayoutScripts[s_layout],
                     (flags & LayoutBit) ? "the screen's own" : "none given, bottom row");
     s_stateKey = stateKey;
     const reg32 live = screenName ? liveScreen(cpu, screenName) : 0;
@@ -418,8 +417,8 @@ void afterFill(win32::WinApplication* app, x86::CPU& cpu, reg32 bar)
     }
     const bool shown = rc::ld8(bar + BarShown) != 0;
     s_applied = shown ? 1 : 0;
-    bank(app, cpu, bar, package, s_trackSide);
-    if (!shown || s_trackSide)
+    bank(app, cpu, bar, package, s_panelRow);
+    if (!shown || s_panelRow)
     {
         call(app, cpu, HideObject, { root });
         if (shown)
@@ -468,8 +467,8 @@ void visibility(win32::WinApplication* app, x86::CPU& cpu, reg32 bar, bool show)
     if (!root)
         return;
     s_applied = show ? 1 : 0;
-    bank(app, cpu, bar, package, s_trackSide);
-    if (!show || s_trackSide)
+    bank(app, cpu, bar, package, s_panelRow);
+    if (!show || s_panelRow)
     {
         call(app, cpu, HideObject, { root });
         if (show)

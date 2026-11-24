@@ -70,8 +70,9 @@ const reg32 SetPadMask = 0x537950;          // cdecl (package name, mask): its f
 const reg32 HelpBarName = 0x790000;         // "UI_PC_Help_Bar.fng", from 0x50CEA0
 const reg32 SetScript = 0x51cf70;           // cdecl (object, script name, 1)
 const reg32 ScriptPulse = 0x78f6bc, ScriptHighlight = 0x78f228;
-const reg32 CaptureAction = 0x33c, CaptureFlag = 0x870768;
-const reg32 EscapeFlag = 0x87075c, PadWords = 0x870760, PadIndex = 0x230;   // the capture poll's Escape flag, pad array pointer, slot pad index     // slot field and global the PC capture runs on
+const reg32 CaptureAction = 0x33c, CaptureFlag = 0x870768;      // slot field and global the PC capture runs on
+const reg32 EscapeFlag = 0x87075c;          // set only by a buffered keyboard Escape (0x5C19BF); our GetDeviceData sends none
+const reg32 PadWords = 0x870760, PadIndex = 0x230, PadStateBytes = 0x110, PovOffset = 0x20;   // DIJOYSTATE2 copies, slot's pad
 const reg32 MessageButton1 = 0xc519bfc0;
 const reg32 PadMessages[] = { 0x406415e3, MessageAccept, 0x911ab364, 0x9120409e, 0xb5971bf1, 0x72619778, 0x911c0a4b, 0xc519bfbf,
                               MessageButton1, 0xc519bfc1, 0xc519bfc2, 0xb5af2461, 0x5073ef13, 0xd9feec59, 0x911e0fdc };
@@ -151,12 +152,10 @@ enum WaitPhase { WaitNone, WaitArmed, WaitGuard };
 struct Wait
 {
     WaitPhase phase = WaitNone;
-    controlsdata::Entry entry = controlsdata::EntrySteerLeft;
+    customize::Wait data;
     reg32 slot = 0, value = 0;                  // the pad slot, the row's value object
-    customize::StickWatch watch;
-    customize::Verdict result = customize::Ignore;
-    controlsdata::Control control = controlsdata::CtlCross;
-    std::string found;                          // what the capture saw, for logs
+    int frames = 0, rearms = 0;
+    int finds[3] = {};                          // our capture natives reached since the last arm: button, axis, hat
 };
 Wait s_wait;
 
@@ -385,7 +384,9 @@ void padMasks(win32::WinApplication* app, x86::CPU& cpu, reg32 mask)
 
 void armCapture(win32::WinApplication* app, x86::CPU& cpu)
 {
-    call(app, cpu, ArmCapture, s_wait.slot, { customize::armAction(s_wait.entry), 0 });
+    call(app, cpu, ArmCapture, s_wait.slot, { customize::armAction(s_wait.data.entry), 0 });
+    for (int& n : s_wait.finds)
+        n = 0;
 }
 
 // As the PC capture ends one (0x5B853A).
@@ -404,9 +405,12 @@ void startWait(win32::WinApplication* app, x86::CPU& cpu, const Row& r)
         pf::logError("controlsshell: no pad slot, no bind wait for %s", entryName(r.index).c_str());
         return;
     }
+    uint32_t inputs;
+    float sticks[4];
+    win32::Gamepad::getPad(&inputs, sticks);
     s_wait = Wait();
     s_wait.phase = WaitArmed;
-    s_wait.entry = controlsdata::Entry(r.index);
+    customize::beginWait(&s_wait.data, controlsdata::Entry(r.index), inputs);
     s_wait.slot = slot;
     s_wait.value = rc::ld32(r.row + ValueObject);
     padMasks(app, cpu, 0);
@@ -414,26 +418,28 @@ void startWait(win32::WinApplication* app, x86::CPU& cpu, const Row& r)
     if (s_wait.value)
         call(app, cpu, SetScript, 0, { s_wait.value, ScriptPulse, 1 });
     setInstruction(app, cpu, controlsbake::TextPressButton);
-    BIND_LOG("controlsshell: bind wait for %s starts: slot %08x armed with action %u%s", entryName(r.index).c_str(), unsigned(slot),
-             unsigned(customize::armAction(s_wait.entry)), customize::watchesSticks(s_wait.entry) ? ", sticks watched by us" : "");
+    BIND_LOG("controlsshell: bind wait for %s starts: slot %08x armed with action %u%s; held now, not presses: %s", entryName(r.index).c_str(),
+             unsigned(slot), unsigned(customize::armAction(s_wait.data.entry)),
+             customize::watchesSticks(s_wait.data.entry) ? ", sticks watched by us" : ", takes no stick", customize::inputNames(inputs).c_str());
 }
 
 // The capture's result written, the flash stopped, then the release guard.
 void finishWait(win32::WinApplication* app, x86::CPU& cpu)
 {
-    const std::string name = entryName(s_wait.entry);
+    const customize::Wait& w = s_wait.data;
+    const std::string name = entryName(w.entry);
     controlstore::Backend& store = controlslink::backend();
-    if (s_wait.result == customize::Cancel)
+    if (w.result == customize::Cancel)
     {
         for (reg32 map : { 0u, 2u, 3u, 1u })
             call(app, cpu, SelectMap, s_wait.slot, { map });
-        BIND_LOG("controlsshell: bind wait for %s cancelled by %s", name.c_str(), s_wait.found.c_str());
+        BIND_LOG("controlsshell: bind wait for %s cancelled by %s after %d frames", name.c_str(), w.found.c_str(), s_wait.frames);
     }
     else
     {
         const int typeBefore = controlstore::type(store);
-        const bool changed = controlstore::bindEntry(store, s_wait.entry, s_wait.control);
-        BIND_LOG("controlsshell: bind %s to %s (%s): %s", name.c_str(), ControlNames[s_wait.control], s_wait.found.c_str(),
+        const bool changed = controlstore::bindEntry(store, w.entry, w.control);
+        BIND_LOG("controlsshell: bind %s to %s (%s, frame %d): %s", name.c_str(), ControlNames[w.control], w.found.c_str(), s_wait.frames,
                  changed ? "written" : "no change");
         if (changed)
         {
@@ -465,42 +471,35 @@ void waitFrame(win32::WinApplication* app, x86::CPU& cpu)
         }
         return;
     }
-    static uint32_t s_lastInputs = 0;
-    if (s_wait.result == customize::Ignore && customize::onPadFrame(inputs) == customize::Cancel && !(s_lastInputs & win32::controls::bit(win32::controls::Start)))
+    ++s_wait.frames;
+    std::string why;
+    customize::waitPad(&s_wait.data, inputs, sticks, &why);
+    if (!why.empty())
+        BIND_LOG("controlsshell: bind wait frame %d: %s", s_wait.frames, why.c_str());
+    if (s_wait.data.result != customize::Ignore)
     {
-        s_wait.result = customize::Cancel;
-        s_wait.found = "Start (our pad check)";
-        BIND_LOG("controlsshell: Start pressed during the bind wait (inputs %08x): cancelling", unsigned(inputs));
-        endCapture(s_wait.slot);
-    }
-    s_lastInputs = inputs;
-    if (s_wait.result == customize::Ignore &&
-        customize::onSticks(&s_wait.watch, s_wait.entry, sticks, &s_wait.control) == customize::Bind)
-    {
-        s_wait.result = customize::Bind;
-        s_wait.found = "our stick watch";
-        endCapture(s_wait.slot);
-    }
-    if (s_wait.result != customize::Ignore)
-    {
+        if (s_wait.phase == WaitArmed && rc::ld32(s_wait.slot + CaptureAction))
+            endCapture(s_wait.slot);
         finishWait(app, cpu);
         return;
     }
-    if (!rc::ld32(s_wait.slot + CaptureAction))
+    const reg32 action = rc::ld32(s_wait.slot + CaptureAction);
+    if (s_wait.frames % 60 == 0)
+        BIND_LOG("controlsshell: bind wait frame %d: still waiting, capture action %u, flag %u, inputs %s, sticks %.2f %.2f %.2f %.2f, "
+                 "finds since arming: %d buttons, %d axes, %d hats", s_wait.frames, unsigned(action), unsigned(rc::ld8(CaptureFlag)),
+                 customize::inputNames(inputs).c_str(), double(sticks[0]), double(sticks[1]), double(sticks[2]), double(sticks[3]),
+                 s_wait.finds[0], s_wait.finds[1], s_wait.finds[2]);
+    if (!action)
     {
         const reg32 esc = rc::ld8(EscapeFlag);
-        std::string hats;
-        const reg32 words = rc::ld32(PadWords), index = rc::ld32(s_wait.slot + PadIndex);
-        for (reg32 h = 0; words && h < 4; ++h)
-        {
-            const reg32 value = rc::ld16(words + (index * 0x44 + h) * 4 + 0x20);
-            if (value != 0xFFFF)
-                hats += " hat" + std::to_string(h) + "=" + std::to_string(value);
-        }
-        BIND_LOG("controlsshell: the PC capture ended with nothing we take, armed again: Escape flag %u%s, inputs %08x, sticks %.2f %.2f %.2f %.2f%s",
-                 unsigned(esc), esc ? " (cleared)" : "", unsigned(inputs), double(sticks[0]), double(sticks[1]), double(sticks[2]), double(sticks[3]),
-                 hats.empty() ? ", no hat off centre" : hats.c_str());
-        rc::st8(EscapeFlag, 0);
+        ++s_wait.rearms;
+        pf::logError("controlsshell: bind wait frame %d: the PC capture ended without a verdict (Escape flag %u, finds since arming: %d "
+                     "buttons, %d axes, %d hats%s); armed again (%d)", s_wait.frames, unsigned(esc), s_wait.finds[0], s_wait.finds[1],
+                     s_wait.finds[2], s_wait.finds[0] + s_wait.finds[1] + s_wait.finds[2] ? "" :
+                     ": our natives 0x5B8460/0x5B8250/0x5C1720 were never reached, is src/ug2/generated older than NATIVE_OVERRIDES?",
+                     s_wait.rearms);
+        if (esc)
+            rc::st8(EscapeFlag, 0);
         armCapture(app, cpu);
     }
 }
@@ -1017,38 +1016,40 @@ void configure(win32::WinApplication& app)
     pf::logInfo("controlsshell: Options > Controls opens %s (Joypad Configuration, Customize below it)", top);
 }
 
-bool captureButton(reg32 slot, int button)
+namespace {
+
+// PC capture finds (0x5CA720): ours while our slot is armed.
+bool takeFind(reg32 slot, int kind, const std::function<customize::Verdict(std::string*)>& judge)
 {
     if (s_wait.phase != WaitArmed || slot != s_wait.slot)
         return false;
-    if (s_wait.result != customize::Ignore)
-        return true;
-    const customize::Verdict v = customize::onButton(s_wait.entry, button, &s_wait.control);
-    BIND_LOG("controlsshell: PC capture: button %d (%s)", button, v == customize::Bind ? ControlNames[s_wait.control] :
-             v == customize::Cancel ? "Start, cancels" : "ignored, the wait goes on");
-    if (v == customize::Ignore)
-        return true;
-    s_wait.result = v;
-    s_wait.found = "button " + std::to_string(button);
-    endCapture(slot);
+    ++s_wait.finds[kind];
+    std::string why;
+    const customize::Verdict v = judge(&why);
+    BIND_LOG("controlsshell: bind wait frame %d: PC capture: %s", s_wait.frames, why.c_str());
+    if (v != customize::Ignore)
+        endCapture(slot);
     return true;
+}
+
+}
+
+bool captureButton(reg32 slot, int button)
+{
+    return takeFind(slot, 0, [&](std::string* why) { return customize::waitButton(&s_wait.data, button, why); });
 }
 
 bool captureAxis(reg32 slot, int32_t axisId, int direction)
 {
-    if (s_wait.phase != WaitArmed || slot != s_wait.slot)
-        return false;
-    if (s_wait.result != customize::Ignore)
-        return true;
-    const customize::Verdict v = customize::onAxis(s_wait.entry, axisId, &s_wait.control);
-    BIND_LOG("controlsshell: PC capture: axis %d direction %+d (%s)", int(axisId), direction,
-             v == customize::Bind ? ControlNames[s_wait.control] : "ignored, the wait goes on");
-    if (v == customize::Ignore)
-        return true;
-    s_wait.result = v;
-    s_wait.found = "axis " + std::to_string(axisId);
-    endCapture(slot);
-    return true;
+    return takeFind(slot, 1, [&](std::string* why) { return customize::waitAxis(&s_wait.data, axisId, direction, why); });
+}
+
+bool captureHat(reg32 slot, int hat)
+{
+    return takeFind(slot, 2, [&](std::string* why) {
+        const reg32 words = rc::ld32(PadWords), pov = words ? rc::ld32(words + rc::ld32(slot + PadIndex) * PadStateBytes + PovOffset + 4 * hat) : 0;
+        return customize::waitHat(&s_wait.data, hat, pov, why);
+    });
 }
 
 bool inputHeld()

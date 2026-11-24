@@ -11,9 +11,10 @@ namespace ug2 { namespace controlsshell {
 void configure(win32::WinApplication& app);
 // Per frame on the game thread.
 void frame(win32::WinApplication* app, x86::CPU& cpu);
-// The PC capture found a button or axis; false: not ours.
+// The PC capture found a button, axis or hat; false: not ours.
 bool captureButton(x86::reg32 slot, int button);
 bool captureAxis(x86::reg32 slot, int32_t axisId, int direction);
+bool captureHat(x86::reg32 slot, int hat);
 // A bind wait holds the pad, the garage stick included.
 bool inputHeld();
 

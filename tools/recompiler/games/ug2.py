@@ -62,8 +62,9 @@ NATIVE_OVERRIDES = [
     0x4a5d90,
     # Controls in registry.txt (src/ug2/controlslink.cpp): the profile's control load and save
     0x5b9570, 0x5b9420,
-    # Customize's bind wait takes the PC pad capture's button and axis (src/ug2/native/sub_5b8460.cpp, sub_5b8250.cpp)
-    0x5b8460, 0x5b8250,
+    # Customize's bind wait takes the PC pad capture's button, axis and hat (src/ug2/native/sub_5b8460.cpp, sub_5b8250.cpp,
+    # sub_5c1720.cpp)
+    0x5b8460, 0x5b8250, 0x5c1720,
     # Menu up/down ignore the right stick (src/ug2/native/sub_571d50.cpp)
     0x571d50,
     # Free look (src/ug2/freelook.cpp): chase camera update and look-at matrix

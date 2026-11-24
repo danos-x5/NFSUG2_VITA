@@ -9,9 +9,8 @@
 
 namespace ug2 { namespace freelook_math {
 
-const float SnapDegrees = 8.0f;         // stick this close to straight up or down reads exactly 0 or 180
 const float RearDegrees = 90.0f;        // aims this far round or more snap; nearer ahead they swing
-const int   DefaultSwingSpeed = 360;    // degrees a second
+const int   DefaultSwingSpeed = 180;    // degrees a second
 
 struct Vec
 {
@@ -41,11 +40,7 @@ inline Aim aim(float x, float y)
 {
     if (!(std::hypot(x, y) > 0.0f))
         return { false, 0.0f };
-    float yaw = float(std::atan2(double(x), double(-y)) * (180.0 / 3.14159265358979323846));
-    if (std::fabs(yaw) <= SnapDegrees)
-        yaw = 0.0f;
-    else if (std::fabs(yaw) >= 180.0f - SnapDegrees)
-        yaw = 180.0f;
+    const float yaw = float(std::atan2(double(x), double(-y)) * (180.0 / 3.14159265358979323846));
     return { true, yaw };
 }
 

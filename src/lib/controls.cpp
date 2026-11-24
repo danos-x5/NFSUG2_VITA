@@ -1,5 +1,4 @@
 #include <lib/controls.h>
-#include <platform/cached.h>
 #include <platform/config.h>
 #include <platform/log.h>
 #ifdef __vita__
@@ -343,18 +342,16 @@ static const PadButton s_padButtons[] =
 
 static bool s_touchReady = false;
 static bool s_rearTouch = true;
-static bool s_frontTouch = false;
 static SceTouchPanelInfo s_panels[2];   // front, back
 
-// rear_touch=off and front_touch (off by default) choose the panels read.
+// Front panel always; rear_touch=off skips the rear one.
 static void initTouch()
 {
     s_touchReady = true;
     s_rearTouch = pf::Config::getBool("rear_touch", true);
-    s_frontTouch = frontTouchEnabled();
     for (int port = 0; port < 2; ++port)
     {
-        if (!(port ? s_rearTouch : s_frontTouch))
+        if (port && !s_rearTouch)
             continue;
         sceTouchSetSamplingState(port, SCE_TOUCH_SAMPLING_STATE_START);
         if (sceTouchGetPanelInfo(port, &s_panels[port]) < 0)
@@ -403,7 +400,7 @@ PadSample readPad()
         for (SceUInt32 i = 0; i < touch.reportNum && i < SCE_TOUCH_MAX_REPORT; ++i)
             sample.inputs |= bit(Quadrants[touch.report[i].y >= centreY][touch.report[i].x >= centreX]);
     }
-    if (s_frontTouch && sceTouchPeek(SCE_TOUCH_PORT_FRONT, &touch, 1) >= 0)
+    if (sceTouchPeek(SCE_TOUCH_PORT_FRONT, &touch, 1) >= 0)
     {
         const SceTouchPanelInfo& panel = s_panels[SCE_TOUCH_PORT_FRONT];
         for (SceUInt32 i = 0; i < touch.reportNum && i < SCE_TOUCH_MAX_REPORT && sample.touchCount < PadSample::MaxTouches; ++i)
@@ -455,9 +452,46 @@ PadSample readPad()
 }
 #endif
 
-bool frontTouchEnabled()
+// ---- HUD touch zones ----
+
+static std::atomic<bool>               s_freeRoam(false);
+static std::atomic<const ZonePolygon*> s_hudZones(nullptr);
+static std::atomic<uint32_t>           s_worldRequests(0);
+
+void setFreeRoam(bool freeRoam)
 {
-    return pf::cachedStatic([] { return pf::Config::getBool("front_touch", true); });
+    s_freeRoam = freeRoam;
+}
+
+bool freeRoam()
+{
+    return s_freeRoam;
+}
+
+bool insidePolygon(const ZonePolygon& polygon, float x, float y)
+{
+    bool inside = false;
+    for (int i = 0, j = polygon.count - 1; i < polygon.count; j = i++)
+    {
+        const ZonePoint a = polygon.points[i], b = polygon.points[j];
+        const float dx = b.x - a.x, dy = b.y - a.y, length2 = dx * dx + dy * dy;
+        const float t = length2 > 0.0f ? std::fmax(0.0f, std::fmin(1.0f, ((x - a.x) * dx + (y - a.y) * dy) / length2)) : 0.0f;
+        if (std::hypot(a.x + t * dx - x, a.y + t * dy - y) <= 0.5f)
+            return true;
+        if ((a.y > y) != (b.y > y) && x < a.x + (y - a.y) * dx / dy)
+            inside = !inside;
+    }
+    return inside;
+}
+
+void setHudZones(const ZonePolygon* zones)
+{
+    s_hudZones = zones;
+}
+
+uint32_t takeWorldRequests()
+{
+    return s_worldRequests.exchange(0);
 }
 
 // ---- Pad script ----
@@ -565,6 +599,68 @@ Mapper::Mapper()
     ,   m_flickArmed{ false, false }
     ,   m_shiftEndUs{ { 0, 0 }, { 0, 0 } }
 {
+    for (Tap& tap : m_taps)
+        tap.id = -1;
+}
+
+// Short still taps in a zone, in free roam, request its action.
+void Mapper::updateTaps(const PadSample& pad, uint64_t nowUs)
+{
+    static const uint64_t TapMaxUs = 300000;
+    static const float TapMaxMove = 0.04f;
+#ifdef DEV_TOOLS
+    static const char* const ZoneNames[HudZoneCount] = { "World Map", "Read SMS", "Enter Shop", "Career Stats" };
+#endif
+    for (Tap& tap : m_taps)
+        tap.seen = false;
+    for (int i = 0; i < pad.touchCount; ++i)
+    {
+        const PadSample::Touch& touch = pad.touches[i];
+        Tap* tap = nullptr;
+        for (Tap& t : m_taps)
+        {
+            if (t.id == touch.id)
+                tap = &t;
+        }
+        for (Tap& t : m_taps)
+        {
+            if (!tap && t.id < 0)
+                tap = &t;
+        }
+        if (!tap)
+            continue;
+        if (tap->id != touch.id)
+            *tap = { touch.id, nowUs, touch.x, touch.y, 0.0f, true };
+        tap->seen = true;
+        tap->farthest = std::fmax(tap->farthest, std::hypot(touch.x - tap->startX, touch.y - tap->startY));
+    }
+    for (Tap& tap : m_taps)
+    {
+        if (tap.id < 0 || tap.seen)
+            continue;
+        const bool quick = nowUs - tap.startUs <= TapMaxUs && tap.farthest <= TapMaxMove;
+        tap.id = -1;
+        const float x = tap.startX * PanelWidth, y = tap.startY * PanelHeight;
+        const ZonePolygon* zones = s_hudZones;
+        int zone = 0;
+        while (zones && zone < HudZoneCount && !insidePolygon(zones[zone], x, y))
+            ++zone;
+        const bool inZone = zones && zone < HudZoneCount;
+        if (s_freeRoam && quick && inZone)
+            s_worldRequests |= 1u << zone;
+#ifdef DEV_TOOLS
+        const char* what = inZone ? ZoneNames[zone] : "no";
+        if (!s_freeRoam)
+            pf::logInfo("controls: touch at %.0f, %.0f px (%s zone) ignored: not free roam", double(x), double(y), what);
+        else if (!quick)
+            pf::logInfo("controls: touch at %.0f, %.0f px (%s zone) ignored: not a tap (%.0f ms, moved %.0f px)", double(x),
+                        double(y), what, double(nowUs - tap.startUs) / 1000.0, double(tap.farthest * PanelWidth));
+        else if (!inZone)
+            pf::logInfo("controls: tap at %.0f, %.0f px ignored: outside the zones", double(x), double(y));
+        else
+            pf::logInfo("controls: tap at %.0f, %.0f px in the %s zone", double(x), double(y), what);
+#endif
+    }
 }
 
 static float clampUnit(float v)
@@ -623,6 +719,7 @@ State Mapper::update(const PadSample& pad, uint64_t nowUs)
     }
     if (nowUs < m_selectPulseEndUs)
         state.buttons |= uint32_t(1) << s_selectTapButton;
+    updateTaps(pad, nowUs);
 
     float stick[2][2];
     for (int side = 0; side < 2; ++side)

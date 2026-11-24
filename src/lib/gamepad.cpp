@@ -267,9 +267,7 @@ void pump()
             pad.sticks[i] = s_injected.sticks[i];
     s_rightStick[0] = pad.sticks[2];
     s_rightStick[1] = pad.sticks[3];
-    if (!controls::frontTouchEnabled())
-        pad.touchCount = 0;
-    else if (s_injected.touchCount)
+    if (s_injected.touchCount)
     {
         memcpy(pad.touches, s_injected.touches, sizeof(pad.touches));
         pad.touchCount = s_injected.touchCount;
@@ -487,8 +485,6 @@ void Gamepad::getFixedRightStick(float* x, float* y)
 
 bool Gamepad::getTouch(Touch* touch, bool button)
 {
-    if (!controls::frontTouchEnabled())
-        return false;
     pf::LwLockGuard lock(s_mutex);
     if (!button)
     {

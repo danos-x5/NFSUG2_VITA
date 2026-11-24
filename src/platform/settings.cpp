@@ -31,13 +31,11 @@ const Setting s_table[] =
 
     // ---- Display ----
     ENUM("frame_rate", Display, 0, "30|60|0", "30 locks to 30 fps for steady pacing; 60 shows each frame for one vblank; 0 unlocks.", 0),
-    BOOL("widescreen", Display, 1, "On fills the 16:9 screen with the HUD at the edges; off is the original 4:3 with black bars.", 0),
     ENUM("gfx_preset", Display, 0, "vita|max", "Graphics the port is tuned for, or everything on (much slower). The Display menu changes them.", 0),
     ENUM("movies", Display, 1, "game|native|vp6|vp6only", "native: the .mp4s, Vita decoder; vp6: else native VP6 (vp6only: VP6 always); game: the game's own decoder.", 0),
 
     // ---- Controls ----
     BOOL("rear_touch", Controls, 1, "Rear touch pad works as L2, R2, L3 and R3, unbound until set in the Controls screen.", SettingInGame),
-    BOOL("front_touch", Controls, 1, "Touching the screen clicks like a mouse in the menus; no cursor is drawn.", 0),
     BOOL("garage_stick", Controls, 1, "The right stick turns the car in the garage and the customisation menus.", SettingInGame),
     INT("left_stick_deadzone", Controls, 15, 0, 50, 1, "Left stick dead zone in percent, while it steers, accelerates/brakes or shifts.", SettingInGame),
     INT("left_stick_saturation", Controls, 94, 50, 100, 1, "Left stick travel that counts as full, in percent; only while it steers, accelerates/brakes or shifts.", SettingInGame),
@@ -333,8 +331,8 @@ const Setting s_table[] =
 #undef FAST
 
 // Keys that no longer exist: a cfg line for one is skipped without a message.
-const char* const s_retired[] = { "control_type", "custom_binds", "left_stick_mode", "right_stick_mode", "dpad_mode",
-                                  "garage_stick_deadzone" };
+const char* const s_retired[] = { "front_touch", "widescreen", "control_type", "custom_binds", "left_stick_mode", "right_stick_mode",
+                                  "dpad_mode", "garage_stick_deadzone" };
 
 const SettingAlias s_aliases[] =
 {

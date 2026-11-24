@@ -115,6 +115,7 @@ controller (Cross is shown as Button 3), and the tables below are the defaults.
 | Cross | Select |
 | Circle | Back |
 | Start | Start, skip movie |
+| Touch screen | Tap an item like a mouse click (no cursor is drawn) |
 
 ### Driving
 
@@ -138,6 +139,10 @@ controller (Cross is shown as Button 3), and the tables below are the defaults.
 | D-pad right | Read SMS |
 | D-pad down | Career statistics |
 | D-pad left | World map |
+| Tap the minimap | World map |
+| Tap the arms of the ring at the top left of the screen: up, right, down | Enter a race or shop, read SMS, career statistics |
+
+The taps always work, whatever the buttons are bound to.
 
 Text fields, such as a profile name, open the Vita keyboard. To quit, use the PS button.
 
@@ -190,7 +195,7 @@ The settings files are under the game folder, `ux0:data/NeedForSpeedUnderground2
 
 ### Settings file
 
-With nothing changed the game runs locked to 30 frames a second, in widescreen, with the touch screen on as a replacement for a mouse.
+With nothing changed the game runs locked to 30 frames a second, in widescreen, with the touch screen as a replacement for a mouse.
 
 The first time the game starts it writes a settings file, `ux0:data/NeedForSpeedUnderground2/NeedForSpeedUnderground2.cfg`.
 Every setting in it is listed at its default behind a `#`. To change one, remove the `#` at the start of its line,
@@ -205,10 +210,8 @@ Delete the file to get a fresh copy on the next start.
 | Setting | Values | What it does |
 |---------|--------|--------------|
 | `frame_rate` | `30` (default), `0` | Locked to 30 frames a second for steady pacing, or unlocked |
-| `widescreen` | `on` (default), `off` | Full 16:9 picture with the HUD at the screen edges, or the original 4:3 one with black bars |
 | `gfx_preset` | `vita` (default), `max` | Graphics the port is tuned for, or everything on (much slower). Can be changed in game Options -> Display|
 | `rear_touch` | `on` (default), `off` | Rear touch pad L2, R2, L3, R3 (unbound until set in Options > Controls) |
-| `front_touch` | `on` (default), `off` | Touching the screen works as a mouse click in the menus; no cursor is drawn |
 | `garage_stick` | `on` (default), `off` | The right stick turns the car in the garage and customisation menus. `garage_stick_deadzone` (default `30`, percent) tunes it. The right stick does not move menu selections |
 | `dev_world_lod_pixels` | `0` (default, off), a width in pixels | Experimental. Scenery narrower than this on screen uses its simpler model. `128` gives more speed; higher values show more pop-in. The old name `world_lod_pixels` still works |
 | `dev_world_min_pixels` | `0` (default, off) to `64` | Experimental. Scenery smaller than this on screen is not drawn. More speed, more pop-in. The old name `world_min_pixels` still works |

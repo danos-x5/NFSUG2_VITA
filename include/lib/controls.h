@@ -96,9 +96,6 @@ struct PadSample
 
 PadSample readPad();
 
-// front_touch (off by default): the front panel is the mouse.
-bool frontTouchEnabled();
-
 #ifndef __vita__
 // Host builds: readPad returns the source's sample, or without one the last setPadState sample (keyboard frontends).
 typedef PadSample (*PadSource)(void* context);
@@ -169,6 +166,33 @@ extern const int HatRight;
 // Hat angle in hundredths of a degree; -1 centred.
 int hatAngle(bool up, bool down, bool left, bool right);
 
+// Set by the pad hook while driving in free roam.
+void setFreeRoam(bool freeRoam);
+bool freeRoam();
+
+// Free-roam touch zones, fixed on the screen: a short tap requests the zone's world action, whatever the buttons
+// do or the HUD shows. The pad hook sends it as the game's joy event.
+enum HudZone { HudMap, HudMessages, HudShop, HudCareer, HudZoneCount };
+struct ZonePoint
+{
+    float x, y;                 // display pixels
+};
+// A zone's outline, in either winding.
+struct ZonePolygon
+{
+    static const int MaxPoints = 8;
+    int       count;
+    ZonePoint points[MaxPoints];
+};
+// The front panel in display pixels.
+const float PanelWidth = 960.0f, PanelHeight = 544.0f;
+// Inside or on an edge (within half a pixel).
+bool insidePolygon(const ZonePolygon& polygon, float x, float y);
+// HudZoneCount polygons by HudZone, kept by pointer; null for none.
+void setHudZones(const ZonePolygon* zones);
+// Bit per HudZone (1 << zone) tapped since the last call.
+uint32_t takeWorldRequests();
+
 // What the game gets from one PadSample.
 struct State
 {
@@ -194,6 +218,17 @@ private:
     uint64_t    m_selectPulseEndUs; // the Select tap's button is reported until then
     bool        m_flickArmed[2];    // per stick: back under the re-arm level since the last flick
     uint64_t    m_shiftEndUs[2][2]; // per stick: up and down flick hats end
+    struct Tap
+    {
+        int      id;                // -1 for a free entry
+        uint64_t startUs;
+        float    startX, startY;
+        float    farthest;          // greatest distance moved from the start
+        bool     seen;
+    };
+    Tap         m_taps[PadSample::MaxTouches];
+
+    void updateTaps(const PadSample& pad, uint64_t nowUs);
 };
 
 // Radial dead zone and response curve of one stick.

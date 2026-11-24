@@ -13,8 +13,7 @@ namespace {
 
 using fepackage::nameHash;
 
-const uint32_t TitleObject = 0x42adb44c, TitleGroup = 0x8d7e0c53;     // the title text and the group around title and list
-const float InstructionX = 37.0f, InstructionY = 293.0f;     // in the title group: just under the last visible row
+const uint32_t TitleObject = 0x42adb44c, InnerPanel = 0x371f1c93;     // the title text, the list's box
 const uint32_t RowBar = 0xa67c3fe2, RowBarRight = 0xd8fdd418, RowBarLeft = 0xd8fdd419;     // a row group's bar and end caps
 const float BarCenter = 3.115f, BarWidth = 523.35f;
 const float PictureShiftX = -37.0f, PictureWidth = 640.0f, PictureHeight = 320.0f;     // controls-overhaul's picture area
@@ -50,8 +49,8 @@ void roomForTexts(fepackage::Package& p, int rows)
     }
 }
 
-// The PC instruction label, shown from Init on; fades like the PC's.
-long instructionLine(fepackage::Package& p, const fepackage::Package* donor, std::string* error)
+// The PC instruction label, shown from Init on; same gap under the list.
+long instructionLine(fepackage::Package& p, const fepackage::Package* donor, std::string* error, float* gap)
 {
     const std::vector<size_t> label = donor ? donor->find(nameHash(InstructionLabel)) : std::vector<size_t>();
     if (label.size() != 1)
@@ -68,12 +67,12 @@ long instructionLine(fepackage::Package& p, const fepackage::Package* donor, std
     p.addResponses(line, *donor, label[0]);
     for (uint32_t message : p.responseMessages(line))
         p.addTarget(message, p.guid(line));
-    const std::vector<size_t> group = p.find(TitleGroup);
-    if (group.size() == 1)
+    const ListLayout ours = listLayout(p, OptionsLines), theirs = listLayout(*donor, PcControllerLines);
+    float x, y;
+    if (ours.valid && theirs.valid && position(*donor, nameHash(InstructionLabel), &x, &y))
     {
-        p.setParent(line, p.guid(group[0]));
-        setFloat(p.tagData(line, TagData), 0x1c, InstructionX);
-        setFloat(p.tagData(line, TagData), 0x20, InstructionY);
+        *gap = y - theirs.bottom;
+        setFloat(p.tagData(line, TagData), 0x20, ours.bottom + *gap);
     }
     p.setTag32(line, TagTextId, TextConfigure);
     if (p.tag32(line, TagBuffer) < 64)
@@ -118,6 +117,64 @@ int countSlots(const fepackage::Package& p)
     return n;
 }
 
+bool position(const fepackage::Package& p, uint32_t hash, float* x, float* y)
+{
+    const std::vector<size_t> found = p.find(hash);
+    if (found.size() != 1)
+        return false;
+    const std::vector<uint8_t>* data = p.tagData(found[0], TagData);
+    if (!data || data->size() < 0x24)
+        return false;
+    memcpy(x, &(*data)[0x1c], 4);
+    memcpy(y, &(*data)[0x20], 4);
+    return true;
+}
+
+namespace {
+
+float size(const fepackage::Package& p, size_t object, size_t at)
+{
+    const std::vector<uint8_t>* data = p.tagData(object, TagData);
+    float v = 0;
+    if (data && data->size() >= at + 4)
+        memcpy(&v, &(*data)[at], 4);
+    return v;
+}
+
+}
+
+ListLayout listLayout(const fepackage::Package& p, int lines)
+{
+    ListLayout l;
+    const std::vector<size_t> master = p.find(TitleMasterObject);
+    if (master.size() != 1)
+        return l;
+    const float y = size(p, master[0], 0x20), height = size(p, master[0], 0x3c);
+    l.top = y - height * 0.5f;
+    l.row = height;
+    l.bottom = l.top + float(lines) * height;
+    l.valid = height > 0;
+    return l;
+}
+
+bool panelBottom(const fepackage::Package& p, float* bottom)
+{
+    const std::vector<size_t> title = p.find(TitleGroupObject), panel = p.find(InnerPanel);
+    if (title.size() != 1 || panel.size() != 1)
+        return false;
+    const float base = size(p, title[0], 0x20) + size(p, panel[0], 0x20);
+    bool have = false;
+    for (size_t part : p.subtree(panel[0]))
+    {
+        if (part == panel[0] || p.type(part) != 1)
+            continue;
+        const float edge = base + size(p, part, 0x20) + size(p, part, 0x3c) * 0.5f;
+        *bottom = have && *bottom > edge ? *bottom : edge;
+        have = true;
+    }
+    return have;
+}
+
 Result options(fepackage::Package& p, uint32_t title, bool customize, int entries, const fepackage::Package* donor)
 {
     Result r;
@@ -127,7 +184,7 @@ Result options(fepackage::Package& p, uint32_t title, bool customize, int entrie
     {
         for (const char* prefix : SlotPrefixes)
             r.cloned += p.extendSeries(prefix, SlotModel, entries);
-        r.instruction = instructionLine(p, donor, &r.error);
+        r.instruction = instructionLine(p, donor, &r.error, &r.gap);
     }
     roomForTexts(p, entries > 13 ? entries : 13);
     r.steady = p.steadyColourScript(nameHash("Highlight"), flashScript());

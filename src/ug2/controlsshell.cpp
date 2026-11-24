@@ -512,16 +512,19 @@ void logInstruction(win32::WinApplication* app, x86::CPU& cpu, bool build)
         setHash(app, cpu, line, controlsbake::TextPressButton);
 #endif
     const reg32 data = rc::ld32(line + DataOffset);
-    const reg32 group = findObject(app, cpu, controlsbake::TitleGroupObject);
-    const reg32 groupData = group ? rc::ld32(group + DataOffset) : 0;
-    const float gx = groupData ? rc::ldf32a(groupData + DataX) : 0.0f, gy = groupData ? rc::ldf32a(groupData + DataX + 4) : 0.0f;
-    pf::logInfo("controlsshell: instruction line %08x hash %08x text %08x at x %.1f y %.1f in the title group at %.1f,%.1f "
-                "(screen %.1f,%.1f) colour %u,%u,%u,%u align %08x flags %08x%s",
+    const reg32 master = findObject(app, cpu, controlsbake::TitleMasterObject);
+    const reg32 masterData = master ? rc::ld32(master + DataOffset) : 0;
+    const float rowTop = masterData ? rc::ldf32a(masterData + DataX + 4) - rc::ldf32a(masterData + 0x3c) * 0.5f : 0.0f;
+    const float row = masterData ? rc::ldf32a(masterData + 0x3c) : 0.0f;
+    const reg32 lines = s_screenObject ? rc::ld32(s_screenObject + VisibleRows) : 0;
+    pf::logInfo("controlsshell: instruction line %08x hash %08x text %08x at x %.1f y %.1f colour %u,%u,%u,%u align %08x flags %08x%s; "
+                "rows from %.1f, %.1f a row (screen row height %.1f, spacing %.1f), %u lines end at %.1f",
                 unsigned(line), unsigned(controlsbake::instructionHash()), unsigned(rc::ld32(line + ObjectTextHash)),
-                rc::ldf32a(data + DataX), rc::ldf32a(data + DataX + 4), gx, gy, gx + rc::ldf32a(data + DataX),
-                gy + rc::ldf32a(data + DataX + 4), unsigned(rc::ld32(data)), unsigned(rc::ld32(data + 4)),
+                rc::ldf32a(data + DataX), rc::ldf32a(data + DataX + 4), unsigned(rc::ld32(data)), unsigned(rc::ld32(data + 4)),
                 unsigned(rc::ld32(data + 8)), unsigned(rc::ld32(data + 12)), unsigned(rc::ld32(line + TextAlign)),
-                unsigned(rc::ld32(line + ObjectFlags)), build ? " (built)" : " (shown)");
+                unsigned(rc::ld32(line + ObjectFlags)), build ? " (built)" : " (shown)", rowTop, row,
+                s_screenObject ? rc::ldf32a(s_screenObject + 0x108) : 0.0f, s_screenObject ? rc::ldf32a(s_screenObject + 0x128) : 0.0f,
+                unsigned(lines), rowTop + float(lines) * row);
     if (!build && (rc::ld32(data + 12) == 0 || (rc::ld32(line + ObjectFlags) & 1)))
         pf::logError("controlsshell: the instruction line is shown invisible (alpha %u, flags %08x)", unsigned(rc::ld32(data + 12)),
                      unsigned(rc::ld32(line + ObjectFlags)));

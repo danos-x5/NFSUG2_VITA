@@ -397,6 +397,12 @@ std::vector<uint8_t>* Package::tagData(size_t object, uint16_t id)
     return t ? &t->data : nullptr;
 }
 
+const std::vector<uint8_t>* Package::tagData(size_t object, uint16_t id) const
+{
+    const Tag* t = findTag(object, id);
+    return t ? &t->data : nullptr;
+}
+
 std::vector<size_t> Package::find(uint32_t hash) const
 {
     std::vector<size_t> out;

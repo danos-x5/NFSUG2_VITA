@@ -3,14 +3,9 @@
 
 #include <lib/winapp.h>
 
-// Free look for the race chase camera: a stick's direction sets the view yaw around the car; down looks behind.
+// Free look for the race chase camera: the unbound right stick's direction sets the view yaw; down looks behind.
 
 namespace ug2 { namespace freelook {
-
-// Free look stick: x right, y down, -1..1; guest thread.
-void setInput(float x, float y);
-// True while free look drives the race camera.
-bool live();
 
 // The chase camera update running, and its look-at call's esp.
 struct Update

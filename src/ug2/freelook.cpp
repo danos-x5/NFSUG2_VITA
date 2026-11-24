@@ -1,17 +1,17 @@
-// Free look: the stick's direction turns the chase camera rig about the car, the turn Look Back makes at 180
-// degrees; aims ahead swing there, rear aims snap. The game's own Look Back is untouched.
+// Free look: while driving with the right stick unbound, its direction turns the chase camera rig about the car
+// (Look Back's turn at 180); aims ahead swing, rear aims snap.
 
 #include "freelook.h"
 #include "freelook_math.h"
 #include "frontend.h"
 
+#include <lib/controls.h>
 #include <lib/gamepad.h>
 #include <platform/config.h>
 #include <platform/log.h>
 #include <recomp.h>
 
 #include <algorithm>
-#include <atomic>
 #include <cmath>
 
 namespace ug2 { namespace freelook {
@@ -50,6 +50,7 @@ struct State
     bool        on = false;         // free look turns the camera
     float       yaw = 0;            // view yaw shown, degrees right of ahead
     float       aim = 0;            // the stick's yaw
+    float       stickX = 0, stickY = 0;     // shaped right stick
     uint32_t    stepFrame = 0;      // frame of the last swing step
     uint32_t    logFrame = 0;
     bool        turned = false;     // the look-at hook has turned this camera
@@ -58,13 +59,6 @@ struct State
 
 State s_state;
 Update s_update = {};
-std::atomic<float> s_input[2];
-
-bool rawStick()
-{
-    static const bool on = pf::Config::getBool("free_look", false);
-    return on;
-}
 
 struct Settings
 {
@@ -116,11 +110,6 @@ bool paused()
     return (coordinator && rc::ld32(coordinator) == 6) || rc::ld8(OptionsExit) != 0;
 }
 
-bool hideRightStick()
-{
-    return s_state.live && frontend::frameCounter() - s_state.frame <= StaleFrames;
-}
-
 void release(const char* why)
 {
     State& s = s_state;
@@ -130,10 +119,10 @@ void release(const char* why)
     s.yaw = s.aim = 0;
 }
 
-void setLive(bool live, reg32 camera)
+void setLive(bool live, reg32 camera, const char* why)
 {
     if (live != s_state.live && logging())
-        pf::logInfo("freelook: %s, camera %08X view %u", live ? "live" : "idle", unsigned(camera),
+        pf::logInfo("freelook: %s (%s), camera %08X view %u", live ? "live" : "idle", why, unsigned(camera),
                     unsigned(camera ? rc::ld32(camera + MoverView) : 0));
     s_state.live = live;
 }
@@ -142,25 +131,13 @@ void update(reg32 camera)
 {
     State& s = s_state;
     const uint32_t frame = frontend::frameCounter();
-    if (rawStick())
-    {
-        static bool s_hooked;
-        if (!s_hooked)
-        {
-            win32::Gamepad::setRightStickFilter(hideRightStick);
-            s_hooked = true;
-        }
-        float x, y;
-        win32::Gamepad::getRightStick(&x, &y);
-        setInput(x, y);
-    }
     const reg32 director = rc::ld32(camera + MoverDirector);
     if (!director || rc::ld32(director + DirectorMover) != camera)
     {
         if (camera == s.camera)
         {
             release("camera replaced");
-            setLive(false, camera);
+            setLive(false, camera, "camera replaced");
             s.camera = 0;
         }
         return;
@@ -178,18 +155,24 @@ void update(reg32 camera)
     s.frame = frame;
     if (paused())
     {
-        setLive(false, camera);
+        setLive(false, camera, "paused");
         return;
     }
-    if (rc::ld32(camera + MoverType) != 1 || rc::ld8(ReplayState))
+    const fm::Race race = { rc::ld32(camera + MoverType) == 1, rc::ld8(ReplayState) != 0 };
+    if (!fm::live(race))
     {
-        release("not the race chase camera");
-        setLive(false, camera);
+        const char* why = !race.chaseCamera ? "not the race chase camera" : race.replay ? "replay"
+                          : !win32::controls::driving() ? "not driving" : "the right stick has a game action";
+        release(why);
+        setLive(false, camera, why);
         return;
     }
-    setLive(true, camera);
+    setLive(true, camera, "driving, right stick unbound");
 
-    const float x = s_input[0], y = s_input[1];
+    float x, y;
+    win32::Gamepad::getFixedRightStick(&x, &y);
+    s.stickX = x;
+    s.stickY = y;
     const fm::Aim aim = fm::aim(x, y);
     const float dt = frame != s.stepFrame ? frameStep() : 0.0f;
     s.stepFrame = frame;
@@ -217,17 +200,6 @@ void update(reg32 camera)
     s.aim = aim.held ? aim.yaw : 0.0f;
 }
 
-}
-
-void setInput(float x, float y)
-{
-    s_input[0] = x;
-    s_input[1] = y;
-}
-
-bool live()
-{
-    return hideRightStick();
 }
 
 Update enter(reg32 camera, reg32 esp)
@@ -267,7 +239,7 @@ void beforeLookAt(win32::WinApplication*, x86::CPU& cpu)
     const float turn = fm::residual(s.yaw, mirrored);
     if (logging() && frontend::frameCounter() - s.logFrame >= 6)
     {
-        const float x = s_input[0], y = s_input[1];
+        const float x = s.stickX, y = s.stickY;
         s.logFrame = frontend::frameCounter();
         pf::logInfo("freelook: stick %.2f,%.2f at %.1f deg, aim %.1f, yaw %.1f, game look back %u, turn %.1f", x, y,
                     stickDegrees(x, y), s.aim, s.yaw, unsigned(mirrored), turn);

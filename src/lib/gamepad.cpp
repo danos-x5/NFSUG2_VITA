@@ -65,7 +65,6 @@ uint64_t                s_typedUs;          // when the last one was posted
 bool                    s_typedDown[256];   // typed keys down, by DirectInput code
 bool                    s_appendOnly;       // the game's editor has no cursor: no End before clearing
 Gamepad::PollHook       s_pollHook;         // not guarded: set before the game starts
-Gamepad::RightStickFilter s_rightStickFilter; // not guarded: guest thread
 std::atomic<float>      s_rightStick[2];    // the last pump's right stick
 controls::PadSample     s_injected;         // setInjectedPad
 Gamepad::Touch          s_touch;            // getTouch
@@ -445,8 +444,6 @@ void Gamepad::getState(x86::reg32* buttons, x86::sreg32 (&axes)[controls::AxisCo
         pump();
         state = s_state;
     }
-    if (s_rightStickFilter && s_rightStickFilter())
-        state.axes[controls::AxisRz] = state.axes[controls::AxisZ] = 0.0f;
     float shaped[controls::AxisCount] = {};
     for (int axis = 0; axis < controls::AxisCount; ++axis)
         shaped[axis] = applyProperties(state.axes[axis], m_axisProperties[axis]);
@@ -467,11 +464,6 @@ void Gamepad::getState(x86::reg32* buttons, x86::sreg32 (&axes)[controls::AxisCo
 void Gamepad::setPollHook(PollHook hook)
 {
     s_pollHook = hook;
-}
-
-void Gamepad::setRightStickFilter(RightStickFilter filter)
-{
-    s_rightStickFilter = filter;
 }
 
 void Gamepad::setInjectedPad(const controls::PadSample& pad)

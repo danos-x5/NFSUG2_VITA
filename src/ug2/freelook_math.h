@@ -3,12 +3,12 @@
 
 // Free look maths: stick direction to view yaw, the front-half swing, and turning the chase camera rig like Look Back.
 
+#include <lib/controls.h>
 #include <cmath>
 #include <cstdint>
 
 namespace ug2 { namespace freelook_math {
 
-const float DeadZone = 0.30f;           // radial, of full deflection
 const float SnapDegrees = 8.0f;         // stick this close to straight up or down reads exactly 0 or 180
 const float RearDegrees = 90.0f;        // aims this far round or more snap; nearer ahead they swing
 const int   DefaultSwingSpeed = 360;    // degrees a second
@@ -36,10 +36,10 @@ inline float wrap(float degrees)
     return r;
 }
 
-// Stick x right, y down, -1..1.
-inline Aim aim(float x, float y, float deadZone = DeadZone)
+// Shaped stick (dead zone already applied): x right, y down.
+inline Aim aim(float x, float y)
 {
-    if (!(std::hypot(x, y) > deadZone))
+    if (!(std::hypot(x, y) > 0.0f))
         return { false, 0.0f };
     float yaw = float(std::atan2(double(x), double(-y)) * (180.0 / 3.14159265358979323846));
     if (std::fabs(yaw) <= SnapDegrees)
@@ -47,6 +47,20 @@ inline Aim aim(float x, float y, float deadZone = DeadZone)
     else if (std::fabs(yaw) >= 180.0f - SnapDegrees)
         yaw = 180.0f;
     return { true, yaw };
+}
+
+// The race state free look needs besides the controls.
+struct Race
+{
+    bool chaseCamera;   // the director's active player chase mover
+    bool replay;
+};
+
+// Live only while driving with the right stick unbound.
+inline bool live(const Race& race)
+{
+    return race.chaseCamera && !race.replay && win32::controls::driving() &&
+           win32::controls::rightStickUnbound();
 }
 
 // The yaw free look shows.

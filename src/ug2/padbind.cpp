@@ -2,6 +2,7 @@
 // log, the pad script, the hidden mouse cursor and free-roam HUD touch requests.
 
 #include "padbind.h"
+#include "carfilter.h"
 #include "hud_touch.h"
 #include "pad_defaults.h"
 #include "controlslink.h"
@@ -302,6 +303,7 @@ void configure(win32::WinApplication& app)
     pad_defaults::install(controlslink::defaultsType());
     psprompt::configure(app);
     psbar::install();
+    carfilter::install();
     controlsshell::configure(app);
     const char* script = pf::Config::getString("pad_script", "");
     s_scripted = *script && s_script.load(script);

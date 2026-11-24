@@ -867,4 +867,129 @@ std::vector<size_t> Package::copyFrom(const Package& other, size_t object, uint3
     return added;
 }
 
+namespace {
+
+const uint16_t TagNextScript = 0x6353, TagMessage = 0x694d;     // "Sc" in a script, "Mi" in a message response
+
+}
+
+bool Package::scriptChained(size_t object, uint32_t script) const
+{
+    for (const Chunk& c : m_objects[object].chunks)
+    {
+        std::vector<Tag> tags;
+        if (c.id != IdScript || !readTags(c.data, &tags) || scriptName(tags) != script)
+            continue;
+        for (const Tag& t : tags)
+        {
+            if (t.id == TagNextScript)
+                return true;
+        }
+    }
+    return false;
+}
+
+bool Package::unchainScript(size_t object, uint32_t script)
+{
+    bool removed = false;
+    for (Chunk& c : m_objects[object].chunks)
+    {
+        std::vector<Tag> tags;
+        if (c.id != IdScript || !readTags(c.data, &tags) || scriptName(tags) != script)
+            continue;
+        const size_t before = tags.size();
+        tags.erase(std::remove_if(tags.begin(), tags.end(), [](const Tag& t) { return t.id == TagNextScript; }), tags.end());
+        removed = removed || tags.size() != before;
+        c.data = writeTags(tags);
+    }
+    return removed;
+}
+
+int32_t Package::colourStartAlpha(size_t object, uint32_t script) const
+{
+    for (const Chunk& c : m_objects[object].chunks)
+    {
+        std::vector<Tag> tags;
+        if (c.id != IdScript || !readTags(c.data, &tags) || scriptName(tags) != script)
+            continue;
+        for (size_t i = 0; i + 1 < tags.size(); ++i)
+        {
+            if (tags[i].id != TagTrackInfo || tags[i].data.size() < 2 || tags[i].data[0] != TrackColour || tags[i].data[1] != 16)
+                continue;
+            for (size_t k = i + 1; k < tags.size() && tags[k].id != TagTrackInfo; ++k)
+            {
+                if (tags[k].id == TagKeys && tags[k].data.size() >= 20)
+                    return int32_t(get32(&tags[k].data[16]));
+            }
+        }
+    }
+    return -1;
+}
+
+std::vector<uint32_t> Package::responseMessages(size_t object) const
+{
+    std::vector<uint32_t> out;
+    for (const Chunk& c : m_objects[object].chunks)
+    {
+        std::vector<Tag> tags;
+        if (c.id != IdMessages || !readTags(c.data, &tags))
+            continue;
+        for (const Tag& t : tags)
+        {
+            if (t.id == TagMessage && t.data.size() >= 4)
+                out.push_back(get32(t.data.data()));
+        }
+    }
+    return out;
+}
+
+void Package::addResponses(size_t object, const Package& other, size_t from)
+{
+    for (const Chunk& c : other.m_objects[from].chunks)
+    {
+        if (c.id == IdMessages)
+            m_objects[object].chunks.push_back(c);
+    }
+}
+
+bool Package::addTarget(uint32_t message, uint32_t guid)
+{
+    bool added = false;
+    for (Chunk& c : m_top)
+    {
+        std::vector<Tag> tags;
+        if (c.id != IdTargets || !readTags(c.data, &tags))
+            continue;
+        for (Tag& t : tags)
+        {
+            if (t.id == TagTargetList && t.data.size() >= 4 && get32(t.data.data()) == message)
+            {
+                put32(t.data, guid);
+                added = true;
+            }
+        }
+        c.data = writeTags(tags);
+    }
+    return added;
+}
+
+void Package::setParent(size_t object, uint32_t parentGuid)
+{
+    std::vector<Tag>& tags = m_objects[object].tags;
+    if (Tag* t = findTag(object, TagParent))
+    {
+        set32(t->data, 0, parentGuid);
+        return;
+    }
+    size_t at = 0;
+    while (at < tags.size() && tags[at].id != TagParams)
+        ++at;
+    Tag parent = { TagParent, {} };
+    put32(parent.data, parentGuid);
+    tags.insert(tags.begin() + long(at < tags.size() ? at + 1 : at), parent);
+    if (m_topLevel)
+        --m_topLevel;
+    m_headerChanged = true;
+}
+
 }}

@@ -148,9 +148,15 @@ struct StickShape
     float saturation;
     float sensitivity;
 };
-// Starts from the cfg keys left_stick_* and right_stick_*.
+// Garage and free look: 30% dead zone, full travel, linear.
+const StickShape FixedStickShape = { 0.30f, 1.0f, 1.0f };
+// Driving shape: from left_stick_* and right_stick_* in the cfg.
 StickShape stickShape(bool right);
 void setStickShape(bool right, const StickShape& shape);
+// The cfg shape for a driving role, else FixedStickShape.
+StickShape roleShape(const StickRoles& roles, bool right);
+// A raw stick shaped with FixedStickShape.
+void fixedShape(float x, float y, float* outX, float* outY);
 
 // Set by the pad hook while driving; roles apply then.
 void setDriving(bool driving);

@@ -179,6 +179,17 @@ void setStickShape(bool right, const StickShape& shape)
     s.shape[i][2] = std::min(std::max(shape.sensitivity, 0.0f), 1.0f);
 }
 
+StickShape roleShape(const StickRoles& roles, bool right)
+{
+    const int i = right ? 1 : 0;
+    return roles.axes[i] || roles.flick[i] ? stickShape(right) : FixedStickShape;
+}
+
+void fixedShape(float x, float y, float* outX, float* outY)
+{
+    shapeStick(x, y, FixedStickShape, outX, outY);
+}
+
 void setDriving(bool driving)
 {
     shared().driving = driving;
@@ -615,7 +626,7 @@ State Mapper::update(const PadSample& pad, uint64_t nowUs)
 
     float stick[2][2];
     for (int side = 0; side < 2; ++side)
-        shapeStick(pad.sticks[side * 2], pad.sticks[side * 2 + 1], stickShape(side != 0), &stick[side][0], &stick[side][1]);
+        shapeStick(pad.sticks[side * 2], pad.sticks[side * 2 + 1], roleShape(roles, side != 0), &stick[side][0], &stick[side][1]);
     for (int h = 0; h < HatCount; ++h)
         state.pov[h] = -1;
     if (!driving)

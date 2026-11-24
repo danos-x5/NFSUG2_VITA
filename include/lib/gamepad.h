@@ -86,6 +86,8 @@ public:
 
     // Right stick of the last pad reading, injected pad included: -1..1, y down. Any thread.
     static void getRightStick(float* x, float* y);
+    // The same shaped with controls::FixedStickShape (garage, free look).
+    static void getFixedRightStick(float* x, float* y);
 
     // Front touch as the mouse: last position (0..1 of the pointer area) and the left button.
     struct Touch

@@ -480,6 +480,11 @@ void Gamepad::getRightStick(float* x, float* y)
     *y = s_rightStick[1];
 }
 
+void Gamepad::getFixedRightStick(float* x, float* y)
+{
+    controls::fixedShape(s_rightStick[0], s_rightStick[1], x, y);
+}
+
 bool Gamepad::getTouch(Touch* touch, bool button)
 {
     if (!controls::frontTouchEnabled())

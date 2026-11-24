@@ -21,7 +21,8 @@ const uint32_t IdTargets = 0x67726154;      // "Targ": per message, the ids of t
 const uint16_t TagTargetList = 0x744d;      // "Mt": message hash, then object ids
 const uint32_t IdScript = 0x70726353;       // "Scrp"
 const uint16_t TagScriptHeader = 0x6853, TagTrackInfo = 0x4946, TagKeys = 0x644b;    // "Sh" (name hash, length, flags, tracks), "FI", "Kd"
-const uint8_t TrackColour = 6;
+const uint8_t TrackColour = 6, TrackVector = 4;
+const uint16_t TagTrackOffset = 0x6f54;     // "To": the track's word offset in the object's data, 7 for the position
 const uint32_t Jdlz = 0x5a4c444a, Raww = 0x57574152;
 const uint16_t TagType = 0x744f, TagHash = 0x684f, TagParams = 0x504f, TagParent = 0x4150;
 
@@ -985,6 +986,40 @@ int32_t Package::colourStartAlpha(size_t object, uint32_t script) const
         }
     }
     return -1;
+}
+
+bool Package::scriptEndPosition(size_t object, uint32_t script, float* x, float* y) const
+{
+    for (const Chunk& c : m_objects[object].chunks)
+    {
+        std::vector<Tag> tags;
+        if (c.id != IdScript || !readTags(c.data, &tags) || scriptName(tags) != script)
+            continue;
+        for (size_t i = 0; i + 1 < tags.size(); ++i)
+        {
+            if (tags[i].id != TagTrackInfo || tags[i].data.size() < 2 || tags[i].data[0] != TrackVector || tags[i].data[1] != 12)
+                continue;
+            const Tag* offset = nullptr;
+            const Tag* keys = nullptr;
+            for (size_t k = i + 1; k < tags.size() && tags[k].id != TagTrackInfo; ++k)
+            {
+                if (tags[k].id == TagTrackOffset && tags[k].data.size() >= 4)
+                    offset = &tags[k];
+                if (tags[k].id == TagKeys)
+                    keys = &tags[k];
+            }
+            if (!offset || get32(offset->data.data()) != 7 || !keys || keys->data.size() < 16 || keys->data.size() % 16)
+                continue;
+            float base[2], last[2] = { 0, 0 };
+            memcpy(base, &keys->data[4], 8);
+            if (keys->data.size() >= 32)
+                memcpy(last, &keys->data[keys->data.size() - 12], 8);
+            *x = base[0] + last[0];
+            *y = base[1] + last[1];
+            return true;
+        }
+    }
+    return false;
 }
 
 std::vector<uint32_t> Package::responseMessages(size_t object) const

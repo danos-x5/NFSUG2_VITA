@@ -133,6 +133,70 @@ inline HelpVerdict helpVerdict(uint32_t liveHelp, bool resolves, uint32_t flags,
     return { false, "none", "the screen's help id has no text and it offers no Tip" };
 }
 
+// Game flow state (0x8654A4) 4..8: region load to unload.
+inline bool trackSide(uint32_t flowState)
+{
+    return flowState >= 4 && flowState <= 8;
+}
+
+// The PC's in-game layouts of its bar items (0x5428B0): flag 0x10000 picks one by script name.
+enum Layout { LayoutPauseOptions, LayoutInGame, LayoutEventResults, LayoutPauseMenuMain, LayoutCount };
+const char* const LayoutScripts[LayoutCount] = { "Pause_Options", "In_Game", "Event_Results", "Pause_Menu_Main" };
+const uint32_t LayoutBit = 0x10000;
+
+// The PC's layout (0x5428B0); In_Game without the layout bit.
+inline Layout layoutOf(uint32_t flags)
+{
+    if (!(flags & LayoutBit) || (flags & 0x8000))
+        return LayoutInGame;
+    if (flags & 0x80000000u)
+        return LayoutEventResults;
+    return (flags & 0x20000) ? LayoutPauseMenuMain : LayoutPauseOptions;
+}
+
+// The PC bar items in list order: item i is button PcButton0 + i with text PcText0 + i.
+const int ItemCount = 6;
+const uint32_t PcButton0 = 0x62376D18, PcText0 = 0xB8A7C6CC;
+
+// Hashes of our baked prompt pair's icon and word.
+inline uint32_t pairIcon(int layout, int item) { return 0x7A1A0000u + uint32_t(layout) * 16 + uint32_t(item) * 2; }
+inline uint32_t pairWord(int layout, int item) { return pairIcon(layout, item) + 1; }
+
+// In-game the PS2 also shows Back, on Circle.
+inline const char* inGameToken(uint32_t message)
+{
+    return message == MsgBack ? "JOY_EVENT_FENG_CANCEL" : tokenForMessage(message);
+}
+
+// Each PC item's prompt, in bit order; the items used.
+template <typename MessageOfBit, typename TextOfBit>
+int inGamePrompts(uint32_t flags, MessageOfBit messageOfBit, TextOfBit textOfBit, Prompt out[ItemCount])
+{
+    int item = 0;
+    for (int i = 0; i < ItemCount; ++i)
+        out[i] = { 0, nullptr };
+    for (int bit = 0; bit < 32 && item < ItemCount; ++bit)
+    {
+        const uint32_t mask = 1u << bit;
+        if (!(flags & mask) || !bitHasText(bit))
+            continue;
+        const int at = item++;
+        if (mask & DroppedBits)
+            continue;
+        if (const char* token = inGameToken(messageOfBit(mask)))
+            out[at] = { textOfBit(mask), token };
+    }
+    return item;
+}
+
+const float PairGap = 30.0f;          // icon left edge to word left edge
+const float PairCharWidth = 8.0f;     // estimated word width per character
+
+inline float pairLeft(float centreX, size_t chars)
+{
+    return centreX - (PairGap + PairCharWidth * float(chars)) / 2;
+}
+
 // The text a prompt shows: its button token, then the language word.
 inline void promptLine(const Prompt& prompt, const char* word, char* out, size_t size)
 {

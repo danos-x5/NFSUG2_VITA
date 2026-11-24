@@ -31,12 +31,20 @@ const reg32 StringFormat = 0x00786E70, ProfileName = 0x0083A9E0;
 const reg32 DataOffset = 0x2C, ObjectFlags = 0x1C, DirtyFlag = 0x400000;
 const char* const Bar = "UI_PC_Help_Bar.fng", *const Donor = "UI_OptionsController.fng";
 const char* const DonorArchive = "C:\\FRONTEND\\FrontB.lzc";
+const reg32 FlowState = 0x008654A4, GameMode = 0x00850078;
+const reg32 DataX = 0x1C;
 
 Prompt s_second = { 0, nullptr };
 bool s_secondShown = false;
 HelpVerdict s_help = { true, "general", "not decided yet" };
 reg32 s_buffer = 0;
 bool s_missingLogged = false;
+
+InGameBuilt s_inGame;
+bool s_trackSide = false;
+Layout s_layout = LayoutInGame;
+Prompt s_items[ItemCount];
+bool s_pairShown[LayoutCount][ItemCount] = {};
 
 std::string readString(reg32 address)
 {
@@ -183,6 +191,83 @@ reg32 originalBit(win32::WinApplication* app, x86::CPU& cpu, reg32 address, reg3
     return call(app, cpu, address, { bit });
 }
 
+void setX(reg32 object, float x)
+{
+    const reg32 data = rc::ld32(object + DataOffset);
+    if (data && rc::ldf32a(data + DataX) != x)
+    {
+        rc::stf32a(data + DataX, x);
+        rc::st32(object + ObjectFlags, rc::ld32(object + ObjectFlags) | DirtyFlag);
+    }
+}
+
+void hidePairs(win32::WinApplication* app, x86::CPU& cpu, reg32 package, const bool keep[LayoutCount][ItemCount])
+{
+    for (int layout = 0; layout < LayoutCount; ++layout)
+    {
+        for (int item = 0; item < ItemCount; ++item)
+        {
+            if (!s_pairShown[layout][item] || (keep && keep[layout][item]))
+                continue;
+            s_pairShown[layout][item] = false;
+            for (reg32 hash : { pairIcon(layout, item), pairWord(layout, item) })
+            {
+                if (const reg32 object = find(app, cpu, package, hash))
+                    call(app, cpu, HideObject, { object });
+            }
+        }
+    }
+}
+
+bool showPair(win32::WinApplication* app, x86::CPU& cpu, reg32 package, int item, const char* token, const std::string& word)
+{
+    const Slot& slot = s_inGame.slots[s_layout][item];
+    const reg32 icon = slot.baked ? find(app, cpu, package, pairIcon(s_layout, item)) : 0;
+    const reg32 text = slot.baked ? find(app, cpu, package, pairWord(s_layout, item)) : 0;
+    if (!icon || !text)
+        return false;
+    writeText(app, cpu, icon, std::string("$") + token + "$", "in-game icon");
+    writeText(app, cpu, text, word, "in-game word");
+    const float left = pairLeft(slot.x, word.size());
+    setX(icon, left);
+    setX(text, left + PairGap);
+    call(app, cpu, ShowObject, { icon });
+    call(app, cpu, ShowObject, { text });
+    s_pairShown[s_layout][item] = true;
+    return true;
+}
+
+// Prompts in the panel's button row; no bar.
+void showInGame(win32::WinApplication* app, x86::CPU& cpu, reg32 package)
+{
+    bool keep[LayoutCount][ItemCount] = {};
+    bool used[ItemCount] = {};
+    std::string line;
+    for (int item = 0; item < ItemCount; ++item)
+    {
+        if (!s_items[item].token)
+            continue;
+        const std::string text = tableText(s_items[item].text);
+        if (showPair(app, cpu, package, item, s_items[item].token, text.empty() ? "?" : text))
+        {
+            keep[s_layout][item] = used[item] = true;
+            line += " " + std::to_string(item) + ":" + s_items[item].token + " '" + text + "'";
+        }
+    }
+    const int helpItem = s_help.available ? freeItem(s_inGame.slots[s_layout], used) : -1;
+    const std::string helpText = helpItem >= 0 ? tableText(HelpText) : std::string();
+    if (helpItem >= 0 && showPair(app, cpu, package, helpItem, "JOY_EVENT_FENG_HELP", helpText.empty() ? "Help" : helpText))
+    {
+        keep[s_layout][helpItem] = true;
+        line += " " + std::to_string(helpItem) + ":Help";
+    }
+    hidePairs(app, cpu, package, keep);
+    static std::string s_logged;
+    if (devLog() && line != s_logged)
+        pf::logInfo("psbar: in-game prompts, layout %s:%s", LayoutScripts[s_layout], line.empty() ? " none" : line.c_str());
+    s_logged = line;
+}
+
 }
 
 void install()
@@ -205,6 +290,21 @@ void install()
         }
         pf::logInfo("psbar: PS2 bar group copied from %s (read from %s): %u objects, %u resources merged, %u PC objects hidden", Donor, DonorArchive,
                     unsigned(built.copied), unsigned(built.resourcesAdded), unsigned(built.hiddenPc));
+        if (!buildInGame(bar, &s_inGame))
+            pf::logError("psbar: no in-game prompts: %s", s_inGame.error.c_str());
+        else
+            pf::logInfo("psbar: %u in-game prompt pairs baked at the PC items' layout positions", unsigned(s_inGame.pairs));
+#ifdef DEV_TOOLS
+        for (int layout = 0; layout < LayoutCount; ++layout)
+        {
+            for (int item = 0; item < ItemCount; ++item)
+            {
+                const Slot& slot = s_inGame.slots[layout][item];
+                if (slot.baked)
+                    pf::logInfo("psbar: %s item %d at (%.1f, %.1f)", LayoutScripts[layout], item, slot.x, slot.y);
+            }
+        }
+#endif
         return true;
     });
 }
@@ -219,6 +319,22 @@ void beforeFill(win32::WinApplication* app, x86::CPU& cpu)
     s_second = secondPrompt(screenName ? screen.c_str() : nullptr, flags, [&](uint32_t bit) { return originalBit(app, cpu, BitMessage, bit); },
                             [&](uint32_t bit) { return originalBit(app, cpu, BitText, bit); });
     rc::st32(cpu.esp + 4, 0);
+    const reg32 flowState = rc::ld32(FlowState);
+    s_trackSide = trackSide(flowState) && s_inGame.pairs;
+    s_layout = layoutOf(flags);
+    if (s_trackSide)
+    {
+        const reg32 itemFlags = rc::ld32(GameMode) == 0x200 ? flags & ~0x4000u : flags;
+        inGamePrompts(itemFlags, [&](uint32_t bit) { return originalBit(app, cpu, BitMessage, bit); },
+                      [&](uint32_t bit) { return originalBit(app, cpu, BitText, bit); }, s_items);
+    }
+    static std::string s_stateKey;
+    const std::string stateKey = screen + "|" + std::to_string(flowState) + "|" + std::to_string(flags);
+    if (devLog() && stateKey != s_stateKey)
+        pf::logInfo("psbar: screen '%s' flow state %u: %s; flags %08x, PC layout %s (%s)", screen.c_str(), unsigned(flowState),
+                    s_trackSide ? "in-game, prompts in the panel's button row" : "front end, the PS2 bar", unsigned(flags), LayoutScripts[s_layout],
+                    (flags & LayoutBit) ? "the screen's own" : "none given, bottom row");
+    s_stateKey = stateKey;
     const reg32 live = screenName ? liveScreen(cpu, screenName) : 0;
     const reg32 help = live ? rc::ld32(live + 0x28) : tableHelp(screen);
     s_help = helpVerdict(help, help && !tableText(help).empty(), flags, screen.c_str());
@@ -261,11 +377,16 @@ void afterFill(win32::WinApplication* app, x86::CPU& cpu, reg32 bar)
         return;
     }
     const bool shown = rc::ld8(bar + 0x6C) != 0;
-    if (!shown)
+    if (!shown || s_trackSide)
     {
         call(app, cpu, HideObject, { root });
+        if (shown)
+            showInGame(app, cpu, package);
+        else
+            hidePairs(app, cpu, package, nullptr);
         return;
     }
+    hidePairs(app, cpu, package, nullptr);
     call(app, cpu, ShowObject, { root });
     hideExtras(app, cpu, package);
     if (const reg32 name = find(app, cpu, package, PsName))
@@ -304,9 +425,13 @@ void visibility(win32::WinApplication* app, x86::CPU& cpu, reg32 bar, bool show)
     const reg32 root = find(app, cpu, package, PsRoot);
     if (!root)
         return;
-    if (!show)
+    if (!show || s_trackSide)
     {
         call(app, cpu, HideObject, { root });
+        if (show)
+            showInGame(app, cpu, package);
+        else
+            hidePairs(app, cpu, package, nullptr);
         return;
     }
     call(app, cpu, ShowObject, { root });

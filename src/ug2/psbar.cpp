@@ -33,6 +33,7 @@ const char* const Bar = "UI_PC_Help_Bar.fng", *const Donor = "UI_OptionsControll
 const char* const DonorArchive = "C:\\FRONTEND\\FrontB.lzc";
 const reg32 FlowState = 0x008654A4, GameMode = 0x00850078;
 const reg32 DataX = 0x1C, DataAlpha = 0x0C, SwitcherCurrent = 0x3C;
+const reg32 BarObject = 0x008384D8, BarShown = 0x6C;
 
 Prompt s_second = { 0, nullptr };
 bool s_secondShown = false;
@@ -46,6 +47,7 @@ Layout s_layout = LayoutInGame;
 Prompt s_items[ItemCount];
 bool s_pairShown[LayoutCount][ItemCount] = {};
 reg32 s_switcherSaved = 0;
+int s_applied = -1;
 reg32 s_bankAlpha[2] = { ~0u, ~0u };
 
 std::string readString(reg32 address)
@@ -414,7 +416,8 @@ void afterFill(win32::WinApplication* app, x86::CPU& cpu, reg32 bar)
         s_missingLogged = true;
         return;
     }
-    const bool shown = rc::ld8(bar + 0x6C) != 0;
+    const bool shown = rc::ld8(bar + BarShown) != 0;
+    s_applied = shown ? 1 : 0;
     bank(app, cpu, bar, package, s_trackSide);
     if (!shown || s_trackSide)
     {
@@ -464,6 +467,7 @@ void visibility(win32::WinApplication* app, x86::CPU& cpu, reg32 bar, bool show)
     const reg32 root = find(app, cpu, package, PsRoot);
     if (!root)
         return;
+    s_applied = show ? 1 : 0;
     bank(app, cpu, bar, package, s_trackSide);
     if (!show || s_trackSide)
     {
@@ -477,6 +481,22 @@ void visibility(win32::WinApplication* app, x86::CPU& cpu, reg32 bar, bool show)
     call(app, cpu, ShowObject, { root });
     hideExtras(app, cpu, package);
     secondSlot(app, cpu, package, s_secondShown);
+}
+
+void frame(win32::WinApplication* app, x86::CPU& cpu)
+{
+    static const bool enabled = pf::Config::getBool("ps2_prompts", true);
+    const reg32 bar = enabled ? rc::ld32(BarObject) : 0;
+    if (!bar || !rc::ld32(bar + 4))
+        return;
+    const bool shown = rc::ld8(bar + BarShown) != 0;
+    if (!visibilityChanged(s_applied, shown))
+        return;
+    const x86::CPU saved = cpu;
+    visibility(app, cpu, bar, shown);
+    cpu = saved;
+    if (devLog() && !visibilityChanged(s_applied, shown))
+        pf::logInfo("psbar: bar %s by an inlined Show/Hide, PS2 bar follows", shown ? "shown" : "hidden");
 }
 
 }}

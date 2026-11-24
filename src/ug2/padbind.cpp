@@ -269,6 +269,7 @@ void peekMessageHook(win32::WinApplication* app, x86::CPU& cpu)
     s_peekMessage(app, cpu);
     program(app, cpu);
     ownscreens::frame(app, cpu);
+    psbar::frame(app, cpu);
     controlsshell::frame(app, cpu);
     startprompt::frame();
     if (s_namesSlot)

@@ -189,6 +189,12 @@ int inGamePrompts(uint32_t flags, MessageOfBit messageOfBit, TextOfBit textOfBit
     return item;
 }
 
+// Inlined Show and Hide (0x8384D8 +0x6C, then 0x542990) bypass our hooks; -1 is never applied.
+inline bool visibilityChanged(int applied, bool shown)
+{
+    return applied != (shown ? 1 : 0);
+}
+
 // The PC bar's bank/name switcher (0x537E60) fades these two in turn; hidden on the track side.
 const uint32_t PcMoney = 0xEB3A688A, PcName = 0xEB406FEC;
 

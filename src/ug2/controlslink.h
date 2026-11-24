@@ -13,6 +13,10 @@ controlstore::Backend& backend();
 // False when no pad slot exists.
 bool readSlot(controlstore::Record* record);
 void writeSlot(const controlstore::Record& record);
+// The pad's input slot, 0 for none.
+x86::reg32 padSlot();
+// After a registry.txt change: the slot follows it.
+void storeChanged(const char* why);
 
 // Boot decision; before guest code, after registry.txt loads.
 void configure();

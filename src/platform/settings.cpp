@@ -70,6 +70,8 @@ const Setting s_table[] =
     BOOL("ui_log", Developer, 0, "Log the user interface positions the game sets.", 0),
     BOOL("ps2_prompts", Developer, 1, "PS2-style prompts: button icons in every menu text and Help on Triangle; off is the PC menus.", 0),
     BOOL("pad_log", Developer, 0, "Log the pad bindings and the buttons pressed.", 0),
+    INT("free_look_swing", Developer, 180, 0, 2000, 10, "Free look: degrees a second the camera swings to aims less than 90 from ahead; 0 snaps.", 0),
+    BOOL("free_look_release_swing", Developer, 0, "Free look: letting go swings back to the chase view instead of snapping.", 0),
     STR("pad_script", Developer, "", "Scripted pad input for tests.", 0),
     BOOL("boot_race", Developer, 0, "Skip the menus and start a test race.", 0),
     ENUM("boot_mode", Developer, 0, "race|url|drag|drift|freeroam", "Kind of race boot_race starts.", 0),
@@ -332,7 +334,7 @@ const Setting s_table[] =
 
 // Keys that no longer exist: a cfg line for one is skipped without a message.
 const char* const s_retired[] = { "front_touch", "widescreen", "control_type", "custom_binds", "left_stick_mode", "right_stick_mode",
-                                  "dpad_mode", "garage_stick_deadzone" };
+                                  "dpad_mode", "garage_stick_deadzone", "free_look" };
 
 const SettingAlias s_aliases[] =
 {

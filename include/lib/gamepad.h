@@ -88,6 +88,8 @@ public:
     static void getRightStick(float* x, float* y);
     // The same shaped with controls::FixedStickShape (garage, free look).
     static void getFixedRightStick(float* x, float* y);
+    // The last pad reading: inputs, raw sticks lx, ly, rx, ry.
+    static void getPad(uint32_t* inputs, float (&sticks)[4]);
 
     // Front touch as the mouse: last position (0..1 of the pointer area) and the left button.
     struct Touch
@@ -98,6 +100,9 @@ public:
     };
     // False until a touch. button: latched presses and releases. Any thread.
     static bool getTouch(Touch* touch, bool button = false);
+
+    // While set, getTouch reports no touch and no button: the front touch does not reach the game. Any thread.
+    static void setTouchBlocked(bool blocked);
 
     // Display 0..1 to pointer area 0..1; false outside.
     typedef bool (*TouchMap)(float* x, float* y);

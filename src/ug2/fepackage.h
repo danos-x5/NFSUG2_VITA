@@ -86,6 +86,10 @@ public:
     // Drops the "next script" link (Sc) of the object's script; false when it had none.
     bool unchainScript(size_t object, uint32_t script);
     bool scriptChained(size_t object, uint32_t script) const;
+    // Copies other's script onto the object, colour tracks only.
+    bool addColourScript(size_t object, const Package& other, size_t from, uint32_t script);
+    // Tracks of the object's script, -1 when it has none.
+    int trackCount(size_t object, uint32_t script) const;
     // Alpha of the first colour key of the object's script, -1 when it has none.
     int32_t colourStartAlpha(size_t object, uint32_t script) const;
     // Messages the object responds to (MsgR), and copying another object's responses onto it.

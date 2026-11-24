@@ -1,6 +1,7 @@
 // The controls store joined to the game: registry backend, pad slot, the profile's control load and save.
 
 #include "controlslink.h"
+#include "controlsrows.h"
 
 #include <lib/controls.h>
 #include <lib/file.h>
@@ -63,7 +64,7 @@ Active s_active;
 bool   s_stored = false;        // registry.txt has Controls_Type: the slot follows s_active
 bool   s_slotLogged = false;
 
-reg32 padSlot()
+reg32 findPadSlot()
 {
     for (reg32 slot = Slots; slot < Slots + SlotCount * SlotSize; slot += SlotSize)
     {
@@ -154,6 +155,16 @@ void refresh(const char* why)
 
 }
 
+reg32 padSlot()
+{
+    return findPadSlot();
+}
+
+void storeChanged(const char* why)
+{
+    refresh(why);
+}
+
 Backend& backend()
 {
     static RegistryBackend s;
@@ -162,7 +173,7 @@ Backend& backend()
 
 bool readSlot(Record* r)
 {
-    const reg32 slot = padSlot();
+    const reg32 slot = findPadSlot();
     if (!slot)
         return false;
     memset(r, 0, sizeof(*r));
@@ -182,7 +193,7 @@ void writeSlot(const Record& source)
 {
     Record r = source;
     data::onePerAction(&r);
-    const reg32 slot = padSlot();
+    const reg32 slot = findPadSlot();
     if (!slot)
         return;
     for (int i = 0; i < 4; ++i)
@@ -271,7 +282,7 @@ void patchProfileSave(reg32 out)
         return;
     }
     const Record record = forProfile(backend());
-    const reg32 pad = padSlot();
+    const reg32 pad = findPadSlot();
     if (pad)
     {
         const int slot = int((pad - Slots) / SlotSize);
@@ -291,13 +302,7 @@ void patchProfileSave(reg32 out)
 
 void saveShape(bool right)
 {
-    const win32::controls::StickShape s = win32::controls::stickShape(right);
-    const std::string side = right ? "right_stick_" : "left_stick_";
-    auto percent = [](float fraction) { return std::to_string(int(fraction * 100.0f + 0.5f)); };
-    pf::Config::set((side + "deadzone").c_str(), percent(s.deadZone).c_str());
-    pf::Config::set((side + "saturation").c_str(), percent(s.saturation).c_str());
-    pf::Config::set((side + "sensitivity").c_str(), percent(s.sensitivity).c_str());
-    pf::Config::save();
+    controlsrows::saveShape(right);
 }
 
 }}

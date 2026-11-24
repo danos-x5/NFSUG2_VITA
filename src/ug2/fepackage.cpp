@@ -911,6 +911,61 @@ bool Package::unchainScript(size_t object, uint32_t script)
     return removed;
 }
 
+bool Package::addColourScript(size_t object, const Package& other, size_t from, uint32_t script)
+{
+    for (const Chunk& c : other.m_objects[from].chunks)
+    {
+        std::vector<Tag> tags;
+        if (c.id != IdScript || !readTags(c.data, &tags) || scriptName(tags) != script)
+            continue;
+        std::vector<Tag> kept;
+        uint32_t tracks = 0;
+        bool keep = true;
+        for (const Tag& t : tags)
+        {
+            if (t.id == TagTrackInfo)
+            {
+                keep = t.data.size() >= 2 && t.data[0] == TrackColour && t.data[1] == 16;
+                tracks += keep ? 1 : 0;
+            }
+            if (keep)
+                kept.push_back(t);
+        }
+        for (Tag& t : kept)
+        {
+            if (t.id == TagScriptHeader && t.data.size() >= 16)
+                set32(t.data, 12, tracks);
+        }
+        std::vector<Chunk>& mine = m_objects[object].chunks;
+        for (size_t i = mine.size(); i-- > 0;)
+        {
+            std::vector<Tag> old;
+            if (mine[i].id == IdScript && readTags(mine[i].data, &old) && scriptName(old) == script)
+                mine.erase(mine.begin() + long(i));
+        }
+        size_t at = mine.size();
+        for (size_t i = 0; i < mine.size(); ++i)
+        {
+            if (mine[i].id == IdScript)
+                at = i + 1;
+        }
+        mine.insert(mine.begin() + long(at), Chunk{ IdScript, writeTags(kept) });
+        return tracks > 0;
+    }
+    return false;
+}
+
+int Package::trackCount(size_t object, uint32_t script) const
+{
+    for (const Chunk& c : m_objects[object].chunks)
+    {
+        std::vector<Tag> tags;
+        if (c.id == IdScript && readTags(c.data, &tags) && scriptName(tags) == script)
+            return int(std::count_if(tags.begin(), tags.end(), [](const Tag& t) { return t.id == TagTrackInfo; }));
+    }
+    return -1;
+}
+
 int32_t Package::colourStartAlpha(size_t object, uint32_t script) const
 {
     for (const Chunk& c : m_objects[object].chunks)

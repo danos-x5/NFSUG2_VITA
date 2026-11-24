@@ -38,12 +38,15 @@ struct Result
     int bars = 0;           // row bars fitted
     long instruction = -1;  // the instruction line object, -1 for none
     int steady = 0;         // looping Highlight scripts made steady (kept as HighlightFlash)
+    int pulses = 0;         // value slots given the PC's Pulse
     std::string error;      // why the instruction line is missing
     float gap = 0;          // the PC screen's gap from its last row to its label, kept here
 };
 
-// The flashing highlight, kept under its own name for the bind wait.
+// The flashing highlight, kept under its own name.
 uint32_t flashScript();
+// The PC's bind wait flash of a row's value ("Pulse").
+uint32_t pulseScript();
 // CONTROLS_INSTRUCTION: the Customize instruction line's own object.
 uint32_t instructionHash();
 // Rows the package can show: every slot object up to n exists.

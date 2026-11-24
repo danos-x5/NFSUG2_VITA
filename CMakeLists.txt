@@ -177,6 +177,15 @@ set_source_files_properties(${NFSU_LIGHT_SOURCES} PROPERTIES COMPILE_OPTIONS -Og
 set_property(SOURCE ${NFSU_LIGHT_SOURCES} APPEND PROPERTY COMPILE_OPTIONS ${NFSU_CLANG_LIGHT_FLAGS})
 target_compile_definitions(nfsu_game PRIVATE ${NFSU_DEFINES})
 target_include_directories(nfsu_game PRIVATE ${NFSU_INCLUDES})
+# Generated code older than NATIVE_OVERRIDES links without the new natives and no error; this stops the build instead.
+find_package(Python3 COMPONENTS Interpreter QUIET)
+if(Python3_Interpreter_FOUND)
+  add_custom_target(nfsu_native_check
+    COMMAND ${Python3_EXECUTABLE} -I ${CMAKE_SOURCE_DIR}/tools/recompiler/check_natives.py
+            ${CMAKE_SOURCE_DIR}/tools/recompiler/games/ug2.py ${NFSU_GENERATED_DIR}
+    VERBATIM)
+  add_dependencies(nfsu_game nfsu_native_check)
+endif()
 
 # Runtime and Vita backend.
 add_library(nfsu_runtime OBJECT ${NFSU_RUNTIME_SOURCES} ${NFSU_SHADER_SOURCES})

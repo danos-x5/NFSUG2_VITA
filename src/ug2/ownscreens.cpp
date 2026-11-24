@@ -296,6 +296,11 @@ void frame(win32::WinApplication* app, x86::CPU& cpu)
     cpu = saved;
 }
 
+reg32 hashOfName(const std::string& name)
+{
+    return fepackage::nameHash(name);
+}
+
 reg32 entryOf(reg32 hash)
 {
     auto found = s_entries.find(hash);

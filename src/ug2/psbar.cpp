@@ -26,6 +26,7 @@ const reg32 SetText = 0x00535FE0;       // thiscall on a text object (string): s
 const reg32 SetFormatted = 0x00537B80;  // cdecl (package name, object hash, format, argument)
 const reg32 ShowObject = 0x0050CA50, HideObject = 0x0050CA00;       // cdecl (object), both recursive over groups
 const reg32 TableEntries = 0x008383D8, TableCount = 0x008383D0;
+const reg32 GameScreenTable = 0x007F7DC8;
 const reg32 StringFormat = 0x00786E70, ProfileName = 0x0083A9E0;
 const reg32 DataOffset = 0x2C, ObjectFlags = 0x1C, DirtyFlag = 0x400000;
 const char* const Bar = "UI_PC_Help_Bar.fng", *const Donor = "UI_OptionsController.fng";
@@ -33,6 +34,7 @@ const char* const DonorArchive = "C:\\FRONTEND\\FrontB.lzc";
 
 Prompt s_second = { 0, nullptr };
 bool s_secondShown = false;
+HelpVerdict s_help = { true, "general", "not decided yet" };
 reg32 s_buffer = 0;
 bool s_missingLogged = false;
 
@@ -117,6 +119,43 @@ void hideExtras(win32::WinApplication* app, x86::CPU& cpu, reg32 package)
         if (const reg32 object = find(app, cpu, package, hash))
             call(app, cpu, HideObject, { object });
     }
+    if (!s_help.available)
+    {
+        for (reg32 hash : { PsHelpWord, PsHelpIcon })
+        {
+            if (const reg32 object = find(app, cpu, package, hash))
+                call(app, cpu, HideObject, { object });
+        }
+    }
+}
+
+// The screen object of the fill's caller: it keeps itself in esi (edi in one caller), and +4 is the package name given to the fill.
+reg32 liveScreen(const x86::CPU& cpu, reg32 nameArg)
+{
+    for (reg32 candidate : { cpu.esi, cpu.edi })
+    {
+        if (candidate >= 0x00100000 && candidate < 0x7F000000 && (candidate & 3) == 0 && rc::ld32(candidate + 4) == nameArg)
+            return candidate;
+    }
+    return 0;
+}
+
+// The help id from the screen's table entry: ours first, then the game's table (28-byte entries, name first, help id at +8).
+reg32 tableHelp(const std::string& screen)
+{
+    if (screen.empty())
+        return 0;
+    const reg32 hash = ownscreens::hashOfName(screen);
+    reg32 entry = ownscreens::entryOf(hash);
+    for (reg32 i = 0; !entry && i < 400; ++i)
+    {
+        const reg32 row = GameScreenTable + 28 * i, name = rc::ld32(row);
+        if (!name)
+            break;
+        if (ownscreens::hashOfName(readString(name)) == hash)
+            entry = row;
+    }
+    return entry ? rc::ld32(entry + 8) : 0;
 }
 
 void secondSlot(win32::WinApplication* app, x86::CPU& cpu, reg32 package, bool show)
@@ -180,6 +219,15 @@ void beforeFill(win32::WinApplication* app, x86::CPU& cpu)
     s_second = secondPrompt(screenName ? screen.c_str() : nullptr, flags, [&](uint32_t bit) { return originalBit(app, cpu, BitMessage, bit); },
                             [&](uint32_t bit) { return originalBit(app, cpu, BitText, bit); });
     rc::st32(cpu.esp + 4, 0);
+    const reg32 live = screenName ? liveScreen(cpu, screenName) : 0;
+    const reg32 help = live ? rc::ld32(live + 0x28) : tableHelp(screen);
+    s_help = helpVerdict(help, help && !tableText(help).empty(), flags, screen.c_str());
+    static std::string s_helpKey;
+    const std::string helpKey = screen + "|" + std::to_string(help) + "|" + std::to_string(flags & TipBit) + "|" + (hasOwnHelp(screen.c_str()) ? "own" : "-") + "|" + (live ? "live" : "table");
+    if (devLog() && helpKey != s_helpKey)
+        pf::logInfo("psbar: screen '%s' help id %08x (%s), flags %08x: Help %s, %s help (%s)", screen.c_str(), unsigned(help), live ? "live screen" : "table entry",
+                    unsigned(flags), s_help.available ? "shown" : "hidden", s_help.kind, s_help.why);
+    s_helpKey = helpKey;
     static std::string s_last;
     static reg32 s_lastFlags = ~0u, s_lastSecond = ~0u;
     if (devLog() && (screen != s_last || flags != s_lastFlags || s_second.text != s_lastSecond))
@@ -226,7 +274,7 @@ void afterFill(win32::WinApplication* app, x86::CPU& cpu, reg32 bar)
         if (devLog())
             pf::logInfo("psbar: name text '%s'", wideString(rc::ld32(name + 0x64)).c_str());
     }
-    if (const reg32 help = find(app, cpu, package, PsHelpWord))
+    if (const reg32 help = s_help.available ? find(app, cpu, package, PsHelpWord) : 0)
     {
         const std::string text = tableText(HelpText);
         writeText(app, cpu, help, text.empty() ? "Help" : text, "help word");

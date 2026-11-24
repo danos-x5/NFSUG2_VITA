@@ -92,6 +92,8 @@ public:
     int trackCount(size_t object, uint32_t script) const;
     // Alpha of the first colour key of the object's script, -1 when it has none.
     int32_t colourStartAlpha(size_t object, uint32_t script) const;
+    // End of the script's position track: base plus last key.
+    bool scriptEndPosition(size_t object, uint32_t script, float* x, float* y) const;
     // Messages the object responds to (MsgR), and copying another object's responses onto it.
     std::vector<uint32_t> responseMessages(size_t object) const;
     void addResponses(size_t object, const Package& other, size_t from);

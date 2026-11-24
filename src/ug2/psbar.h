@@ -14,6 +14,8 @@ void beforeFill(win32::WinApplication* app, x86::CPU& cpu);
 void afterFill(win32::WinApplication* app, x86::CPU& cpu, x86::reg32 bar);
 // After the PC bar's Show and Hide (thiscall on the bar).
 void visibility(win32::WinApplication* app, x86::CPU& cpu, x86::reg32 bar, bool show);
+// Per frame: follows Show and Hide the game inlines.
+void frame(win32::WinApplication* app, x86::CPU& cpu);
 
 }}
 

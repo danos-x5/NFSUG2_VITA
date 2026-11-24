@@ -99,15 +99,21 @@ const char* const OwnHelpScreens[] =
     "UI_PerformanceTuning_Drivetrain.fng", "UI_PerformanceTuning_Setting.fng",
 };
 
+// Package names compare without case (the game hashes them upper-cased).
+inline bool sameName(const char* a, const char* b)
+{
+    if (!a || !b)
+        return false;
+    for (; *a && *b && (*a | 0x20) == (*b | 0x20); ++a, ++b)
+        ;
+    return !*a && !*b;
+}
+
 inline bool hasOwnHelp(const char* screen)
 {
     for (const char* name : OwnHelpScreens)
     {
-        const char* a = name;
-        const char* b = screen ? screen : "";
-        for (; *a && *b && (*a | 0x20) == (*b | 0x20); ++a, ++b)
-            ;
-        if (!*a && !*b)
+        if (sameName(name, screen))
             return true;
     }
     return false;
@@ -131,6 +137,112 @@ inline HelpVerdict helpVerdict(uint32_t liveHelp, bool resolves, uint32_t flags,
     if (!liveHelp)
         return { false, "none", "the screen's help id is 0 and it offers no Tip" };
     return { false, "none", "the screen's help id has no text and it offers no Tip" };
+}
+
+// In-race and free-roam overlays: no bar, prompts in the panel's button row. Every other screen keeps the bar.
+const char* const PanelRowScreens[] =
+{
+    "UI_Pause.fng", "UI_PauseOptions.fng", "UI_PauseOptionsMain.fng",
+    "UI_PostRace.fng", "UI_PostRaceStats.fng", "UI_PostRaceResults.fng", "UI_PostRace_TournResults.fng",
+    "UI_PostRace_TournStandings.fng", "UI_PostRaceReward.fng", "UI_SponsorPopup.fng", "UI_Sponsorship_new.fng",
+    "UI_OLPreRaceStart.fng", "UI_ReplayControl.fng",
+    "UI_SMS_Mailbox.fng", "UI_InGame_WorldMap.fng",
+    "UI_Status_Master.fng", "UI_Status_Career.fng", "UI_Status_Region.fng", "UI_Status_DVD.fng",
+    "UI_EngageMessageDialog.fng", "UI_EngageEventDialog.fng", "UI_EngageRaceDialog.fng", "UI_EngageShopDialog.fng",
+    "UI_Showcase_Preview.fng", "UI_Showcase_DPAD.fng",
+};
+
+inline bool panelRowScreen(const char* screen)
+{
+    for (const char* name : PanelRowScreens)
+    {
+        if (sameName(name, screen))
+            return true;
+    }
+    return false;
+}
+
+// The PC's in-game layouts of its bar items (0x5428B0): flag 0x10000 picks one by script name.
+enum Layout { LayoutPauseOptions, LayoutInGame, LayoutEventResults, LayoutPauseMenuMain, LayoutCount };
+const char* const LayoutScripts[LayoutCount] = { "Pause_Options", "In_Game", "Event_Results", "Pause_Menu_Main" };
+const uint32_t LayoutBit = 0x10000;
+
+// The PC's layout (0x5428B0); In_Game without the layout bit.
+inline Layout layoutOf(uint32_t flags)
+{
+    if (!(flags & LayoutBit) || (flags & 0x8000))
+        return LayoutInGame;
+    if (flags & 0x80000000u)
+        return LayoutEventResults;
+    return (flags & 0x20000) ? LayoutPauseMenuMain : LayoutPauseOptions;
+}
+
+// The PC bar items in list order: item i is button PcButton0 + i with text PcText0 + i.
+const int ItemCount = 6;
+const uint32_t PcButton0 = 0x62376D18, PcText0 = 0xB8A7C6CC;
+
+// Hashes of our baked prompt pair's icon and word.
+inline uint32_t pairIcon(int layout, int item) { return 0x7A1A0000u + uint32_t(layout) * 16 + uint32_t(item) * 2; }
+inline uint32_t pairWord(int layout, int item) { return pairIcon(layout, item) + 1; }
+
+// In-game the PS2 also shows Back, on Circle.
+inline const char* inGameToken(uint32_t message)
+{
+    return message == MsgBack ? "JOY_EVENT_FENG_CANCEL" : tokenForMessage(message);
+}
+
+// Each PC item's prompt, in bit order; the items used.
+template <typename MessageOfBit, typename TextOfBit>
+int inGamePrompts(uint32_t flags, MessageOfBit messageOfBit, TextOfBit textOfBit, Prompt out[ItemCount])
+{
+    int item = 0;
+    for (int i = 0; i < ItemCount; ++i)
+        out[i] = { 0, nullptr };
+    for (int bit = 0; bit < 32 && item < ItemCount; ++bit)
+    {
+        const uint32_t mask = 1u << bit;
+        if (!(flags & mask) || !bitHasText(bit))
+            continue;
+        const int at = item++;
+        if (mask & DroppedBits)
+            continue;
+        if (const char* token = inGameToken(messageOfBit(mask)))
+            out[at] = { textOfBit(mask), token };
+    }
+    return item;
+}
+
+// Inlined Show and Hide (0x8384D8 +0x6C, then 0x542990) bypass our hooks; -1 is never applied.
+inline bool visibilityChanged(int applied, bool shown)
+{
+    return applied != (shown ? 1 : 0);
+}
+
+// The PC bar's bank/name switcher (0x537E60) fades these two in turn; hidden on panel-row screens.
+const uint32_t PcMoney = 0xEB3A688A, PcName = 0xEB406FEC;
+
+struct Switcher
+{
+    uint32_t current;   // bar +0x3C: the object shown now, 0 stops the switcher (0x537F50)
+    uint32_t saved;     // ours while it is stopped
+};
+
+// The switcher on a panel-row screen (stopped) or with the bar.
+inline Switcher switcherFor(bool panelRow, Switcher s)
+{
+    if (panelRow)
+        return { 0, s.current ? s.current : s.saved };
+    if (s.saved && !s.current)
+        return { s.saved, 0 };
+    return { s.current, 0 };
+}
+
+const float PairGap = 30.0f;          // icon left edge to word left edge
+const float PairCharWidth = 8.0f;     // estimated word width per character
+
+inline float pairLeft(float centreX, size_t chars)
+{
+    return centreX - (PairGap + PairCharWidth * float(chars)) / 2;
 }
 
 // The text a prompt shows: its button token, then the language word.

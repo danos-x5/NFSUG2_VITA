@@ -2,8 +2,17 @@
 
 #include "psbarpackage.h"
 #include "psbarlogic.h"
+#include <cstring>
 
 namespace ug2 { namespace psbar {
+
+namespace {
+
+const uint16_t TagData = 0x4153;     // an object's start data
+const size_t DataY = 0x20;           // its y in that data
+const float IconDrop = 3.0f / 1.1333f;   // 3 Vita pixels lower than the PS2 places the bar's button icons
+
+}
 
 bool buildBar(fepackage::Package& bar, const fepackage::Package& donor, Built* out)
 {
@@ -34,6 +43,20 @@ bool buildBar(fepackage::Package& bar, const fepackage::Package& donor, Built* o
     const std::vector<size_t> added = work.copyFrom(donor, root, Salt, &out->error);
     if (added.empty())
         return false;
+    for (uint32_t hash : { PsHelpIcon, PsSecondIcon })
+    {
+        for (size_t i : work.find(hash))
+        {
+            std::vector<uint8_t>* data = work.tagData(i, TagData);
+            if (data && data->size() >= DataY + 4)
+            {
+                float y;
+                memcpy(&y, &(*data)[DataY], 4);
+                y += IconDrop;
+                memcpy(&(*data)[DataY], &y, 4);
+            }
+        }
+    }
     for (uint32_t hash : { PsMoney, PsDpad, PsSecondWord, PsSecondIcon })
         work.hide(hash);
     work.hide(PsRoot);

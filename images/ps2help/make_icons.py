@@ -10,7 +10,7 @@ import subprocess
 import sys
 import tempfile
 
-from PIL import Image
+from PIL import Image, ImageChops
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
@@ -142,29 +142,39 @@ def select():
     return [rounded_frame(7, 19, 57, 45, 2, STROKE)]
 
 
-# The d-pad: four pentagon arms of horizontal, vertical and 45 degree edges, the meant arms filled.
-def arm_shape(direction, size, hw, top, tip):
-    c, taper = size / 2, tip - hw
-    up = [(c - hw, top), (c + hw, top), (c + hw, taper), (c, tip), (c - hw, taper)]
-    if direction == "UP":
-        return up
-    if direction == "DOWN":
-        return [(x, 2 * c - y) for x, y in up][::-1]
-    if direction == "LEFT":
-        return [(y, x) for x, y in up][::-1]
-    return [(2 * c - y, x) for x, y in up]
+# The d-pad: one up arm (horizontal, vertical and 45 degree edges, blunt tip), mirrored and turned into the other three.
+DPAD = (SIZE, 11, 6, 18, 2, 3)      # size, arm half width, arm top, taper start, tip half width, outline width
+DPAD_ARM = (ARM, 6, 3, 8, 1, 2)
 
 
-DPAD = (SIZE, 11, 6, 28, 3)     # size, arm half width, arm top, tip, outline width
-DPAD_ARM = (ARM, 6, 3, 13, 2)
+def arm_up(size, hw, top, taper, tip_hw):
+    c, tip = size / 2, taper + hw - tip_hw
+    return [(c - hw, top), (c + hw, top), (c + hw, taper), (c + tip_hw, tip), (c - tip_hw, tip), (c - hw, taper)]
 
 
-def dpad(filled, size, hw, top, tip, width):
-    parts = []
+def arm_parts(size, hw, top, taper, tip_hw, width):
+    """Up arm filled at x 0, outlined at x size."""
+    shape = arm_up(size, hw, top, taper, tip_hw)
+    return ['<path d="%s"/>' % path(shape),
+            '<g transform="translate(%d,0)">%s</g>' % (size, outline(shape, width, DIM))]
+
+
+def mirrored(arm, size):
+    """The arm's left half and its mirror: exactly symmetric texels."""
+    out = arm.copy()
+    out.paste(arm.crop((0, 0, size // 2, size)).transpose(Image.FLIP_LEFT_RIGHT), (size // 2, 0))
+    return out
+
+
+def dpad(filled, arms, size):
+    """Four arms flipped from the up arm, meant ones filled."""
+    out = Image.new("L", (size, size), 0)
     for direction in ARMS:
-        shape = arm_shape(direction, size, hw, top, tip)
-        parts.append('<path d="%s"/>' % path(shape) if direction in filled else outline(shape, width, DIM))
-    return parts
+        up = arms[direction in filled]
+        turned = {"UP": up, "DOWN": up.transpose(Image.FLIP_TOP_BOTTOM), "LEFT": up.transpose(Image.TRANSPOSE),
+                  "RIGHT": up.transpose(Image.TRANSPOSE).transpose(Image.FLIP_LEFT_RIGHT)}[direction]
+        out = ImageChops.lighter(out, turned)
+    return out
 
 
 def rear(quadrant):
@@ -190,23 +200,17 @@ def cell_parts(name):
         return shoulder(name)
     if name in ("LSTICK", "RSTICK"):
         return stick(name[0])
-    if name in ("DPAD_UP", "DPAD_DOWN"):
-        return dpad(("UP", "DOWN"), *DPAD)
-    if name in ("DPAD_LEFT", "DPAD_RIGHT"):
-        return dpad(("LEFT", "RIGHT"), *DPAD)
     return start() if name == "START" else select()
 
 
 def cells():
     """Each cell's atlas position and its shapes."""
-    out = [((n % COLUMNS) * SIZE, (n // COLUMNS) * SIZE, cell_parts(name)) for n, name in enumerate(ICONS)]
-    rears, arms = [], []
+    out = [((n % COLUMNS) * SIZE, (n // COLUMNS) * SIZE, cell_parts(name)) for n, name in enumerate(ICONS)
+           if not name.startswith("DPAD_")]
+    rears = []
     for q in range(4):
         rears += ['<g transform="translate(%d,%d)">' % ((q % 2) * ARM, (q // 2) * REAR_PITCH)] + rear(q) + ["</g>"]
-        arms += (['<g transform="translate(%d,%d)">' % ((q % 2) * ARM, (q // 2) * ARM)] + dpad((ARMS[q],), *DPAD_ARM)
-                 + ["</g>"])
     out.append(((REAR_CELL % COLUMNS) * SIZE, (REAR_CELL // COLUMNS) * SIZE, rears))
-    out.append(((ARM_CELL % COLUMNS) * SIZE, (ARM_CELL // COLUMNS) * SIZE, arms))
     return out
 
 
@@ -228,7 +232,7 @@ def chrome(svg_path, png_path, profile):
             raise
 
 
-def render_cell(parts, tmp, n):
+def render_cell(parts, tmp, n, width=SIZE):
     """One cell, at the page origin so shared shapes match."""
     svg, png, profile = (os.path.join(tmp, "cell%d%s" % (n, ext)) for ext in (".svg", ".png", "-profile"))
     open(svg, "w").write(cell_svg(parts))
@@ -236,7 +240,21 @@ def render_cell(parts, tmp, n):
     big = Image.open(png).convert("RGB").getchannel("G")
     if big.size != (ATLAS * SUPER, ATLAS * SUPER):
         raise SystemExit("Chrome rendered %dx%d, expected %d" % (big.size + (ATLAS * SUPER,)))
-    return big.crop((0, 0, SIZE * SUPER, SIZE * SUPER)).reduce(SUPER)
+    return big.crop((0, 0, width * SUPER, SIZE * SUPER)).reduce(SUPER)
+
+
+def render_dpads(tmp):
+    """The full d-pads by name and the four single-arm icons."""
+    pads = {}
+    for n, (size, params) in enumerate(((SIZE, DPAD), (ARM, DPAD_ARM))):
+        both = render_cell(arm_parts(*params), tmp, 100 + n, 2 * size)
+        arms = {k: mirrored(both.crop((x, 0, x + size, size)), size) for k, x in ((True, 0), (False, size))}
+        if size == SIZE:
+            for name in ("DPAD_UP", "DPAD_DOWN", "DPAD_LEFT", "DPAD_RIGHT"):
+                pads[name] = dpad(("UP", "DOWN") if name in ("DPAD_UP", "DPAD_DOWN") else ("LEFT", "RIGHT"), arms, size)
+        else:
+            pads["ARMS"] = [dpad((arm,), arms, size) for arm in ARMS]
+    return pads
 
 
 def render_alpha():
@@ -244,8 +262,17 @@ def render_alpha():
     alpha = Image.new("L", (ATLAS, ATLAS), 0)
     with tempfile.TemporaryDirectory() as tmp, concurrent.futures.ThreadPoolExecutor(8) as pool:
         layout = cells()
+        pads = pool.submit(render_dpads, tmp)
         for (x, y, _), img in zip(layout, pool.map(lambda c: render_cell(c[1][2], tmp, c[0]), enumerate(layout))):
             alpha.paste(img, (x, y))
+        pads = pads.result()
+    for name, img in pads.items():
+        if name != "ARMS":
+            n = ICONS.index(name)
+            alpha.paste(img, ((n % COLUMNS) * SIZE, (n // COLUMNS) * SIZE))
+    bx, by = (ARM_CELL % COLUMNS) * SIZE, (ARM_CELL // COLUMNS) * SIZE
+    for q, img in enumerate(pads["ARMS"]):
+        alpha.paste(img, (bx + (q % 2) * ARM, by + (q // 2) * ARM))
     return alpha
 
 

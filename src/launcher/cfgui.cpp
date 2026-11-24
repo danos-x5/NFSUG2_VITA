@@ -295,6 +295,10 @@ int Configurator::firstSelectable(int from, int direction) const
 
 void Configurator::toggleShow()
 {
+#ifndef DEV_SETTINGS
+    if (m_tab == Tab::Config)
+        return;
+#endif
     const int sel = selection();
     const bool buttons = onButtons();
     const int item = buttons ? -1 : m_tab == Tab::Config ? m_configView[sel] : modAt(sel);

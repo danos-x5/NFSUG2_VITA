@@ -491,11 +491,16 @@ int Configurator::drawHints(Painter& p, bool draw) const
             p.face(x + 9, hy, 9, Face::Square);
         x += label(x + 24, "Default") + 48;
     }
-    if (draw)
-        p.face(x + 9, hy, 9, Face::Triangle);
-    const bool shown = m_show[int(m_tab)];
-    x += label(x + 24, config ? (shown ? "Hide dev settings" : "Show dev settings")
-                              : (shown ? "Hide unsupported" : "Show unsupported")) + 48;
+#ifndef DEV_SETTINGS
+    if (!config)
+#endif
+    {
+        if (draw)
+            p.face(x + 9, hy, 9, Face::Triangle);
+        const bool shown = m_show[int(m_tab)];
+        x += label(x + 24, config ? (shown ? "Hide dev settings" : "Show dev settings")
+                                  : (shown ? "Hide unsupported" : "Show unsupported")) + 48;
+    }
     const int badge = draw ? p.badge(x, HintsTop, "SELECT", 22) : p.textWidth("SELECT", FontSmall) + 14;
     const bool flash = m_nowUs < m_flashUntil;
     const char* text = flash ? "Set to default" : "Change all to default (Hold 3 sec.)";

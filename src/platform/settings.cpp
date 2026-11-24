@@ -15,10 +15,12 @@ using G = SettingGroup;
 const unsigned DS = SettingNeedsDevSettings, DT = SettingNeedsDevTools, OFF = SettingOff, AUTO = SettingAuto,
                HOST = SettingHostOnly, SHADOWBUILD = SettingNeedsShadowBuild;
 
-#define BOOL(key, grp, def, desc, flags) { key, T::Bool, G::grp, def, 0, 1, 1, nullptr, desc, flags }
-#define INT(key, grp, def, lo, hi, step, desc, flags) { key, T::Int, G::grp, def, lo, hi, step, nullptr, desc, flags }
-#define ENUM(key, grp, def, names, desc, flags) { key, T::Enum, G::grp, def, 0, 0, 0, names, desc, flags }
-#define STR(key, grp, def, desc, flags) { key, T::String, G::grp, 0, 0, 0, 0, def, desc, flags }
+// Every Developer setting is read only in a DEV_SETTINGS build; a release build ignores it.
+#define DEVONLY(group) ((group) == G::Developer ? SettingNeedsDevSettings : 0u)
+#define BOOL(key, grp, def, desc, flags) { key, T::Bool, G::grp, def, 0, 1, 1, nullptr, desc, flags | DEVONLY(G::grp) }
+#define INT(key, grp, def, lo, hi, step, desc, flags) { key, T::Int, G::grp, def, lo, hi, step, nullptr, desc, flags | DEVONLY(G::grp) }
+#define ENUM(key, grp, def, names, desc, flags) { key, T::Enum, G::grp, def, 0, 0, 0, names, desc, flags | DEVONLY(G::grp) }
+#define STR(key, grp, def, desc, flags) { key, T::String, G::grp, 0, 0, 0, 0, def, desc, flags | DEVONLY(G::grp) }
 #define NATIVE(key, what) BOOL(key, Developer, 1, "Native version of " what "; off runs the translated original.", DS)
 #define NATIVE_ALWAYS(key, what) BOOL(key, Developer, 1, "Native version of " what "; off runs the translated original.", 0)
 #define FAST(key, what) BOOL(key, Developer, 1, "Fast path for " what "; off uses the plain one.", DS)

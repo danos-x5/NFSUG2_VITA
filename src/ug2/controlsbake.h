@@ -12,6 +12,7 @@ namespace ug2 { namespace controlsbake {
 
 const uint32_t TextConfigure = 0x8bab66ef, TextPressButton = 0x23cf49aa;     // "Configure your settings", the bind wait
 const uint32_t PictureObject = 0xf1534c25;     // CONTROLLER_IMAGE
+const uint32_t TitleGroupObject = 0x8d7e0c53;  // the group holding the title, panel and instruction line
 const int SlotModel = 12;                      // the last row slot of UI_Options.fng
 
 struct Result

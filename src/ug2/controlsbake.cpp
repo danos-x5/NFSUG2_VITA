@@ -13,7 +13,8 @@ namespace {
 
 using fepackage::nameHash;
 
-const uint32_t TitleObject = 0x42adb44c;
+const uint32_t TitleObject = 0x42adb44c, TitleGroup = 0x8d7e0c53;     // the title text and the group around title and list
+const float InstructionX = 37.0f, InstructionY = 293.0f;     // in the title group: just under the last visible row
 const uint32_t RowBar = 0xa67c3fe2, RowBarRight = 0xd8fdd418, RowBarLeft = 0xd8fdd419;     // a row group's bar and end caps
 const float BarCenter = 3.115f, BarWidth = 523.35f;
 const float PictureShiftX = -37.0f, PictureWidth = 640.0f, PictureHeight = 320.0f;     // controls-overhaul's picture area
@@ -49,7 +50,7 @@ void roomForTexts(fepackage::Package& p, int rows)
     }
 }
 
-// The PC controller screen's instruction label itself, copied in with its font, colour and scripts.
+// The PC instruction label, shown from Init on; fades like the PC's.
 long instructionLine(fepackage::Package& p, const fepackage::Package* donor, std::string* error)
 {
     const std::vector<size_t> label = donor ? donor->find(nameHash(InstructionLabel)) : std::vector<size_t>();
@@ -63,6 +64,17 @@ long instructionLine(fepackage::Package& p, const fepackage::Package* donor, std
         return -1;
     const size_t line = added[0];
     p.setHash(line, instructionHash());
+    p.unchainScript(line, nameHash("Init"));
+    p.addResponses(line, *donor, label[0]);
+    for (uint32_t message : p.responseMessages(line))
+        p.addTarget(message, p.guid(line));
+    const std::vector<size_t> group = p.find(TitleGroup);
+    if (group.size() == 1)
+    {
+        p.setParent(line, p.guid(group[0]));
+        setFloat(p.tagData(line, TagData), 0x1c, InstructionX);
+        setFloat(p.tagData(line, TagData), 0x20, InstructionY);
+    }
     p.setTag32(line, TagTextId, TextConfigure);
     if (p.tag32(line, TagBuffer) < 64)
         p.setTag32(line, TagBuffer, 64);

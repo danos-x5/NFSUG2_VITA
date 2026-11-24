@@ -18,6 +18,7 @@ namespace ug2 {
 void sub_50b790_guest(win32::WinApplication* app, x86::CPU& cpu);
 void sub_50b840_guest(win32::WinApplication* app, x86::CPU& cpu);
 void sub_570d70_guest(win32::WinApplication* app, x86::CPU& cpu);
+void sub_5425a0_guest(win32::WinApplication* app, x86::CPU& cpu);
 
 namespace ownscreens {
 
@@ -41,13 +42,14 @@ struct Copy
 struct Replacement
 {
     std::string name;
-    reg32 hash = 0, chunk = 0;
+    reg32 hash = 0, chunk = 0;      // chunk: ours, built at the first registration
     Replace edit;
-    bool done = false;
+    bool done = false, failed = false;
 };
 
 std::vector<Copy> s_copies;
 std::vector<Replacement> s_replacements;
+std::map<reg32, reg32> s_registered;    // a loaded chunk to ours, until the loader unloads it
 std::map<std::string, reg32> s_names;
 std::map<reg32, reg32> s_entries;       // package hash to our entry
 bool s_pending = false;
@@ -184,14 +186,19 @@ reg32 replacementFor(reg32 chunk)
     const reg32 kind = rc::ld32(chunk);
     if (kind != fepackage::ChunkPackage && kind != ChunkRaw)
         return 0;
+    const reg32 hash = kind == ChunkRaw ? fepackage::nameHash(rawName(chunk)) : rc::ld32(chunk + 8);
     for (Replacement& r : s_replacements)
     {
-        if (r.done)
+        if (hash != r.hash || r.failed)
             continue;
-        const reg32 hash = kind == ChunkRaw ? fepackage::nameHash(rawName(chunk)) : rc::ld32(chunk + 8);
-        if (hash != r.hash)
-            continue;
+        if (r.chunk)
+        {
+            s_registered[chunk] = r.chunk;
+            pf::logInfo("ownscreens: %s registered again, chunk %08x -> %08x", r.name.c_str(), unsigned(chunk), unsigned(r.chunk));
+            return r.chunk;
+        }
         r.done = true;
+        r.failed = true;
         fepackage::Package package;
         if (!readChunk(chunk, &package))
         {
@@ -200,6 +207,7 @@ reg32 replacementFor(reg32 chunk)
         }
         if (!r.edit(package))
             return 0;
+        r.failed = false;
         const std::vector<uint8_t> bytes = package.write();
         std::vector<uint8_t> data;
         if (kind == ChunkRaw)
@@ -215,12 +223,23 @@ reg32 replacementFor(reg32 chunk)
         for (size_t i = 0; i < data.size(); ++i)
             rc::st8(at + reg32(i), data[i]);
         r.chunk = at;
+        s_registered[chunk] = at;
         pf::logInfo("ownscreens: %s replaced when the loader registered it (%s chunk): %u objects, %u bytes, chunk %08x -> %08x",
                     r.name.c_str(), kind == ChunkRaw ? "raw" : "packed", unsigned(package.objectCount()), unsigned(data.size()), unsigned(chunk),
                     unsigned(at));
         return at;
     }
     return 0;
+}
+
+reg32 unloadFor(reg32 chunk)
+{
+    const auto found = s_registered.find(chunk);
+    if (found == s_registered.end())
+        return 0;
+    const reg32 ours = found->second;
+    s_registered.erase(found);
+    return ours;
 }
 
 ReplacementState replacementState(const std::string& name)
@@ -351,6 +370,14 @@ void sub_570d70(win32::WinApplication* app, x86::CPU& cpu)
     if (const reg32 replacement = ownscreens::replacementFor(rc::ld32(cpu.esp + 4)))
         rc::st32(cpu.esp + 4, replacement);
     sub_570d70_guest(app, cpu);
+}
+
+// Package chunk unload (cdecl; chunk): unloads our registered chunk.
+void sub_5425a0(win32::WinApplication* app, x86::CPU& cpu)
+{
+    if (const reg32 ours = ownscreens::unloadFor(rc::ld32(cpu.esp + 4)))
+        rc::st32(cpu.esp + 4, ours);
+    sub_5425a0_guest(app, cpu);
 }
 
 }

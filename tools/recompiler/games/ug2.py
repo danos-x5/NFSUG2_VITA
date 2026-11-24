@@ -46,6 +46,7 @@ NATIVE_OVERRIDES = [
     0x50b790,   # screen constructor by package hash (cdecl; hash, package, argument)
     0x50b840,   # screen table entry by package hash (cdecl; hash)
     0x570d70,   # chunk register (cdecl; chunk): a replaced package chunk goes in instead (src/ug2/ownscreens.cpp)
+    0x5425a0,   # package chunk unload (cdecl; chunk): a replaced package's own chunk is unloaded (src/ug2/ownscreens.cpp)
     # Front touch (src/ug2/padbind.cpp)
     0x50b460,   # FE mouse cursor draw (cdecl; x, y): never drawn
     # Forwarding placeholders for the hot-function conversions (src/ug2/native/stubs.cpp, tools/native/placeholders.txt)

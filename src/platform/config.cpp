@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <string>
 #include <strings.h>
 #include <vector>
 
@@ -31,6 +32,8 @@ struct Entry
 };
 
 std::vector<Entry> s_entries;
+std::vector<std::string> s_pending;     // keys set since the last save, in order
+std::string s_path;
 
 const char* find(const char* wanted)
 {
@@ -83,6 +86,8 @@ bool readLine(FILE* file, char* line, int size, bool* tooLong)
 bool Config::load(const char* path, const char* missingFileText)
 {
     s_entries.clear();
+    s_pending.clear();
+    s_path = path;
     std::string text;
     if (cfgfile::readText(path, &text) == cfgfile::FileState::Unreadable)
     {
@@ -130,6 +135,8 @@ bool Config::load(const char* path, const char* missingFileText)
                      MaxKey - 1, MaxValue - 1);
             continue;
         }
+        if (settingRetired(key))
+            continue;
         const bool known = isKnown(key);
         const char* current = canonicalKey(key);
         const bool alias = current != key;
@@ -165,6 +172,67 @@ bool Config::load(const char* path, const char* missingFileText)
             logError("config: unknown setting '%s'", entry.key);
     }
     fclose(file);
+    return true;
+}
+
+void Config::set(const char* key, const char* value)
+{
+    const char* current = canonicalKey(key);
+    if (strlen(current) >= MaxKey || strlen(value) >= MaxValue)
+    {
+        logError("config: %s not set, key over %d or value over %d characters", key, MaxKey - 1, MaxValue - 1);
+        return;
+    }
+    Entry* entry = nullptr;
+    for (Entry& e : s_entries)
+    {
+        if (strcmp(e.key, current) == 0)
+            entry = &e;
+    }
+    if (!entry)
+    {
+        s_entries.emplace_back();
+        entry = &s_entries.back();
+        strcpy(entry->key, current);
+    }
+    strcpy(entry->value, value);
+    entry->fromAlias = false;
+    for (const std::string& pending : s_pending)
+    {
+        if (pending == current)
+            return;
+    }
+    s_pending.push_back(current);
+}
+
+bool Config::save()
+{
+    if (s_pending.empty())
+        return true;
+    if (s_path.empty())
+        return false;
+    std::string text;
+    if (cfgfile::readText(s_path.c_str(), &text) == cfgfile::FileState::Unreadable)
+    {
+        logError("config: %s is unreadable, nothing saved", s_path.c_str());
+        return false;
+    }
+    std::vector<cfgfile::Change> changes;
+    for (const std::string& key : s_pending)
+    {
+        cfgfile::Change change;
+        change.key = key;
+        change.value = find(key.c_str());
+        const Setting* setting = findSetting(key.c_str());
+        change.atDefault = setting && !(setting->flags & SettingAuto) && change.value == defaultText(*setting);
+        changes.push_back(change);
+    }
+    if (!cfgfile::writeFile(s_path.c_str(), cfgfile::apply(text, changes)))
+    {
+        logError("config: cannot write %s", s_path.c_str());
+        return false;
+    }
+    s_pending.clear();
     return true;
 }
 

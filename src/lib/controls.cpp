@@ -9,6 +9,7 @@
 #include <mutex>
 #endif
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -56,6 +57,10 @@ static const ButtonMapping s_buttons[] =
 
 // Button that a short press of Select (no chord) reports: respot.
 static const int s_selectTapButton = 8;
+const int HatUp    = 0;
+const int HatDown  = 18000;
+const int HatLeft  = 27000;
+const int HatRight = 9000;
 static const int s_buttonCount = 16;
 
 // Keys held while an input is held in a text field: the d-pad moves its cursor (WM_KEYDOWN Left / Right).
@@ -90,11 +95,121 @@ static const Chord s_chords[] =
 // How long a Select tap holds its button, enough for one game frame at 10 fps.
 static const uint64_t s_tapUs = 100000;
 
-// Left and right stick: dead zone and saturation as fractions of full deflection, and the response curve
-// y = linear * x + (1 - linear) * x^3 between them (finer aim near the centre).
-static const float s_stickDeadZone   = 0.15f;
-static const float s_stickSaturation = 0.94f;
-static const float s_stickLinear     = 0.6f;
+// A flick past FlickOn moves the hat; re-arms under FlickOff.
+static const float FlickOn  = 0.7f;
+static const float FlickOff = 0.3f;
+
+// ---- Roles and shaping ----
+
+namespace
+{
+
+struct Shared
+{
+    std::atomic<uint32_t> roles;
+    std::atomic<float>    shape[2][3];      // left, right: dead zone, saturation, sensitivity
+    std::atomic<bool>     driving;
+
+    Shared();
+};
+
+uint32_t packRoles(const StickRoles& r)
+{
+    return (r.axes[0] ? 1u : 0u) | (r.axes[1] ? 2u : 0u) | (r.flick[0] ? 4u : 0u) | (r.flick[1] ? 8u : 0u) | (r.freeLook ? 16u : 0u);
+}
+
+StickRoles unpackRoles(uint32_t v)
+{
+    return { { (v & 1) != 0, (v & 2) != 0 }, { (v & 4) != 0, (v & 8) != 0 }, (v & 16) != 0 };
+}
+
+float percent(int value, int low, int high)
+{
+    return float(std::min(std::max(value, low), high)) / 100.0f;
+}
+
+Shared::Shared()
+    :   roles(packRoles({ { true, false }, { false, false }, true }))
+    ,   driving(false)
+{
+    shape[0][0] = percent(pf::Config::getInt("left_stick_deadzone", 15), 0, 50);
+    shape[0][1] = percent(pf::Config::getInt("left_stick_saturation", 94), 50, 100);
+    shape[0][2] = percent(pf::Config::getInt("left_stick_sensitivity", 60), 0, 100);
+    shape[1][0] = percent(pf::Config::getInt("right_stick_deadzone", 15), 0, 50);
+    shape[1][1] = percent(pf::Config::getInt("right_stick_saturation", 94), 50, 100);
+    shape[1][2] = percent(pf::Config::getInt("right_stick_sensitivity", 60), 0, 100);
+}
+
+Shared& shared()
+{
+    static Shared s;
+    return s;
+}
+
+}
+
+StickRoles stickRoles()
+{
+    return unpackRoles(shared().roles);
+}
+
+void setStickRoles(const StickRoles& roles)
+{
+    shared().roles = packRoles(roles);
+}
+
+bool rightStickUnbound()
+{
+    return stickRoles().freeLook;
+}
+
+StickShape stickShape(bool right)
+{
+    Shared& s = shared();
+    const int i = right ? 1 : 0;
+    return { s.shape[i][0], s.shape[i][1], s.shape[i][2] };
+}
+
+void setStickShape(bool right, const StickShape& shape)
+{
+    Shared& s = shared();
+    const int i = right ? 1 : 0;
+    s.shape[i][0] = std::min(std::max(shape.deadZone, 0.0f), 0.5f);
+    s.shape[i][1] = std::min(std::max(shape.saturation, 0.5f), 1.0f);
+    s.shape[i][2] = std::min(std::max(shape.sensitivity, 0.0f), 1.0f);
+}
+
+StickShape roleShape(const StickRoles& roles, bool right)
+{
+    const int i = right ? 1 : 0;
+    return roles.axes[i] || roles.flick[i] ? stickShape(right) : FixedStickShape;
+}
+
+void fixedShape(float x, float y, float* outX, float* outY)
+{
+    shapeStick(x, y, FixedStickShape, outX, outY);
+}
+
+void setDriving(bool driving)
+{
+    shared().driving = driving;
+}
+
+bool driving()
+{
+    return shared().driving;
+}
+
+int hatAngle(bool up, bool down, bool left, bool right)
+{
+    if (up && down)
+        up = down = false;
+    if (left && right)
+        left = right = false;
+    const int v = up ? 1 : down ? -1 : 0, h = right ? 1 : left ? -1 : 0;
+    static const int Angles[3][3] = { { 22500, 27000, 31500 }, { 18000, -1, 0 }, { 13500, 9000, 4500 } };    // [h][v]
+    return Angles[h + 1][v + 1];
+}
 
 // ---- Keys ----
 
@@ -447,13 +562,22 @@ Mapper::Mapper()
     ,   m_chorded(0)
     ,   m_selectUsed(false)
     ,   m_selectPulseEndUs(0)
+    ,   m_flickArmed{ false, false }
+    ,   m_shiftEndUs{ { 0, 0 }, { 0, 0 } }
 {
+}
+
+static float clampUnit(float v)
+{
+    return std::fmax(-1.0f, std::fmin(1.0f, v));
 }
 
 State Mapper::update(const PadSample& pad, uint64_t nowUs)
 {
     State state;
     memset(&state, 0, sizeof(state));
+    const bool driving = controls::driving();
+    const StickRoles roles = stickRoles();
     const uint32_t inputs = pad.inputs;
     const uint32_t pressed = inputs & ~m_previous;
     const uint32_t released = m_previous & ~inputs;
@@ -500,31 +624,67 @@ State Mapper::update(const PadSample& pad, uint64_t nowUs)
     if (nowUs < m_selectPulseEndUs)
         state.buttons |= uint32_t(1) << s_selectTapButton;
 
-    state.axes[AxisX] = pad.sticks[0];
-    state.axes[AxisY] = pad.sticks[1];
-    state.axes[AxisZ] = pad.sticks[3];
-    state.axes[AxisRz] = pad.sticks[2];
-    state.pov = -1;
+    float stick[2][2];
+    for (int side = 0; side < 2; ++side)
+        shapeStick(pad.sticks[side * 2], pad.sticks[side * 2 + 1], roleShape(roles, side != 0), &stick[side][0], &stick[side][1]);
+    for (int h = 0; h < HatCount; ++h)
+        state.pov[h] = -1;
+    if (!driving)
+    {
+        m_flickArmed[0] = m_flickArmed[1] = false;
+        state.axes[AxisX] = stick[0][0];
+        state.axes[AxisY] = stick[0][1];
+        state.axes[AxisZ] = stick[1][1];
+        state.axes[AxisRz] = stick[1][0];
+        return state;
+    }
+
+    if (roles.axes[0])
+    {
+        state.axes[AxisX] = stick[0][0];
+        state.axes[AxisY] = stick[0][1];
+    }
+    if (roles.axes[1])
+    {
+        state.axes[AxisZ] = stick[1][1];
+        state.axes[AxisRz] = stick[1][0];
+    }
+    for (int side = 0; side < 2; ++side)
+    {
+        const float y = stick[side][1];
+        if (!roles.flick[side])
+        {
+            m_flickArmed[side] = false;
+            continue;
+        }
+        if (std::fabs(y) < FlickOff)
+            m_flickArmed[side] = true;
+        else if (m_flickArmed[side] && std::fabs(y) > FlickOn)
+        {
+            m_flickArmed[side] = false;
+            m_shiftEndUs[side][y < 0.0f ? 0 : 1] = nowUs + s_tapUs;
+        }
+        state.pov[HatLeftStick + side] = hatAngle(nowUs < m_shiftEndUs[side][0], nowUs < m_shiftEndUs[side][1], false, false);
+    }
     return state;
 }
 
 // ---- Stick shaping ----
 
-void shapeStick(float x, float y, uint32_t deadZone, uint32_t saturation, float* outX, float* outY)
+void shapeStick(float x, float y, const StickShape& shape, float* outX, float* outY)
 {
-    const float dead = std::fmax(s_stickDeadZone, float(deadZone) / 10000.0f);
-    const float full = std::fmin(s_stickSaturation, float(saturation) / 10000.0f);
     const float magnitude = std::sqrt(x * x + y * y);
-    if (magnitude <= dead)
+    if (magnitude <= shape.deadZone)
     {
         *outX = 0.0f;
         *outY = 0.0f;
         return;
     }
-    const float t = full > dead ? std::fmin(1.0f, (magnitude - dead) / (full - dead)) : 1.0f;
-    const float scale = (s_stickLinear * t + (1.0f - s_stickLinear) * t * t * t) / magnitude;
-    *outX = std::fmax(-1.0f, std::fmin(1.0f, x * scale));
-    *outY = std::fmax(-1.0f, std::fmin(1.0f, y * scale));
+    const float t = shape.saturation > shape.deadZone ?
+        std::fmin(1.0f, (magnitude - shape.deadZone) / (shape.saturation - shape.deadZone)) : 1.0f;
+    const float scale = (shape.sensitivity * t + (1.0f - shape.sensitivity) * t * t * t) / magnitude;
+    *outX = clampUnit(x * scale);
+    *outY = clampUnit(y * scale);
 }
 
 }}

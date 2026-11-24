@@ -74,11 +74,11 @@ public:
     AxisProperties& axisProperties(controls::Axis axis) { return m_axisProperties[axis]; }
 
     // Joystick buttons and axes now, axes shaped with this device's properties and scaled to their ranges.
-    void getState(x86::reg32* buttons, x86::sreg32 (&axes)[controls::AxisCount], int* pov);
+    void getState(x86::reg32* buttons, x86::sreg32 (&axes)[controls::AxisCount], int (&pov)[controls::HatCount]);
 
     // Game code run at each getState on the guest thread (execution lock held) with the buttons and hat about to
     // be reported; it may change them. Set once before the game starts.
-    typedef void (*PollHook)(x86::reg32* buttons, int* pov);
+    typedef void (*PollHook)(x86::reg32* buttons, int* pov);     // pov: the first of the hats
     static void setPollHook(PollHook hook);
 
     // Synthetic pad merged into every reading: inputs ORed, nonzero sticks and a touch replace. Any thread.
@@ -86,6 +86,8 @@ public:
 
     // Right stick of the last pad reading, injected pad included: -1..1, y down. Any thread.
     static void getRightStick(float* x, float* y);
+    // The same shaped with controls::FixedStickShape (garage, free look).
+    static void getFixedRightStick(float* x, float* y);
 
     // Front touch as the mouse: last position (0..1 of the pointer area) and the left button.
     struct Touch

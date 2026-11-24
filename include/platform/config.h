@@ -18,6 +18,9 @@ public:
     static bool getBool(const char* key, bool defaultValue);
     static int  getInt(const char* key, int defaultValue);
     static const char* getString(const char* key, const char* defaultValue);
+    // In memory; save() writes keys set since into the file.
+    static void set(const char* key, const char* value);
+    static bool save();
     // Index of the value in names[0..count) (any case); defaultIndex if the key is missing or the value is not one
     // of the names (logged).
     static int  getChoice(const char* key, const char* const* names, int count, int defaultIndex);

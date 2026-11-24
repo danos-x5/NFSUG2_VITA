@@ -22,18 +22,10 @@ const x86::reg32 OrbitInput = 0x23C;        // the garage screen's orbit object;
 const x86::reg32 Busy = 0x00838578;         // the handler's other gate
 const x86::reg32 IdleSpin = 0x008363FC, IdleSince = 0x00837AA0, Ticks = 0x008651AC;
 
-struct GarageStick
+bool enabled()
 {
-    bool  enabled;
-    float deadZone;
-};
-
-const GarageStick& settings()
-{
-    static const GarageStick s = { pf::Config::getBool("garage_stick", true),
-                                   garage_stick::deadZone(pf::Config::getInt("garage_stick_deadzone",
-                                                                             garage_stick::DefaultDeadZonePercent)) };
-    return s;
+    static const bool on = pf::Config::getBool("garage_stick", true);
+    return on;
 }
 
 // Sends one joy event to the screen's orbit handler.
@@ -53,12 +45,11 @@ void orbitEvent(win32::WinApplication* app, x86::CPU& cpu, x86::reg32 screen, x8
 
 void sub_4a5d90(win32::WinApplication* app, x86::CPU& cpu)
 {
-    const GarageStick& g = settings();
     const x86::reg32 screen = cpu.ecx;
     float x = 0.0f, y = 0.0f;
-    if (g.enabled)
-        win32::Gamepad::getRightStick(&x, &y);
-    const garage_stick::OrbitBytes orbit = garage_stick::orbitBytes(x, y, g.deadZone);
+    if (enabled())
+        win32::Gamepad::getFixedRightStick(&x, &y);
+    const garage_stick::OrbitBytes orbit = garage_stick::orbitBytes(x, y, 0.0f);
     static bool s_held;
     if (orbit.held || s_held)
     {

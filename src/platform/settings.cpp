@@ -36,10 +36,15 @@ const Setting s_table[] =
     ENUM("movies", Display, 1, "game|native|vp6|vp6only", "native: the .mp4s, Vita decoder; vp6: else native VP6 (vp6only: VP6 always); game: the game's own decoder.", 0),
 
     // ---- Controls ----
-    BOOL("rear_touch", Controls, 1, "Rear touch pad works as L2, R2, L3 and R3, unbound until set in the Controls screen.", 0),
+    BOOL("rear_touch", Controls, 1, "Rear touch pad works as L2, R2, L3 and R3, unbound until set in the Controls screen.", SettingInGame),
     BOOL("front_touch", Controls, 1, "Touching the screen clicks like a mouse in the menus; no cursor is drawn.", 0),
-    BOOL("garage_stick", Controls, 1, "The right stick turns the car in the garage and the customisation menus.", 0),
-    INT("garage_stick_deadzone", Controls, 30, 0, 99, 1, "Dead zone of the garage stick, in percent of its range.", 0),
+    BOOL("garage_stick", Controls, 1, "The right stick turns the car in the garage and the customisation menus.", SettingInGame),
+    INT("left_stick_deadzone", Controls, 15, 0, 50, 1, "Left stick dead zone in percent, while it steers, accelerates/brakes or shifts.", SettingInGame),
+    INT("left_stick_saturation", Controls, 94, 50, 100, 1, "Left stick travel that counts as full, in percent; only while it steers, accelerates/brakes or shifts.", SettingInGame),
+    INT("left_stick_sensitivity", Controls, 60, 0, 100, 5, "Left stick response (100 linear, lower finer at the centre) while it steers, accelerates/brakes or shifts.", SettingInGame),
+    INT("right_stick_deadzone", Controls, 15, 0, 50, 1, "Right stick dead zone in percent, while it steers, accelerates/brakes or shifts.", SettingInGame),
+    INT("right_stick_saturation", Controls, 94, 50, 100, 1, "Right stick travel that counts as full, in percent; only while it steers, accelerates/brakes or shifts.", SettingInGame),
+    INT("right_stick_sensitivity", Controls, 60, 0, 100, 5, "Right stick response (100 linear, lower finer at the centre) while it steers, accelerates/brakes or shifts.", SettingInGame),
 
     // ---- Audio ----
     BOOL("music_hw_decode", Audio, 1, "Decode music with the Vita's MP3 decoder, which frees the CPU; the game's decoder is the fallback.", 0),
@@ -182,6 +187,7 @@ const Setting s_table[] =
     INT("debug_merge_limit", Developer, 1000, 0, 100000, 100, "Largest number of draws merged.", 0),
     INT("debug_plan_check", Developer, 0, 0, 100000, 1, "Every Nth frame is drawn as recorded and as planned, and compared.", 0),
     STR("debug_shot_frames", Developer, "", "Race frames to save as shot_N.bmp: a,b,c; fN rendered frame N, lN N frames after loading.", DT),
+    INT("debug_control_type", Developer, 0, 0, 5, 1, "Plays with this Control Type (1 to 4, 5 Custom) without storing it; 0 uses registry.txt.", DS),
     BOOL("debug_draw_hash", Developer, 0, "Hash each draw.", 0),
     BOOL("debug_scene_finish", Developer, 0, "Wait for the GPU after each scene.", 0),
     FAST("scene_merge", "merging scenes"),
@@ -326,6 +332,10 @@ const Setting s_table[] =
 #undef NATIVE_ALWAYS
 #undef FAST
 
+// Keys that no longer exist: a cfg line for one is skipped without a message.
+const char* const s_retired[] = { "control_type", "custom_binds", "left_stick_mode", "right_stick_mode", "dpad_mode",
+                                  "garage_stick_deadzone" };
+
 const SettingAlias s_aliases[] =
 {
     { "world_lod_pixels", "dev_world_lod_pixels" },
@@ -382,6 +392,16 @@ bool settingReadInThisBuild(const Setting& setting)
     missing |= SettingNeedsShadowBuild;
 #endif
     return (setting.flags & missing) == 0;
+}
+
+bool settingRetired(const char* key)
+{
+    for (const char* retired : s_retired)
+    {
+        if (strcmp(retired, key) == 0)
+            return true;
+    }
+    return false;
 }
 
 const SettingAlias* settingAliases(int* count)

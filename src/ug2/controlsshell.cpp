@@ -8,9 +8,9 @@
 #include "controlspack.h"
 #include "controlsrows.h"
 #include "customize.h"
+#include "diagram.h"
 #include "ownscreens.h"
 #include "psprompt.h"
-#include "vitapicture.h"
 
 #include <lib/gamepad.h>
 #include <lib/memmap.h>
@@ -19,7 +19,6 @@
 #include <recomp.h>
 
 #include <cstring>
-#include <functional>
 #include <string>
 #include <vector>
 
@@ -40,6 +39,8 @@ const reg32 RowConstructor = 0x51e230;      // thiscall (row groups x4 of the sc
 const reg32 AddRow = 0x54ef30;              // thiscall on the screen (row, 1)
 const reg32 FinishRows = 0x539650;          // thiscall on the screen (0)
 const reg32 HideObject = 0x50ca00;          // cdecl (object)
+const reg32 ShowObject = 0x50ca50;          // cdecl (object)
+const reg32 FontOf = 0x51bd70;              // cdecl (text object's font handle +0x24): the font, loaded when +8 is set
 const reg32 FindObject = 0x5379c0;          // cdecl (package name, hash)
 const reg32 SetText = 0x50c900;             // cdecl (text object, text hash)
 const reg32 SetFormatted = 0x537b30;        // cdecl (text object, format, argument list): the object's own string
@@ -53,13 +54,16 @@ const reg32 PcControllerName = 0x793dcc;    // "UI_Options_PC_Controller.fng", p
 const reg32 PcControllerEntryName = 0x7f7e54;   // the screen table's pointer to the same string
 const reg32 LoadChunks = 0x577ab0;          // cdecl (data, bytes)
 const reg32 SetImage = 0x50c990;            // cdecl (image object, texture hash)
+const reg32 TextureByHash = 0x4901d0;       // cdecl (hash, default, unloaded): texture info; [info] + 0x18 the D3D texture
+const reg32 SlotLockRect = 19, SlotUnlockRect = 20;     // IDirect3DTexture9 vtable
+const char* const PictureTexture = "CTRL_PICTURE";
 const reg32 RowCount = 0x12c, VisibleRows = 0x134;     // the list's rows + 1 (the scroll bar takes rows), and lines shown
-const char* const PictureTexture = "CTRL_VITA_BODY";
 const reg32 SlotMessage = 1, SlotUpdate = 3, SlotBase = 16;
 const reg32 MessageLeft = 0x9120409e, MessageRight = 0xb5971bf1, MessageAccept = 0xc407210;
 const reg32 MessageBack = 0x911ab364, MessageOutroDone = 0xe1fde1d1, ScreenLeaving = 0x138;
 const reg32 LabelObject = 0x2c, ValueObject = 0x30, ArrowLeft = 0x4c, ArrowRight = 0x50, HighlightedRow = 0x54;
-const reg32 ObjectFlags = 0x1c, ObjectTextHash = 0x60, DataOffset = 0x2c, DataX = 0x1c, DirtyFlag = 0x400000;
+const reg32 ObjectFlags = 0x1c, ObjectFont = 0x24, ObjectTextHash = 0x60, DataOffset = 0x2c, DataX = 0x1c, DataScale = 0x38,
+            DirtyFlag = 0x400000;
 const reg32 TextAlign = 0x6c, TextAlignCentre = 1, TextAlignRight = 2;
 const reg32 TitleObject = 0x42adb44c;
 const reg32 TextControls = 0x04dc6db5, TextJoypad = 0xf91fba4d, TextCustomize = 0x8d5abf58, TextControlType = 0xba7306aa,
@@ -144,7 +148,21 @@ reg32 s_vtable = 0, s_rowTable = 0, s_arrowlessTable = 0, s_text = 0, s_textArgu
 float s_valueReference = 0.0f;       // row 1's value x after the game's first layout, as controls-overhaul took it
 bool s_haveReference = false;
 int s_resetLogs = 0;
-reg32 s_pictureTexture = 0;
+
+// The Joypad picture and labels change together: composed aside, then swapped in one frame once every label is fitted.
+struct Picture
+{
+    controlstore::Record shown = {}, record = {};
+    bool haveShown = false;
+    bool pending = false;
+    diagram::Plan plan = {};
+    int waited = 0;         // frames the pending swap waited for the label font
+};
+Picture s_picture;
+diagram::Composer s_composer;   // the one host buffer every plan is composed into
+reg32 s_pack = 0, s_packBytes = 0, s_image = 0;     // the one texture pack, loaded once, and its DXT3 bytes in it
+reg32 s_lockedRect = 0;
+const int FontWait = 30;
 
 enum WaitPhase { WaitNone, WaitArmed, WaitGuard };
 
@@ -249,19 +267,6 @@ double measure(win32::WinApplication* app, x86::CPU& cpu, reg32 font, const std:
     return double(cpu.fpu.pop());
 }
 
-// One line, cut with "..." when too wide.
-std::string fitOneLine(const std::string& text, double limit, const std::function<double(const std::string&)>& width)
-{
-    if (width(text) <= limit)
-        return text;
-    std::string s = text;
-    while (!s.empty() && width(s + "...") > limit)
-        s.pop_back();
-    while (!s.empty() && s.back() == ' ')
-        s.pop_back();
-    return s + "...";
-}
-
 void fitLabel(win32::WinApplication* app, x86::CPU& cpu, reg32 label, const Text& text)
 {
     const reg32 font = psprompt::lastFont();
@@ -270,7 +275,7 @@ void fitLabel(win32::WinApplication* app, x86::CPU& cpu, reg32 label, const Text
     const std::string plain = text.plain ? std::string(text.plain) : tableText(text.hash);
     if (plain.empty())
         return;
-    const std::string fitted = fitOneLine(plain, RowLabelWidth, [&](const std::string& t) { return measure(app, cpu, font, t); });
+    const std::string fitted = diagram::fitLine(plain, RowLabelWidth, [&](const std::string& t) { return measure(app, cpu, font, t); });
     if (fitted != plain)
         setPlain(app, cpu, label, fitted);
 }
@@ -629,30 +634,177 @@ void centreValues(win32::WinApplication* app, x86::CPU& cpu)
     }
 }
 
-// The placeholder Vita picture in the screen's picture object.
-void showPicture(win32::WinApplication* app, x86::CPU& cpu)
+void preparePicture(const controlstore::Record& record)
 {
-    if (!s_pictureTexture)
+    s_picture.record = record;
+    s_picture.plan = diagram::planFor(record);
+    const std::vector<uint8_t>& dxt = s_composer.compose(s_picture.plan);
+    s_picture.pending = true;
+    s_picture.waited = 0;
+#ifdef DEV_TOOLS
+    std::string drawn, skipped;
+    for (int i = 0; i < diagram::SlotCount; ++i)
     {
-        const std::vector<uint8_t> rgba = vitapicture::bodyRgba();
-        const std::vector<uint8_t> dxt = vitapicture::encodeDxt3(rgba.data(), vitapicture::width(), vitapicture::height());
-        const std::vector<uint8_t> pack = controlspack::buildPack(PictureTexture, dxt.data(), dxt.size(), vitapicture::width(),
-                                                                  vitapicture::height());
-        const reg32 at = guestMemory(pack.size());
-        for (size_t i = 0; i < pack.size(); ++i)
-            rc::st8(at + reg32(i), pack[i]);
-        call(app, cpu, LoadChunks, 0, { at, reg32(pack.size()) });
-        s_pictureTexture = controlspack::nameHash(PictureTexture);
-        pf::logInfo("controlsshell: placeholder picture %s loaded, pack of %u bytes", PictureTexture, unsigned(pack.size()));
+        std::string& list = s_picture.plan.leader[i] ? drawn : skipped;
+        list += (list.empty() ? "" : " ") + std::string(diagram::slotName(diagram::Slot(i)));
     }
-    const reg32 image = findObject(app, cpu, controlsbake::PictureObject);
-    if (!image)
-        return;
-    call(app, cpu, SetImage, 0, { image, s_pictureTexture });
-    const reg32 data = rc::ld32(image + DataOffset);
-    pf::logInfo("controlsshell: picture object %08x flags %08x at x %.1f y %.1f size %.1f x %.1f", unsigned(image),
-                unsigned(rc::ld32(image + ObjectFlags)), rc::ldf32a(data + DataX), rc::ldf32a(data + DataX + 4),
-                rc::ldf32a(data + 0x38), rc::ldf32a(data + 0x3c));
+    pf::logInfo("controlsshell: picture composed (%s, %d layers) into buffer %p, %u bytes of %dx%d DXT3; texture pack %08x, %u bytes; "
+                "leaders drawn: %s; skipped: %s", diagram::cacheKey(s_picture.plan).c_str(), diagram::layerCount(s_picture.plan),
+                static_cast<const void*>(dxt.data()), unsigned(dxt.size()), diagram::width(), diagram::height(), unsigned(s_pack),
+                unsigned(s_packBytes), drawn.c_str(), skipped.empty() ? "none" : skipped.c_str());
+#else
+    (void)dxt;
+#endif
+}
+
+// Loads the picture's pack once; later pictures overwrite it and its texture.
+reg32 uploadPicture(win32::WinApplication* app, x86::CPU& cpu)
+{
+    const std::vector<uint8_t>& dxt = s_composer.picture();
+    if (!s_pack)
+    {
+        const std::vector<uint8_t> pack = controlspack::buildPack(PictureTexture, dxt.data(), dxt.size(), diagram::width(), diagram::height());
+        s_packBytes = reg32(pack.size());
+        s_pack = guestMemory(pack.size());
+        s_image = s_pack + s_packBytes - reg32(dxt.size());
+        s_lockedRect = guestMemory(8);
+        for (size_t i = 0; i < pack.size(); ++i)
+            rc::st8(s_pack + reg32(i), pack[i]);
+        call(app, cpu, LoadChunks, 0, { s_pack, s_packBytes });
+        return controlspack::nameHash(PictureTexture);
+    }
+    for (size_t i = 0; i < dxt.size(); ++i)
+        rc::st8(s_image + reg32(i), dxt[i]);
+    const reg32 info = call(app, cpu, TextureByHash, 0, { controlspack::nameHash(PictureTexture), 0, 0 });
+    const reg32 texture = info ? rc::ld32(rc::ld32(info) + 0x18) : 0;
+    if (!texture)
+    {
+        pf::logInfo("controlsshell: picture texture not created yet; its pack holds the new picture");
+        return controlspack::nameHash(PictureTexture);
+    }
+    const reg32 vtable = rc::ld32(texture);
+    if (call(app, cpu, rc::ld32(vtable + 4 * SlotLockRect), 0, { texture, 0, s_lockedRect, 0, 0 }) != 0)
+    {
+        pf::logError("controlsshell: picture texture %08x would not lock", unsigned(texture));
+        return controlspack::nameHash(PictureTexture);
+    }
+    const reg32 pitch = rc::ld32(s_lockedRect), bits = rc::ld32(s_lockedRect + 4);
+    const reg32 row = reg32(diagram::width() / 4 * 16);
+    for (reg32 y = 0; y < reg32(diagram::height() / 4); ++y)
+    {
+        for (reg32 x = 0; x < row; ++x)
+            rc::st8(bits + y * pitch + x, dxt[y * row + x]);
+    }
+    call(app, cpu, rc::ld32(vtable + 4 * SlotUnlockRect), 0, { texture, 0 });
+    return controlspack::nameHash(PictureTexture);
+}
+
+reg32 labelFont(win32::WinApplication* app, x86::CPU& cpu, reg32 object)
+{
+    const reg32 font = call(app, cpu, FontOf, 0, { rc::ld32(object + ObjectFont) });
+    return font && rc::ld32(font + 8) ? font : 0;
+}
+
+// Shows fitted labels and the picture together, once fonts load.
+bool swapPicture(win32::WinApplication* app, x86::CPU& cpu)
+{
+    struct Set
+    {
+        reg32 object;
+        bool shown;
+        reg32 hash;         // the game text as it is, else 0 and text
+        std::string text;
+        double width;
+    };
+    Set sets[diagram::SlotCount];
+    const bool late = ++s_picture.waited > FontWait;
+    for (int i = 0; i < diagram::SlotCount; ++i)
+    {
+        const diagram::Slot slot = diagram::Slot(i);
+        const diagram::Label label = diagram::labelFor(s_picture.record, slot);
+        Set& set = sets[i];
+        set = { findObject(app, cpu, controlsbake::labelHash(i)), diagram::assigned(label), 0, std::string(), 0.0 };
+        if (!set.object || !set.shown)
+            continue;
+        const reg32 font = labelFont(app, cpu, set.object);
+        if (!font && !late)
+            return false;
+        const std::string text = diagram::labelString(label, tableText);
+        const float scale = rc::ldf32a(rc::ld32(set.object + DataOffset) + DataScale);
+        const reg32 measureFont = font ? font : psprompt::lastFont();
+        auto width = [&](const std::string& t) { return measureFont ? measure(app, cpu, measureFont, t) * scale : 0.0; };
+        set.text = diagram::fitLine(text, diagram::labelRoom(), width);
+        set.width = width(set.text);
+        if (set.text == text && label.first.hash && !label.second.plain && !tableText(label.first.hash).empty())
+            set.hash = label.first.hash;
+    }
+    for (int i = 0; i < diagram::SlotCount; ++i)
+    {
+        const Set& set = sets[i];
+        if (!set.object)
+        {
+            pf::logError("controlsshell: no label object for %s", diagram::slotName(diagram::Slot(i)));
+            continue;
+        }
+        if (set.shown)
+        {
+            if (set.hash)
+                setHash(app, cpu, set.object, set.hash);
+            else
+                setPlain(app, cpu, set.object, set.text);
+        }
+        call(app, cpu, set.shown ? ShowObject : HideObject, 0, { set.object });
+#ifdef DEV_TOOLS
+        const reg32 data = rc::ld32(set.object + DataOffset);
+        pf::logInfo("controlsshell: label %s %s \"%s\"%s at x %.1f y %.1f, %.1f units wide (align %08x)", diagram::slotName(diagram::Slot(i)),
+                    set.shown ? "shows" : "hidden,", set.text.c_str(), set.hash ? " (game text)" : "", rc::ldf32a(data + DataX),
+                    rc::ldf32a(data + DataX + 4), set.width, unsigned(rc::ld32(set.object + TextAlign)));
+#endif
+    }
+    if (const reg32 box = findObject(app, cpu, controlsbake::PictureBox))
+        call(app, cpu, ShowObject, 0, { box });
+    const reg32 texture = uploadPicture(app, cpu);
+    if (const reg32 image = findObject(app, cpu, controlsbake::PictureObject))
+    {
+        call(app, cpu, SetImage, 0, { image, texture });
+        call(app, cpu, ShowObject, 0, { image });
+#ifdef DEV_TOOLS
+        const reg32 data = rc::ld32(image + DataOffset);
+        pf::logInfo("controlsshell: picture object %08x at x %.1f y %.1f size %.1f x %.1f, texture %08x%s", unsigned(image),
+                    rc::ldf32a(data + DataX), rc::ldf32a(data + DataX + 4), rc::ldf32a(data + DataScale), rc::ldf32a(data + DataScale + 4),
+                    unsigned(texture), late ? ", labels fitted without their font" : "");
+#endif
+    }
+    s_picture.shown = s_picture.record;
+    s_picture.haveShown = true;
+    s_picture.pending = false;
+    return true;
+}
+
+// Hides the PC picture and its box, then swaps ours in when ready.
+void startPicture(win32::WinApplication* app, x86::CPU& cpu)
+{
+    for (reg32 hash : { controlsbake::PictureObject, controlsbake::PictureBox })
+    {
+        if (const reg32 object = findObject(app, cpu, hash))
+            call(app, cpu, HideObject, 0, { object });
+    }
+    s_picture.haveShown = false;
+    preparePicture(controlslink::activeRecord());
+    swapPicture(app, cpu);
+}
+
+// Follows the record in play; old picture stays until swapped.
+void updatePicture(win32::WinApplication* app, x86::CPU& cpu)
+{
+    if (!s_picture.pending)
+    {
+        const controlstore::Record record = controlslink::activeRecord();
+        if (s_picture.haveShown && controlstore::operator==(record, s_picture.shown))
+            return;
+        preparePicture(record);
+    }
+    swapPicture(app, cpu);
 }
 
 reg32 rowTable(bool arrows)
@@ -804,7 +956,7 @@ void construct(win32::WinApplication* app, x86::CPU& cpu, Screen which)
         if (which == ScreenCustomize)
             alignAllValues(app, cpu);
         if (which == ScreenJoypad)
-            showPicture(app, cpu);
+            startPicture(app, cpu);
         buildRows(app, cpu, screen);
         checkTitle(app, cpu);
         if (which == ScreenCustomize)
@@ -1002,6 +1154,12 @@ void configure(win32::WinApplication& app)
             if (which == ScreenCustomize && r.instruction < 0)
                 pf::logError("controlsshell: no instruction line: %s", r.error.c_str());
             s_slots[which] = r.slots;
+#ifdef DEV_TOOLS
+            if (which == ScreenJoypad)
+                pf::logInfo("controlsshell: %s picture at x %.1f y %.1f size %.1f x %.1f (screen centre x %.1f), box x %.1f..%.1f "
+                            "y %.1f..%.1f, %d of %d labels made", ScreenNames[which], r.picture[0], r.picture[1], r.picture[2],
+                            r.picture[3], r.centreX, r.box[0], r.box[2], r.box[1], r.box[3], r.labels, diagram::SlotCount);
+#endif
             pf::logInfo("controlsshell: %s baked: %u objects hidden, title text %08x, %d row slots (%d slot objects copied "
                         "from slot %d), %d row bars fitted, %u buttons, instruction line object %ld, %d highlights steady",
                         ScreenNames[which], unsigned(r.hidden), unsigned(ScreenTitles[which]), r.slots, r.cloned,
@@ -1076,6 +1234,8 @@ void frame(win32::WinApplication* app, x86::CPU& cpu)
     centreValues(app, cpu);
     if (s_wait.phase != WaitNone && s_screen == ScreenCustomize)
         waitFrame(app, cpu);
+    if (s_screen == ScreenJoypad)
+        updatePicture(app, cpu);
     if (s_checkIn > 0 && --s_checkIn == 0)
     {
         checkHidden(app, cpu);

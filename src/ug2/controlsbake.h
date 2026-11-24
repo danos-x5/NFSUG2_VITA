@@ -1,7 +1,7 @@
 #ifndef UG2_CONTROLSBAKE_H_
 #define UG2_CONTROLSBAKE_H_
 
-// Edits baked into the Controls screens' package copies (hidden objects, titles, row slots, bars, picture, instruction line).
+// Edits baked into the Controls screens' package copies: hidden objects, titles, row slots, bars, picture, labels, instruction line.
 
 #include "fepackage.h"
 
@@ -12,6 +12,9 @@ namespace ug2 { namespace controlsbake {
 
 const uint32_t TextConfigure = 0x8bab66ef, TextPressButton = 0x23cf49aa;     // "Configure your settings", the bind wait
 const uint32_t PictureObject = 0xf1534c25;     // CONTROLLER_IMAGE
+const uint32_t PictureBox = 0x38747312;        // the dark rounded box behind the picture (a 9-slice group)
+const uint32_t LabelModel = 0xbaa4198e;        // the PC picture's top left label, the labels' model
+const uint32_t AlignRightCentred = 6, AlignLeftCentred = 4;     // text justification (Sj): 2 right, 4 vertically centred
 const uint32_t TitleGroupObject = 0x8d7e0c53;  // the group holding the title and the panel
 const uint32_t TitleMasterObject = 0xa753c46c;  // TITLE_MASTER: the first row's label box
 const int OptionsLines = 8, PcControllerLines = 7;     // lines the options screen (0x4CF750) and PC controller screen show
@@ -41,7 +44,14 @@ struct Result
     int pulses = 0;         // value slots given the PC's Pulse
     std::string error;      // why the instruction line is missing
     float gap = 0;          // the PC screen's gap from its last row to its label, kept here
+    int labels = 0;         // picture labels made
+    float centreX = 0;      // the screen centre in the picture group's units
+    float picture[4] = {};  // centre x, y, width, height
+    float box[4] = {};      // the dark box as baked: left, top, right, bottom
 };
+
+// The picture label object of a diagram_layout.h slot.
+uint32_t labelHash(int slot);
 
 // The flashing highlight, kept under its own name.
 uint32_t flashScript();
@@ -56,7 +66,7 @@ const char* const InstructionDonor = "UI_Options_PC_Controller.fng";
 const char* const InstructionLabel = "Instructions_Label";
 // A copy of UI_Options.fng: the Controls list, or Customize with a row slot per entry and the instruction line from donor.
 Result options(fepackage::Package& p, uint32_t title, bool customize, int entries, const fepackage::Package* donor = nullptr);
-// A copy of UI_OptionsController.fng: Joypad Configuration.
+// Joypad Configuration's copy: picture and a hidden label per slot.
 Result joypad(fepackage::Package& p, uint32_t title);
 
 }}

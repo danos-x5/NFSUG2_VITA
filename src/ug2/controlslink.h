@@ -20,6 +20,8 @@ void storeChanged(const char* why);
 
 // Boot decision; before guest code, after registry.txt loads.
 void configure();
+// The record in play, one control per action.
+controlstore::Record activeRecord();
 // Control Type 1..4 for the game's defaults; Custom gives 1.
 int defaultsType();
 // Each frame: the pad slot holds the active record.

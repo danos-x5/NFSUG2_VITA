@@ -9,6 +9,13 @@ This project grew out of [UG1VITA](https://github.com/NDRWhun/UG1VITA) by NDRWhu
 Speed Underground, and still contains code from it. UG1VITA is MIT licensed; its copyright notice is kept in
 [LICENSE](LICENSE) beside this project's own, as that license requires.
 
+## PlayStation Vita illustration
+
+The Vita picture on the Joypad Configuration screen (`src/ug2/diagram_art.h`, made by `images/controls/make_diagrams.py`)
+uses "PlayStation Vita illustration.svg" by Tokyoship, <https://commons.wikimedia.org/wiki/File:PlayStation_Vita_illustration.svg>,
+licensed [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/). Modified: the SONY, PS VITA and PS logos removed, a
+game screenshot in its screen and leader lines added. The modified illustration is `images/controls/vita_front_shaded.svg`.
+
 ## pefile
 
 `tools/recompiler/disasm/pefile.py` and `tools/recompiler/disasm/ordlookup/`, from the pefile project (Ero Carrera,

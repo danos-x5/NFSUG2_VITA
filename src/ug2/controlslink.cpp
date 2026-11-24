@@ -228,6 +228,15 @@ void configure()
     refresh("boot");
 }
 
+Record activeRecord()
+{
+    Record r = s_active.record;
+    if (!s_stored)
+        readSlot(&r);
+    data::onePerAction(&r);
+    return r;
+}
+
 int defaultsType()
 {
     return s_active.type == TypeCustom ? 1 : s_active.type + 1;

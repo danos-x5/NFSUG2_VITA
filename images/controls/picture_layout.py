@@ -7,7 +7,7 @@ ART_W, ART_H = 600, 270.62                  # vita_front_shaded.svg's size in ar
 SCREEN = (118, 21.5, 363.5, 203)            # the Vita screen in art units: x, y, width, height
 VITA_SCALE = 1.15                           # against the controls-overhaul picture
 ART_UNIT = 0.40 * 233.6 / 256 * VITA_SCALE  # Front End units per art unit
-VITA_X, VITA_Y = 0.0, 182.0                 # the Vita's centre
+VITA_X, VITA_Y = 0.0, 202.0                 # the Vita's centre
 ART_X0 = VITA_X - ART_W / 2 * ART_UNIT
 ART_Y0 = VITA_Y - 135.31 * ART_UNIT
 
@@ -22,12 +22,12 @@ HMIN, DMIN = 10.0, 6.0                      # every leader: horizontal piece >= 
 LEADER_WIDTH = 1.6
 EM = 15.5                                   # label font size the previews use (Helvetica Bold: "Brake / Reverse" 117)
 
-# Label rows, top down: (slot, y). The approved layout of 24 Nov 2026.
+# Label rows, top down: (slot, y). The approved layout of 24 Nov 2026, moved 20 down to clear the Customize row.
 ROWS = {
-    "L": [("l", 93), ("dpad_right", 118), ("dpad_up", 142), ("dpad_left", 176), ("dpad_down", 200),
-          ("left_stick", 224), ("touch_career", 248), ("touch_map", 274)],
-    "R": [("touch_shop", 45), ("touch_sms", 69), ("r", 93), ("square", 117), ("triangle", 141), ("circle", 176),
-          ("cross", 200), ("right_stick", 224)],
+    "L": [("l", 113), ("dpad_right", 138), ("dpad_up", 162), ("dpad_left", 196), ("dpad_down", 220),
+          ("left_stick", 244), ("touch_career", 268), ("touch_map", 294)],
+    "R": [("touch_shop", 65), ("touch_sms", 89), ("r", 113), ("square", 137), ("triangle", 161), ("circle", 196),
+          ("cross", 220), ("right_stick", 244)],
 }
 # A leader whose horizontal piece ends where another's does, then 45 degrees, then vertical.
 HORIZONTAL_ENDS = {"touch_career": "left_stick"}

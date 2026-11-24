@@ -14,22 +14,22 @@ const int SlotCount = 16, ControlSlots = 12;
 struct Slot { const char* name; float x, y; bool right; };
 const Slot Slots[SlotCount] =
 {
-    { "TRIANGLE", 165.92f, 141.00f, true },
-    { "CIRCLE", 165.92f, 176.00f, true },
-    { "CROSS", 165.92f, 200.00f, true },
-    { "SQUARE", 165.92f, 117.00f, true },
-    { "L", -165.92f, 93.00f, false },
-    { "R", 165.92f, 93.00f, true },
-    { "DPAD_UP", -165.92f, 142.00f, false },
-    { "DPAD_DOWN", -165.92f, 200.00f, false },
-    { "DPAD_LEFT", -165.92f, 176.00f, false },
-    { "DPAD_RIGHT", -165.92f, 118.00f, false },
-    { "LEFT_STICK", -165.92f, 224.00f, false },
-    { "RIGHT_STICK", 165.92f, 224.00f, true },
-    { "TOUCH_MAP", -165.92f, 274.00f, false },
-    { "TOUCH_SMS", 165.92f, 69.00f, true },
-    { "TOUCH_SHOP", 165.92f, 45.00f, true },
-    { "TOUCH_CAREER", -165.92f, 248.00f, false },
+    { "TRIANGLE", 165.92f, 161.00f, true },
+    { "CIRCLE", 165.92f, 196.00f, true },
+    { "CROSS", 165.92f, 220.00f, true },
+    { "SQUARE", 165.92f, 137.00f, true },
+    { "L", -165.92f, 113.00f, false },
+    { "R", 165.92f, 113.00f, true },
+    { "DPAD_UP", -165.92f, 162.00f, false },
+    { "DPAD_DOWN", -165.92f, 220.00f, false },
+    { "DPAD_LEFT", -165.92f, 196.00f, false },
+    { "DPAD_RIGHT", -165.92f, 138.00f, false },
+    { "LEFT_STICK", -165.92f, 244.00f, false },
+    { "RIGHT_STICK", 165.92f, 244.00f, true },
+    { "TOUCH_MAP", -165.92f, 294.00f, false },
+    { "TOUCH_SMS", 165.92f, 89.00f, true },
+    { "TOUCH_SHOP", 165.92f, 65.00f, true },
+    { "TOUCH_CAREER", -165.92f, 268.00f, false },
 };
 
 }}

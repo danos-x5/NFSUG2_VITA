@@ -49,6 +49,8 @@ NATIVE_OVERRIDES = [
     0x61d4b0, 0x6316d0, 0x631250,
     # Garage camera orbit with the right stick (src/ug2/native/sub_4a5d90.cpp)
     0x4a5d90,
+    # Controls in registry.txt (src/ug2/controlslink.cpp): the profile's control load and save
+    0x5b9570, 0x5b9420,
     # Menu up/down ignore the right stick (src/ug2/native/sub_571d50.cpp)
     0x571d50,
     # Medium graphics features: flares, shadow hull, headlight pass, particles

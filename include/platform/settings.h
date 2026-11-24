@@ -19,6 +19,7 @@ enum SettingFlags : unsigned
     SettingAuto             = 8,    // absent means "auto": the code derives the value
     SettingHostOnly         = 16,   // read by the host build only
     SettingNeedsShadowBuild = 64,   // read only with NFSU_NATIVE_SHADOW
+    SettingInGame           = 128,  // set in the game's own menus, not shown by the configurator
 };
 
 // Bool: def 0 or 1. Int: def within min..max. Enum: def indexes text, "a|b|c". String: text is the default.
@@ -49,6 +50,7 @@ struct SettingAlias
     const char* key;
 };
 const SettingAlias* settingAliases(int* count);
+bool settingRetired(const char* key);           // a removed key: the loader skips its line silently
 const char* canonicalKey(const char* key);      // the current name of an alias; key itself otherwise
 const char* oldKeyOf(const char* key);          // the alias of a current name, or null
 

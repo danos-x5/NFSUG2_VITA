@@ -1,8 +1,9 @@
-// Pad bindings: installs the port's default bindings and leaves the rest to the game's Controls screen and profile.
-// Also the pad log, the pad script and the hidden mouse cursor.
+// Pad bindings: the port's defaults, the controls store's frame hook (controlslink) and the driving flag. Also the pad
+// log, the pad script and the hidden mouse cursor.
 
 #include "padbind.h"
 #include "pad_defaults.h"
+#include "controlslink.h"
 
 #include <lib/controls.h>
 #include <lib/gamepad.h>
@@ -114,9 +115,11 @@ void logMaps()
 
 void program()
 {
+    controlslink::frame();
     if (s_log)
         logCar();
     const bool driving = rc::ld32(InputMap) != 1;
+    win32::controls::setDriving(driving && rc::ld32(GameState) == 6);
     if (s_scripted && (s_scriptStep || (driving && rc::ld32(GameState) == 6)))
         win32::Gamepad::setInjectedPad(s_script.sampleAt(s_scriptStep++));
     if (!s_log)
@@ -205,7 +208,8 @@ namespace padbind
 void configure(win32::WinApplication& app)
 {
     s_log = pf::Config::getBool("pad_log", false);
-    pad_defaults::install();
+    controlslink::configure();
+    pad_defaults::install(controlslink::defaultsType());
     const char* script = pf::Config::getString("pad_script", "");
     s_scripted = *script && s_script.load(script);
     s_peekMessage = app.replaceMethod(rc::ld32(PeekMessageSlot), peekMessageHook);

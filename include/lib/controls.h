@@ -53,8 +53,8 @@ const KeyCode& keyCode(Key key);
 bool characterKey(char c, KeyCode* key, bool* shift);
 const KeyCode& shiftKey();
 
-// DIJOYSTATE axis slots (lX, lY, lZ, lRx, lRy, lRz, two sliders): the joystick has X, Y (left stick), Z (the
-// adapter's combined pedal, held centred: the buttons drive throttle and brake) and Rz (right stick Y).
+// DIJOYSTATE axis slots (lX, lY, lZ, lRx, lRy, lRz, two sliders): X, Y left stick, Z right stick Y (the merged
+// pedal), Rz right stick X.
 enum Axis
 {
     AxisX, AxisY, AxisZ, AxisRx, AxisRy, AxisRz, AxisSlider0, AxisSlider1,
@@ -124,13 +124,52 @@ private:
     std::vector<Entry> m_entries;
 };
 
+// Stick roles from the pad record, applied while driving: a stick without an axis role sends centred axes.
+struct StickRoles
+{
+    bool axes[2];       // left, right: the stick drives game axes (X and Y left, Rz and Z right)
+    bool flick[2];      // the stick's up and down flicks move its hat: HatLeftStick for the left, HatRightStick for the right
+    bool freeLook;      // the right stick has no action
+};
+StickRoles stickRoles();
+void setStickRoles(const StickRoles& roles);
+// Free-look hook: the record leaves the right stick unbound.
+bool rightStickUnbound();
+
+// Hats of the joystick (the race map's hat entries 16 to 31, four per hat: down, up, left, right). Hat 0 stays centred.
+const int HatLeftStick = 1;     // left stick flicks
+const int HatRightStick = 2;    // right stick flicks
+const int HatCount = 3;
+
+// Fractions 0..1: dead zone, travel that counts as full, and the linear share of linear * t + (1 - linear) * t^3.
+struct StickShape
+{
+    float deadZone;
+    float saturation;
+    float sensitivity;
+};
+// Starts from the cfg keys left_stick_* and right_stick_*.
+StickShape stickShape(bool right);
+void setStickShape(bool right, const StickShape& shape);
+
+// Set by the pad hook while driving; roles apply then.
+void setDriving(bool driving);
+bool driving();
+
+extern const int HatUp;
+extern const int HatDown;
+extern const int HatLeft;
+extern const int HatRight;
+// Hat angle in hundredths of a degree; -1 centred.
+int hatAngle(bool up, bool down, bool left, bool right);
+
 // What the game gets from one PadSample.
 struct State
 {
     uint32_t    buttons;            // DirectInput button bits
-    float       axes[AxisCount];    // -1..1, absent axes 0; not shaped yet (shapeStick)
+    float       axes[AxisCount];    // -1..1, absent axes 0, sticks already shaped
     uint32_t    keys;               // bit per Key held
-    int         pov;                // hat 0 in hundredths of a degree, -1 centred
+    int         pov[HatCount];      // hats in hundredths of a degree, -1 centred
     bool        openIme;            // the on-screen keyboard chord was pressed
 };
 
@@ -147,12 +186,12 @@ private:
     uint32_t    m_chorded;          // inputs pressed while Select was held, mapped by the chord table until released
     bool        m_selectUsed;       // a chord was used during this Select press
     uint64_t    m_selectPulseEndUs; // the Select tap's button is reported until then
+    bool        m_flickArmed[2];    // per stick: back under the re-arm level since the last flick
+    uint64_t    m_shiftEndUs[2][2]; // per stick: up and down flick hats end
 };
 
-// Radial dead zone and response curve of one stick (x, y in -1..1). deadZone and saturation are DirectInput
-// property values (0..10000 of full deflection); the larger dead zone and the smaller saturation of these and the
-// stick's own apply.
-void shapeStick(float x, float y, uint32_t deadZone, uint32_t saturation, float* outX, float* outY);
+// Radial dead zone and response curve of one stick.
+void shapeStick(float x, float y, const StickShape& shape, float* outX, float* outY);
 
 }
 

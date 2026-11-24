@@ -1,0 +1,32 @@
+#ifndef UG2_CONTROLSLINK_H_
+#define UG2_CONTROLSLINK_H_
+
+// The controls store joined to the game: registry.txt as backend, the pad slot as the record, the profile's control
+// load (0x5B9570) and save (0x5B9420), and the stick shape cfg keys.
+
+#include "controlstore.h"
+#include <lib/winapp.h>
+
+namespace ug2 { namespace controlslink {
+
+controlstore::Backend& backend();
+// False when no pad slot exists.
+bool readSlot(controlstore::Record* record);
+void writeSlot(const controlstore::Record& record);
+
+// Boot decision; before guest code, after registry.txt loads.
+void configure();
+// Control Type 1..4 for the game's defaults; Custom gives 1.
+int defaultsType();
+// Each frame: the pad slot holds the active record.
+void frame();
+// After the guest loaded a profile's controls.
+void afterProfileLoad();
+// After the guest wrote the profile's controls at out.
+void patchProfileSave(x86::reg32 out);
+// Writes one stick's StickShape into the cfg.
+void saveShape(bool right);
+
+}}
+
+#endif /* !UG2_CONTROLSLINK_H_ */

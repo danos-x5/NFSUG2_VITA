@@ -31,8 +31,7 @@ struct GarageStick
 const GarageStick& settings()
 {
     static const GarageStick s = { pf::Config::getBool("garage_stick", true),
-                                   garage_stick::deadZone(pf::Config::getInt("garage_stick_deadzone",
-                                                                             garage_stick::DefaultDeadZonePercent)) };
+                                   garage_stick::deadZone(garage_stick::DefaultDeadZonePercent) };
     return s;
 }
 

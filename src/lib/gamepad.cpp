@@ -307,7 +307,8 @@ void pump()
     {
         state.buttons = 0;
         state.keys = 0;
-        state.pov = -1;
+        for (int h = 0; h < controls::HatCount; ++h)
+            state.pov[h] = -1;
         memset(state.axes, 0, sizeof(state.axes));
     }
     postKeys(s_field.active ? state.keys : 0);
@@ -423,8 +424,21 @@ x86::reg32 Gamepad::getDeviceType8() const
     return 0x0215;
 }
 
-// Each stick is shaped as a whole: the left with lX's properties, the right (Rz, Z) with Rz's; absent axes centred.
-void Gamepad::getState(x86::reg32* buttons, x86::sreg32 (&axes)[controls::AxisCount], int* pov)
+// Game's axis dead zone and saturation, on top of shaping.
+static float applyProperties(float value, const Gamepad::AxisProperties& properties)
+{
+    const float dead = float(properties.deadZone) / 10000.0f;
+    const float full = float(properties.saturation) / 10000.0f;
+    const float magnitude = std::fabs(value);
+    if (dead <= 0.0f && full >= 1.0f)
+        return value;
+    if (magnitude <= dead)
+        return 0.0f;
+    const float scaled = full > dead ? std::fmin(1.0f, (magnitude - dead) / (full - dead)) : 1.0f;
+    return value < 0.0f ? -scaled : scaled;
+}
+
+void Gamepad::getState(x86::reg32* buttons, x86::sreg32 (&axes)[controls::AxisCount], int (&pov)[controls::HatCount])
 {
     controls::State state;
     {
@@ -433,16 +447,13 @@ void Gamepad::getState(x86::reg32* buttons, x86::sreg32 (&axes)[controls::AxisCo
         state = s_state;
     }
     float shaped[controls::AxisCount] = {};
-    const AxisProperties& left = m_axisProperties[controls::AxisX];
-    controls::shapeStick(state.axes[controls::AxisX], state.axes[controls::AxisY], left.deadZone, left.saturation,
-                         &shaped[controls::AxisX], &shaped[controls::AxisY]);
-    const AxisProperties& right = m_axisProperties[controls::AxisRz];
-    controls::shapeStick(state.axes[controls::AxisRz], state.axes[controls::AxisZ], right.deadZone, right.saturation,
-                         &shaped[controls::AxisRz], &shaped[controls::AxisZ]);
-    *pov = state.pov;
+    for (int axis = 0; axis < controls::AxisCount; ++axis)
+        shaped[axis] = applyProperties(state.axes[axis], m_axisProperties[axis]);
+    for (int h = 0; h < controls::HatCount; ++h)
+        pov[h] = state.pov[h];
     *buttons = state.buttons;
     if (s_pollHook)
-        s_pollHook(buttons, pov);
+        s_pollHook(buttons, &pov[0]);
     for (int axis = 0; axis < controls::AxisCount; ++axis)
     {
         const AxisProperties& properties = m_axisProperties[axis];

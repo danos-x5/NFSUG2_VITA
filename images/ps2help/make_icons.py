@@ -144,7 +144,6 @@ def select():
 
 # The d-pad: one up arm (horizontal, vertical and 45 degree edges, blunt tip), mirrored and turned into the other three.
 DPAD = (SIZE, 11, 6, 18, 2, 3)      # size, arm half width, arm top, taper start, tip half width, outline width
-DPAD_ARM = (ARM, 6, 3, 8, 1, 2)
 
 
 def arm_up(size, hw, top, taper, tip_hw):
@@ -244,16 +243,13 @@ def render_cell(parts, tmp, n, width=SIZE):
 
 
 def render_dpads(tmp):
-    """The full d-pads by name and the four single-arm icons."""
-    pads = {}
-    for n, (size, params) in enumerate(((SIZE, DPAD), (ARM, DPAD_ARM))):
-        both = render_cell(arm_parts(*params), tmp, 100 + n, 2 * size)
-        arms = {k: mirrored(both.crop((x, 0, x + size, size)), size) for k, x in ((True, 0), (False, size))}
-        if size == SIZE:
-            for name in ("DPAD_UP", "DPAD_DOWN", "DPAD_LEFT", "DPAD_RIGHT"):
-                pads[name] = dpad(("UP", "DOWN") if name in ("DPAD_UP", "DPAD_DOWN") else ("LEFT", "RIGHT"), arms, size)
-        else:
-            pads["ARMS"] = [dpad((arm,), arms, size) for arm in ARMS]
+    """Full d-pads by name; single-arm icons are the same arms halved."""
+    both = render_cell(arm_parts(*DPAD), tmp, 100, 2 * SIZE)
+    arms = {k: mirrored(both.crop((x, 0, x + SIZE, SIZE)), SIZE) for k, x in ((True, 0), (False, SIZE))}
+    pads = {name: dpad(("UP", "DOWN") if name in ("DPAD_UP", "DPAD_DOWN") else ("LEFT", "RIGHT"), arms, SIZE)
+            for name in ("DPAD_UP", "DPAD_DOWN", "DPAD_LEFT", "DPAD_RIGHT")}
+    halves = {k: arm.reduce(2) for k, arm in arms.items()}
+    pads["ARMS"] = [dpad((arm,), halves, ARM) for arm in ARMS]
     return pads
 
 

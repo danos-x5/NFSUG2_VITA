@@ -221,9 +221,9 @@ void beforeFill(win32::WinApplication* app, x86::CPU& cpu)
     rc::st32(cpu.esp + 4, 0);
     const reg32 live = screenName ? liveScreen(cpu, screenName) : 0;
     const reg32 help = live ? rc::ld32(live + 0x28) : tableHelp(screen);
-    s_help = helpVerdict(help, help && !tableText(help).empty(), flags);
+    s_help = helpVerdict(help, help && !tableText(help).empty(), flags, screen.c_str());
     static std::string s_helpKey;
-    const std::string helpKey = screen + "|" + std::to_string(help) + "|" + std::to_string(flags & TipBit) + "|" + (live ? "live" : "table");
+    const std::string helpKey = screen + "|" + std::to_string(help) + "|" + std::to_string(flags & TipBit) + "|" + (hasOwnHelp(screen.c_str()) ? "own" : "-") + "|" + (live ? "live" : "table");
     if (devLog() && helpKey != s_helpKey)
         pf::logInfo("psbar: screen '%s' help id %08x (%s), flags %08x: Help %s, %s help (%s)", screen.c_str(), unsigned(help), live ? "live screen" : "table entry",
                     unsigned(flags), s_help.available ? "shown" : "hidden", s_help.kind, s_help.why);

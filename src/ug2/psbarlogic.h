@@ -91,6 +91,28 @@ const uint32_t PcRealGroup = 0x3B949CD0;    // the PC art group the fill shows; 
 // (the Tip item bit 0x400000, PAD_BUTTON4, which the tuning screens set). liveHelp is the screen's help id, 0 when unknown.
 const uint32_t TipBit = 0x00400000;
 
+// Screens that open the highlighted setting's info on the help event, with or without offering Tip: the part-tuning
+// sub-screens. No per-row signal was found, so the whole screen counts; Master and the Dyno screens do not.
+const char* const OwnHelpScreens[] =
+{
+    "UI_PerformanceTuning_Sliders.fng", "UI_PerformanceTuning_Graph.fng", "UI_PerformanceTuning_NOS.fng",
+    "UI_PerformanceTuning_Drivetrain.fng", "UI_PerformanceTuning_Setting.fng",
+};
+
+inline bool hasOwnHelp(const char* screen)
+{
+    for (const char* name : OwnHelpScreens)
+    {
+        const char* a = name;
+        const char* b = screen ? screen : "";
+        for (; *a && *b && (*a | 0x20) == (*b | 0x20); ++a, ++b)
+            ;
+        if (!*a && !*b)
+            return true;
+    }
+    return false;
+}
+
 struct HelpVerdict
 {
     bool        available;
@@ -98,12 +120,14 @@ struct HelpVerdict
     const char* why;
 };
 
-inline HelpVerdict helpVerdict(uint32_t liveHelp, bool resolves, uint32_t flags)
+inline HelpVerdict helpVerdict(uint32_t liveHelp, bool resolves, uint32_t flags, const char* screen)
 {
     if (liveHelp && resolves)
         return { true, "general", "the screen's help id resolves to a text" };
     if (flags & TipBit)
         return { true, "tip", "the screen offers the Tip item (PAD_BUTTON4)" };
+    if (hasOwnHelp(screen))
+        return { true, "screen", "the tuning screen opens its part info on the help event" };
     if (!liveHelp)
         return { false, "none", "the screen's help id is 0 and it offers no Tip" };
     return { false, "none", "the screen's help id has no text and it offers no Tip" };

@@ -19,7 +19,6 @@ const uint32_t TitleObject = 0x42adb44c, InnerPanel = 0x371f1c93;     // the tit
 const uint32_t RowBar = 0xa67c3fe2, RowBarRight = 0xd8fdd418, RowBarLeft = 0xd8fdd419;     // a row group's bar and end caps
 const float BarCenter = 3.115f, BarWidth = 523.35f;
 const uint16_t TagData = 0x4153, TagTextId = 0x4853, TagBuffer = 0x6253, TagText = 0x7453, TagAlign = 0x6a53;
-const float Corner = 16.0f;     // the box's corner pieces and edge thickness
 const char* const SlotPrefixes[] = { "OPTION_NAME_", "OPTION_DATA_", "OPTION_BACKING_", "LEFT_ARROW_", "RIGHT_ARROW_" };
 
 void setFloat(std::vector<uint8_t>* data, size_t at, float value)
@@ -190,41 +189,23 @@ void picture(fepackage::Package& p, Result* r)
     }
 }
 
-// Widens the 9-slice box around the centre; height kept.
-void fitBox(fepackage::Package& p, Result* r)
+// The box's edges, left as the package has them.
+void boxBounds(const fepackage::Package& p, Result* r)
 {
     const std::vector<size_t> found = p.find(PictureBox);
-    if (found.size() != 1)
-        return;
     float gx = 0, gy = 0;
-    position(p, PictureBox, &gx, &gy);
-    std::vector<size_t> parts = p.subtree(found[0]);
-    parts.erase(parts.begin());
+    if (found.size() != 1 || !position(p, PictureBox, &gx, &gy))
+        return;
     float left = 1e9f, top = 1e9f, right = -1e9f, bottom = -1e9f;
-    for (size_t part : parts)
+    for (size_t part : p.subtree(found[0]))
     {
+        if (part == found[0])
+            continue;
         const float x = gx + size(p, part, 0x1c), y = gy + size(p, part, 0x20), w = size(p, part, 0x38), h = size(p, part, 0x3c);
         left = std::min(left, x - w * 0.5f);
         right = std::max(right, x + w * 0.5f);
         top = std::min(top, y - h * 0.5f);
         bottom = std::max(bottom, y + h * 0.5f);
-    }
-    const float oldLeft = left, oldRight = right;
-    left = r->centreX - BoxHalfWidth;
-    right = r->centreX + BoxHalfWidth;
-    for (size_t part : parts)
-    {
-        std::vector<uint8_t>* sa = p.tagData(part, TagData);
-        const float x = gx + size(p, part, 0x1c), w = size(p, part, 0x38);
-        if (x - w * 0.5f < oldLeft + 1.0f && w <= Corner + 1.0f)
-            setFloat(sa, 0x1c, left + Corner * 0.5f - gx);
-        else if (x + w * 0.5f > oldRight - 1.0f && w <= Corner + 1.0f)
-            setFloat(sa, 0x1c, right - Corner * 0.5f - gx);
-        else
-        {
-            setFloat(sa, 0x1c, (left + right) * 0.5f - gx);
-            setFloat(sa, 0x38, right - left - 2 * Corner);
-        }
     }
     r->box[0] = left;
     r->box[1] = top;
@@ -326,7 +307,7 @@ Result joypad(fepackage::Package& p, uint32_t title)
     position(p, TitleGroupObject, &groupX, &groupY);
     r.centreX = -groupX;
     picture(p, &r);
-    fitBox(p, &r);
+    boxBounds(p, &r);
     for (int slot = 0; slot < diagramlayout::SlotCount; ++slot)
         r.labels += label(p, slot, r.centreX) ? 1 : 0;
     r.steady = p.steadyColourScript(nameHash("Highlight"), flashScript());

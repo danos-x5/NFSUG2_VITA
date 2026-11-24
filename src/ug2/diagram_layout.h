@@ -7,29 +7,33 @@ namespace ug2 { namespace diagramlayout {
 const int Width = 1024, Height = 512;    // texels
 // Texels a unit, and the texture's top left in Front End units (x from the screen centre).
 const float Scale = 1.207547f, OriginX = -424.00f, OriginY = -29.00f;
-const float LabelRoom = 234.0f;     // widest label, units
-const int SlotCount = 16, ControlSlots = 12;
+const float LabelRoom = 142.0f;     // widest label, units
+// The dark box the layout fits in: left, top, right, bottom, x from the screen centre.
+const float Box[4] = { -291.0f, 52.0f, 290.0f, 340.0f };
+// The slots; Slots and diagramart::Layers follow this order.
+enum SlotId { SlotTriangle, SlotCircle, SlotCross, SlotSquare, SlotL, SlotR, SlotDpadUp, SlotDpadDown, SlotDpadLeft, SlotDpadRight, SlotLeftStick, SlotRightStick, SlotTouchMap, SlotTouchSms, SlotTouchShop, SlotTouchCareer, SlotCount };
+const int ControlSlots = SlotTouchMap;
 
 // A slot's label: name, the column edge and the row centre; right column texts start there, left ones end.
 struct Slot { const char* name; float x, y; bool right; };
 const Slot Slots[SlotCount] =
 {
-    { "TRIANGLE", 165.92f, 161.00f, true },
-    { "CIRCLE", 165.92f, 196.00f, true },
-    { "CROSS", 165.92f, 220.00f, true },
-    { "SQUARE", 165.92f, 137.00f, true },
-    { "L", -165.92f, 113.00f, false },
-    { "R", 165.92f, 113.00f, true },
-    { "DPAD_UP", -165.92f, 162.00f, false },
-    { "DPAD_DOWN", -165.92f, 220.00f, false },
-    { "DPAD_LEFT", -165.92f, 196.00f, false },
-    { "DPAD_RIGHT", -165.92f, 138.00f, false },
-    { "LEFT_STICK", -165.92f, 244.00f, false },
-    { "RIGHT_STICK", 165.92f, 244.00f, true },
-    { "TOUCH_MAP", -165.92f, 294.00f, false },
-    { "TOUCH_SMS", 165.92f, 89.00f, true },
-    { "TOUCH_SHOP", 165.92f, 65.00f, true },
-    { "TOUCH_CAREER", -165.92f, 268.00f, false },
+    { "TRIANGLE", 141.92f, 179.00f, true },
+    { "CIRCLE", 141.92f, 214.00f, true },
+    { "CROSS", 141.92f, 238.00f, true },
+    { "SQUARE", 141.92f, 155.00f, true },
+    { "L", -141.92f, 131.00f, false },
+    { "R", 141.92f, 131.00f, true },
+    { "DPAD_UP", -141.92f, 180.00f, false },
+    { "DPAD_DOWN", -141.92f, 238.00f, false },
+    { "DPAD_LEFT", -141.92f, 214.00f, false },
+    { "DPAD_RIGHT", -141.92f, 156.00f, false },
+    { "LEFT_STICK", -141.92f, 262.00f, false },
+    { "RIGHT_STICK", 141.92f, 262.00f, true },
+    { "TOUCH_MAP", -141.92f, 312.00f, false },
+    { "TOUCH_SMS", 141.92f, 107.00f, true },
+    { "TOUCH_SHOP", 141.92f, 83.00f, true },
+    { "TOUCH_CAREER", -141.92f, 286.00f, false },
 };
 
 }}

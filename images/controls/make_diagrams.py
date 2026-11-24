@@ -97,7 +97,9 @@ def preview(path, profile, tmp):
     k = 1.6
     x0, y0, x1, y1 = pl.CANVAS
     lines = pl.leaders()
-    content = body_svg(dimmed_screenshot()) + "".join(leader_svg(p) for _, _, p in lines.values()) + labels_svg(lines)
+    box = '<rect x="%g" y="%g" width="%g" height="%g" fill="none" stroke="#5a5a60" stroke-dasharray="4 4"/>' % (
+        pl.BOX[0], pl.BOX[1], pl.BOX[2] - pl.BOX[0], pl.BOX[3] - pl.BOX[1])
+    content = box + body_svg(dimmed_screenshot()) + "".join(leader_svg(p) for _, _, p in lines.values()) + labels_svg(lines)
     img = render(content, int((x1 - x0) * k), int((y1 - y0) * k), k, x0, y0, profile, tmp, "preview")
     out = Image.new("RGBA", img.size, (24, 24, 26, 255))
     out.alpha_composite(img)

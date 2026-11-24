@@ -13,8 +13,6 @@ namespace
 
 using namespace controlsdata;
 
-static_assert(int(SlotCount) == diagramlayout::SlotCount && ControlSlots == diagramlayout::ControlSlots, "diagram_layout.h slots");
-
 const Text NoText = { 0, nullptr };
 
 Text actionText(uint32_t action)
@@ -57,8 +55,20 @@ Label stickLabel(StickRole role)
 
 uint32_t buttonAction(const Binds& b, Slot slot)
 {
-    static const int Buttons[ControlSlots] = { Triangle, Circle, Cross, Square, L1, R1, DpadUp, DpadDown, DpadLeft, DpadRight, -1, -1 };
-    return Buttons[slot] >= 0 ? b.map[Buttons[slot]] : 0;
+    switch (slot)
+    {
+    case SlotTriangle:  return b.map[Triangle];
+    case SlotCircle:    return b.map[Circle];
+    case SlotCross:     return b.map[Cross];
+    case SlotSquare:    return b.map[Square];
+    case SlotL:         return b.map[L1];
+    case SlotR:         return b.map[R1];
+    case SlotDpadUp:    return b.map[DpadUp];
+    case SlotDpadDown:  return b.map[DpadDown];
+    case SlotDpadLeft:  return b.map[DpadLeft];
+    case SlotDpadRight: return b.map[DpadRight];
+    default:            return 0;
+    }
 }
 
 std::string textString(const Text& t, const Lookup& lookup)
@@ -117,6 +127,83 @@ void blend(std::vector<uint8_t>& canvas, const diagramart::Layer& layer)
                 d[c] = uint8_t(outA ? (sc * sa + d[c] * weightD + outA / 2) / outA : 0);
             }
             d[3] = uint8_t(outA);
+        }
+    }
+}
+
+
+void composeInto(const Plan& plan, std::vector<uint8_t>* canvas)
+{
+    canvas->assign(size_t(diagramlayout::Width) * diagramlayout::Height * 4, 0);
+    blend(*canvas, diagramart::Layers[diagramart::BodyLayer]);
+    for (int i = 0; i < SlotCount; ++i)
+    {
+        if (plan.leader[i])
+            blend(*canvas, diagramart::Layers[diagramart::LeaderLayer + i]);
+    }
+}
+
+// Writes w * h bytes of DXT3 blocks, row by row.
+void encodeDxt3Into(const uint8_t* rgba, int w, int h, uint8_t* out)
+{
+    for (int by = 0; by < h; by += 4)
+    {
+        for (int bx = 0; bx < w; bx += 4)
+        {
+            const uint8_t* px[16];
+            for (int i = 0; i < 16; ++i)
+                px[i] = rgba + (size_t(by + i / 4) * w + bx + i % 4) * 4;
+            for (int i = 0; i < 16; i += 2)
+            {
+                const int a0 = (px[i][3] * 15 + 127) / 255, a1 = (px[i + 1][3] * 15 + 127) / 255;
+                *out++ = uint8_t(a0 | (a1 << 4));
+            }
+            int lo = -1, hi = -1, lowLum = 1 << 30, highLum = -1;
+            for (int i = 0; i < 16; ++i)
+            {
+                if (!px[i][3])
+                    continue;
+                const int lum = px[i][0] * 3 + px[i][1] * 6 + px[i][2];
+                if (lum < lowLum) { lowLum = lum; lo = i; }
+                if (lum > highLum) { highLum = lum; hi = i; }
+            }
+            auto pack = [](const uint8_t* p) { return uint16_t(((p[0] >> 3) << 11) | ((p[1] >> 2) << 5) | (p[2] >> 3)); };
+            uint16_t c0 = hi >= 0 ? pack(px[hi]) : 0, c1 = lo >= 0 ? pack(px[lo]) : 0;
+            if (c0 < c1)
+                std::swap(c0, c1);
+            auto expand = [](uint16_t v, int c) {
+                const int bits = c == 1 ? 6 : 5, shift = c == 0 ? 11 : c == 1 ? 5 : 0;
+                const int x = (v >> shift) & ((1 << bits) - 1);
+                return (x << (8 - bits)) | (x >> (2 * bits - 8));
+            };
+            int palette[4][3];
+            for (int c = 0; c < 3; ++c)
+            {
+                palette[0][c] = expand(c0, c);
+                palette[1][c] = expand(c1, c);
+                palette[2][c] = (2 * palette[0][c] + palette[1][c]) / 3;
+                palette[3][c] = (palette[0][c] + 2 * palette[1][c]) / 3;
+            }
+            uint32_t indices = 0;
+            if (c0 != c1)
+            {
+                for (int i = 0; i < 16; ++i)
+                {
+                    int best = 0, bestDistance = 1 << 30;
+                    for (int k = 0; k < 4; ++k)
+                    {
+                        int d = 0;
+                        for (int c = 0; c < 3; ++c)
+                            d += (px[i][c] - palette[k][c]) * (px[i][c] - palette[k][c]);
+                        if (d < bestDistance) { bestDistance = d; best = k; }
+                    }
+                    indices |= uint32_t(best) << (2 * i);
+                }
+            }
+            *out++ = uint8_t(c0); *out++ = uint8_t(c0 >> 8);
+            *out++ = uint8_t(c1); *out++ = uint8_t(c1 >> 8);
+            for (int i = 0; i < 4; ++i)
+                *out++ = uint8_t(indices >> (8 * i));
         }
     }
 }
@@ -207,81 +294,24 @@ float scale() { return diagramlayout::Scale; }
 
 std::vector<uint8_t> compose(const Plan& plan)
 {
-    std::vector<uint8_t> canvas(size_t(diagramlayout::Width) * diagramlayout::Height * 4, 0);
-    blend(canvas, diagramart::Layers[diagramart::BodyLayer]);
-    for (int i = 0; i < SlotCount; ++i)
-    {
-        if (plan.leader[i])
-            blend(canvas, diagramart::Layers[diagramart::LeaderLayer + i]);
-    }
+    std::vector<uint8_t> canvas;
+    composeInto(plan, &canvas);
     return canvas;
 }
 
 std::vector<uint8_t> encodeDxt3(const uint8_t* rgba, int w, int h)
 {
-    std::vector<uint8_t> out;
-    out.reserve(size_t(w) * h);
-    for (int by = 0; by < h; by += 4)
-    {
-        for (int bx = 0; bx < w; bx += 4)
-        {
-            const uint8_t* px[16];
-            for (int i = 0; i < 16; ++i)
-                px[i] = rgba + (size_t(by + i / 4) * w + bx + i % 4) * 4;
-            for (int i = 0; i < 16; i += 2)
-            {
-                const int a0 = (px[i][3] * 15 + 127) / 255, a1 = (px[i + 1][3] * 15 + 127) / 255;
-                out.push_back(uint8_t(a0 | (a1 << 4)));
-            }
-            int lo = -1, hi = -1, lowLum = 1 << 30, highLum = -1;
-            for (int i = 0; i < 16; ++i)
-            {
-                if (!px[i][3])
-                    continue;
-                const int lum = px[i][0] * 3 + px[i][1] * 6 + px[i][2];
-                if (lum < lowLum) { lowLum = lum; lo = i; }
-                if (lum > highLum) { highLum = lum; hi = i; }
-            }
-            auto pack = [](const uint8_t* p) { return uint16_t(((p[0] >> 3) << 11) | ((p[1] >> 2) << 5) | (p[2] >> 3)); };
-            uint16_t c0 = hi >= 0 ? pack(px[hi]) : 0, c1 = lo >= 0 ? pack(px[lo]) : 0;
-            if (c0 < c1)
-                std::swap(c0, c1);
-            auto expand = [](uint16_t v, int c) {
-                const int bits = c == 1 ? 6 : 5, shift = c == 0 ? 11 : c == 1 ? 5 : 0;
-                const int x = (v >> shift) & ((1 << bits) - 1);
-                return (x << (8 - bits)) | (x >> (2 * bits - 8));
-            };
-            int palette[4][3];
-            for (int c = 0; c < 3; ++c)
-            {
-                palette[0][c] = expand(c0, c);
-                palette[1][c] = expand(c1, c);
-                palette[2][c] = (2 * palette[0][c] + palette[1][c]) / 3;
-                palette[3][c] = (palette[0][c] + 2 * palette[1][c]) / 3;
-            }
-            uint32_t indices = 0;
-            if (c0 != c1)
-            {
-                for (int i = 0; i < 16; ++i)
-                {
-                    int best = 0, bestDistance = 1 << 30;
-                    for (int k = 0; k < 4; ++k)
-                    {
-                        int d = 0;
-                        for (int c = 0; c < 3; ++c)
-                            d += (px[i][c] - palette[k][c]) * (px[i][c] - palette[k][c]);
-                        if (d < bestDistance) { bestDistance = d; best = k; }
-                    }
-                    indices |= uint32_t(best) << (2 * i);
-                }
-            }
-            out.push_back(uint8_t(c0)); out.push_back(uint8_t(c0 >> 8));
-            out.push_back(uint8_t(c1)); out.push_back(uint8_t(c1 >> 8));
-            for (int i = 0; i < 4; ++i)
-                out.push_back(uint8_t(indices >> (8 * i)));
-        }
-    }
+    std::vector<uint8_t> out(size_t(w) * h);
+    encodeDxt3Into(rgba, w, h, out.data());
     return out;
+}
+
+const std::vector<uint8_t>& Composer::compose(const Plan& plan)
+{
+    composeInto(plan, &m_rgba);
+    m_dxt.resize(size_t(diagramlayout::Width) * diagramlayout::Height);
+    encodeDxt3Into(m_rgba.data(), diagramlayout::Width, diagramlayout::Height, m_dxt.data());
+    return m_dxt;
 }
 
 }}

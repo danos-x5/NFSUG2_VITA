@@ -14,7 +14,6 @@ const uint32_t TextConfigure = 0x8bab66ef, TextPressButton = 0x23cf49aa;     // 
 const uint32_t PictureObject = 0xf1534c25;     // CONTROLLER_IMAGE
 const uint32_t PictureBox = 0x38747312;        // the dark rounded box behind the picture (a 9-slice group)
 const uint32_t LabelModel = 0xbaa4198e;        // the PC picture's top left label, the labels' model
-const float BoxHalfWidth = 412.0f;             // units from the screen centre: past the widest label, inside the edge
 const uint32_t AlignRightCentred = 6, AlignLeftCentred = 4;     // text justification (Sj): 2 right, 4 vertically centred
 const uint32_t TitleGroupObject = 0x8d7e0c53;  // the group holding the title and the panel
 const uint32_t TitleMasterObject = 0xa753c46c;  // TITLE_MASTER: the first row's label box
@@ -48,7 +47,7 @@ struct Result
     int labels = 0;         // picture labels made
     float centreX = 0;      // the screen centre in the picture group's units
     float picture[4] = {};  // centre x, y, width, height
-    float box[4] = {};      // left, top, right, bottom
+    float box[4] = {};      // the dark box as baked: left, top, right, bottom
 };
 
 // The picture label object of a diagram_layout.h slot.
@@ -67,7 +66,7 @@ const char* const InstructionDonor = "UI_Options_PC_Controller.fng";
 const char* const InstructionLabel = "Instructions_Label";
 // A copy of UI_Options.fng: the Controls list, or Customize with a row slot per entry and the instruction line from donor.
 Result options(fepackage::Package& p, uint32_t title, bool customize, int entries, const fepackage::Package* donor = nullptr);
-// Joypad Configuration's copy: picture, box, a hidden label per slot.
+// Joypad Configuration's copy: picture and a hidden label per slot.
 Result joypad(fepackage::Package& p, uint32_t title);
 
 }}

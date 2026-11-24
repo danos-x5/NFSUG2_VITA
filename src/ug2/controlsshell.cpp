@@ -19,7 +19,6 @@
 #include <recomp.h>
 
 #include <cstring>
-#include <map>
 #include <string>
 #include <vector>
 
@@ -55,6 +54,9 @@ const reg32 PcControllerName = 0x793dcc;    // "UI_Options_PC_Controller.fng", p
 const reg32 PcControllerEntryName = 0x7f7e54;   // the screen table's pointer to the same string
 const reg32 LoadChunks = 0x577ab0;          // cdecl (data, bytes)
 const reg32 SetImage = 0x50c990;            // cdecl (image object, texture hash)
+const reg32 TextureByHash = 0x4901d0;       // cdecl (hash, default, unloaded): texture info; [info] + 0x18 the D3D texture
+const reg32 SlotLockRect = 19, SlotUnlockRect = 20;     // IDirect3DTexture9 vtable
+const char* const PictureTexture = "CTRL_PICTURE";
 const reg32 RowCount = 0x12c, VisibleRows = 0x134;     // the list's rows + 1 (the scroll bar takes rows), and lines shown
 const reg32 SlotMessage = 1, SlotUpdate = 3, SlotBase = 16;
 const reg32 MessageLeft = 0x9120409e, MessageRight = 0xb5971bf1, MessageAccept = 0xc407210;
@@ -147,18 +149,19 @@ float s_valueReference = 0.0f;       // row 1's value x after the game's first l
 bool s_haveReference = false;
 int s_resetLogs = 0;
 
-// The Joypad picture and labels change together: prepared, then swapped in one frame once every label is fitted.
+// The Joypad picture and labels change together: composed aside, then swapped in one frame once every label is fitted.
 struct Picture
 {
     controlstore::Record shown = {}, record = {};
     bool haveShown = false;
     bool pending = false;
-    reg32 texture = 0;
     diagram::Plan plan = {};
     int waited = 0;         // frames the pending swap waited for the label font
 };
 Picture s_picture;
-std::map<std::string, reg32> s_pictures;     // loaded textures by plan key
+diagram::Composer s_composer;   // the one host buffer every plan is composed into
+reg32 s_pack = 0, s_packBytes = 0, s_image = 0;     // the one texture pack, loaded once, and its DXT3 bytes in it
+reg32 s_lockedRect = 0;
 const int FontWait = 30;
 
 enum WaitPhase { WaitNone, WaitArmed, WaitGuard };
@@ -631,44 +634,69 @@ void centreValues(win32::WinApplication* app, x86::CPU& cpu)
     }
 }
 
-// The composed texture of a plan, loaded once.
-reg32 pictureTexture(win32::WinApplication* app, x86::CPU& cpu, const diagram::Plan& plan)
+void preparePicture(const controlstore::Record& record)
 {
-    const std::string key = diagram::cacheKey(plan);
-    const auto found = s_pictures.find(key);
-    if (found != s_pictures.end())
-        return found->second;
-    const std::vector<uint8_t> rgba = diagram::compose(plan);
-    const std::vector<uint8_t> dxt = diagram::encodeDxt3(rgba.data(), diagram::width(), diagram::height());
-    const std::string name = "CTRL_PICTURE_" + std::to_string(s_pictures.size());
-    const std::vector<uint8_t> pack = controlspack::buildPack(name.c_str(), dxt.data(), dxt.size(), diagram::width(), diagram::height());
-    const reg32 at = guestMemory(pack.size());
-    for (size_t i = 0; i < pack.size(); ++i)
-        rc::st8(at + reg32(i), pack[i]);
-    call(app, cpu, LoadChunks, 0, { at, reg32(pack.size()) });
-    const reg32 hash = controlspack::nameHash(name.c_str());
-    s_pictures[key] = hash;
+    s_picture.record = record;
+    s_picture.plan = diagram::planFor(record);
+    const std::vector<uint8_t>& dxt = s_composer.compose(s_picture.plan);
+    s_picture.pending = true;
+    s_picture.waited = 0;
 #ifdef DEV_TOOLS
     std::string drawn, skipped;
     for (int i = 0; i < diagram::SlotCount; ++i)
     {
-        std::string& list = plan.leader[i] ? drawn : skipped;
+        std::string& list = s_picture.plan.leader[i] ? drawn : skipped;
         list += (list.empty() ? "" : " ") + std::string(diagram::slotName(diagram::Slot(i)));
     }
-    pf::logInfo("controlsshell: picture %s composed (%s, %d layers, %dx%d DXT3, pack of %u bytes); leaders drawn: %s; skipped: %s",
-                name.c_str(), key.c_str(), diagram::layerCount(plan), diagram::width(), diagram::height(), unsigned(pack.size()),
-                drawn.c_str(), skipped.empty() ? "none" : skipped.c_str());
+    pf::logInfo("controlsshell: picture composed (%s, %d layers) into buffer %p, %u bytes of %dx%d DXT3; texture pack %08x, %u bytes; "
+                "leaders drawn: %s; skipped: %s", diagram::cacheKey(s_picture.plan).c_str(), diagram::layerCount(s_picture.plan),
+                static_cast<const void*>(dxt.data()), unsigned(dxt.size()), diagram::width(), diagram::height(), unsigned(s_pack),
+                unsigned(s_packBytes), drawn.c_str(), skipped.empty() ? "none" : skipped.c_str());
+#else
+    (void)dxt;
 #endif
-    return hash;
 }
 
-void preparePicture(win32::WinApplication* app, x86::CPU& cpu, const controlstore::Record& record)
+// Loads the picture's pack once; later pictures overwrite it and its texture.
+reg32 uploadPicture(win32::WinApplication* app, x86::CPU& cpu)
 {
-    s_picture.record = record;
-    s_picture.plan = diagram::planFor(record);
-    s_picture.texture = pictureTexture(app, cpu, s_picture.plan);
-    s_picture.pending = true;
-    s_picture.waited = 0;
+    const std::vector<uint8_t>& dxt = s_composer.picture();
+    if (!s_pack)
+    {
+        const std::vector<uint8_t> pack = controlspack::buildPack(PictureTexture, dxt.data(), dxt.size(), diagram::width(), diagram::height());
+        s_packBytes = reg32(pack.size());
+        s_pack = guestMemory(pack.size());
+        s_image = s_pack + s_packBytes - reg32(dxt.size());
+        s_lockedRect = guestMemory(8);
+        for (size_t i = 0; i < pack.size(); ++i)
+            rc::st8(s_pack + reg32(i), pack[i]);
+        call(app, cpu, LoadChunks, 0, { s_pack, s_packBytes });
+        return controlspack::nameHash(PictureTexture);
+    }
+    for (size_t i = 0; i < dxt.size(); ++i)
+        rc::st8(s_image + reg32(i), dxt[i]);
+    const reg32 info = call(app, cpu, TextureByHash, 0, { controlspack::nameHash(PictureTexture), 0, 0 });
+    const reg32 texture = info ? rc::ld32(rc::ld32(info) + 0x18) : 0;
+    if (!texture)
+    {
+        pf::logInfo("controlsshell: picture texture not created yet; its pack holds the new picture");
+        return controlspack::nameHash(PictureTexture);
+    }
+    const reg32 vtable = rc::ld32(texture);
+    if (call(app, cpu, rc::ld32(vtable + 4 * SlotLockRect), 0, { texture, 0, s_lockedRect, 0, 0 }) != 0)
+    {
+        pf::logError("controlsshell: picture texture %08x would not lock", unsigned(texture));
+        return controlspack::nameHash(PictureTexture);
+    }
+    const reg32 pitch = rc::ld32(s_lockedRect), bits = rc::ld32(s_lockedRect + 4);
+    const reg32 row = reg32(diagram::width() / 4 * 16);
+    for (reg32 y = 0; y < reg32(diagram::height() / 4); ++y)
+    {
+        for (reg32 x = 0; x < row; ++x)
+            rc::st8(bits + y * pitch + x, dxt[y * row + x]);
+    }
+    call(app, cpu, rc::ld32(vtable + 4 * SlotUnlockRect), 0, { texture, 0 });
+    return controlspack::nameHash(PictureTexture);
 }
 
 reg32 labelFont(win32::WinApplication* app, x86::CPU& cpu, reg32 object)
@@ -735,15 +763,16 @@ bool swapPicture(win32::WinApplication* app, x86::CPU& cpu)
     }
     if (const reg32 box = findObject(app, cpu, controlsbake::PictureBox))
         call(app, cpu, ShowObject, 0, { box });
+    const reg32 texture = uploadPicture(app, cpu);
     if (const reg32 image = findObject(app, cpu, controlsbake::PictureObject))
     {
-        call(app, cpu, SetImage, 0, { image, s_picture.texture });
+        call(app, cpu, SetImage, 0, { image, texture });
         call(app, cpu, ShowObject, 0, { image });
 #ifdef DEV_TOOLS
         const reg32 data = rc::ld32(image + DataOffset);
         pf::logInfo("controlsshell: picture object %08x at x %.1f y %.1f size %.1f x %.1f, texture %08x%s", unsigned(image),
                     rc::ldf32a(data + DataX), rc::ldf32a(data + DataX + 4), rc::ldf32a(data + DataScale), rc::ldf32a(data + DataScale + 4),
-                    unsigned(s_picture.texture), late ? ", labels fitted without their font" : "");
+                    unsigned(texture), late ? ", labels fitted without their font" : "");
 #endif
     }
     s_picture.shown = s_picture.record;
@@ -761,7 +790,7 @@ void startPicture(win32::WinApplication* app, x86::CPU& cpu)
             call(app, cpu, HideObject, 0, { object });
     }
     s_picture.haveShown = false;
-    preparePicture(app, cpu, controlslink::activeRecord());
+    preparePicture(controlslink::activeRecord());
     swapPicture(app, cpu);
 }
 
@@ -773,7 +802,7 @@ void updatePicture(win32::WinApplication* app, x86::CPU& cpu)
         const controlstore::Record record = controlslink::activeRecord();
         if (s_picture.haveShown && controlstore::operator==(record, s_picture.shown))
             return;
-        preparePicture(app, cpu, record);
+        preparePicture(record);
     }
     swapPicture(app, cpu);
 }

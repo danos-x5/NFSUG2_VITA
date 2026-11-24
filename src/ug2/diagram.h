@@ -5,6 +5,7 @@
 // No game access; host tested.
 
 #include "controlsdata.h"
+#include "diagram_layout.h"
 
 #include <cstdint>
 #include <functional>
@@ -13,13 +14,18 @@
 
 namespace ug2 { namespace diagram {
 
-// Slots in diagram_layout.h order: 12 controls, then the 4 touch zones.
+// The generated slots: 12 controls, then the 4 touch zones.
 enum Slot
 {
-    SlotTriangle, SlotCircle, SlotCross, SlotSquare, SlotL, SlotR, SlotDpadUp, SlotDpadDown, SlotDpadLeft, SlotDpadRight,
-    SlotLeftStick, SlotRightStick, SlotTouchMap, SlotTouchSms, SlotTouchShop, SlotTouchCareer, SlotCount
+    SlotTriangle = diagramlayout::SlotTriangle, SlotCircle = diagramlayout::SlotCircle, SlotCross = diagramlayout::SlotCross,
+    SlotSquare = diagramlayout::SlotSquare, SlotL = diagramlayout::SlotL, SlotR = diagramlayout::SlotR,
+    SlotDpadUp = diagramlayout::SlotDpadUp, SlotDpadDown = diagramlayout::SlotDpadDown, SlotDpadLeft = diagramlayout::SlotDpadLeft,
+    SlotDpadRight = diagramlayout::SlotDpadRight, SlotLeftStick = diagramlayout::SlotLeftStick,
+    SlotRightStick = diagramlayout::SlotRightStick, SlotTouchMap = diagramlayout::SlotTouchMap,
+    SlotTouchSms = diagramlayout::SlotTouchSms, SlotTouchShop = diagramlayout::SlotTouchShop,
+    SlotTouchCareer = diagramlayout::SlotTouchCareer, SlotCount = diagramlayout::SlotCount
 };
-const int ControlSlots = 12;
+const int ControlSlots = diagramlayout::ControlSlots;
 
 // A game text by hash, else plain English; neither for no text.
 struct Text
@@ -72,6 +78,18 @@ float scale();
 std::vector<uint8_t> compose(const Plan& plan);
 // DXT3 of an RGBA picture; sides multiples of 4.
 std::vector<uint8_t> encodeDxt3(const uint8_t* rgba, int width, int height);
+
+// One RGBA canvas and one DXT3 picture, reused for every plan.
+class Composer
+{
+public:
+    // The plan's DXT3 picture; the same buffer every time.
+    const std::vector<uint8_t>& compose(const Plan& plan);
+    const std::vector<uint8_t>& picture() const { return m_dxt; }
+
+private:
+    std::vector<uint8_t> m_rgba, m_dxt;
+};
 
 }}
 

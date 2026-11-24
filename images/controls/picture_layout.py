@@ -7,14 +7,17 @@ ART_W, ART_H = 600, 270.62                  # vita_front_shaded.svg's size in ar
 SCREEN = (118, 21.5, 363.5, 203)            # the Vita screen in art units: x, y, width, height
 VITA_SCALE = 1.15                           # against the controls-overhaul picture
 ART_UNIT = 0.40 * 233.6 / 256 * VITA_SCALE  # Front End units per art unit
-VITA_X, VITA_Y = 0.0, 202.0                 # the Vita's centre
+VITA_X, VITA_Y = 0.0, 220.0                 # the Vita's centre
 ART_X0 = VITA_X - ART_W / 2 * ART_UNIT
 ART_Y0 = VITA_Y - 135.31 * ART_UNIT
 
-# ---- the canvas and the label columns -------------------------------------------------------------------------------
+# ---- the canvas, the box and the label columns ----------------------------------------------------------------------
 CANVAS = (-424.0, 23.0, 424.0, 343.0)       # left, top, right, bottom: the full widescreen width
-COLUMN = ART_W / 2 * ART_UNIT + 40          # label columns at -COLUMN (right aligned) and +COLUMN (left aligned)
-LABEL_ROOM = 234.0                          # widest label: from the column to 400 units off the centre
+BOX = (-291.0, 52.0, 290.0, 340.0)          # the PC package's dark box, as development bakes it
+COLUMN = ART_W / 2 * ART_UNIT + 16          # label columns: the closest that keeps every leader rule
+LABEL_MARGIN = 6.0                          # from the widest label to the box edge
+LABEL_ROOM = min(BOX[2], -BOX[0]) - COLUMN - LABEL_MARGIN
+LABEL_HALF_HEIGHT = 9.0                     # a label line about its row
 GAP = 6.0                                   # from the label's edge to its leader
 END_GAP = 4.5                               # from a leader's end to L, R (stopped short of the body's top edge)
 STOP_GAP = 3.0                              # from a leader's end to a d-pad arm or face button outline
@@ -22,12 +25,12 @@ HMIN, DMIN = 10.0, 6.0                      # every leader: horizontal piece >= 
 LEADER_WIDTH = 1.6
 EM = 15.5                                   # label font size the previews use (Helvetica Bold: "Brake / Reverse" 117)
 
-# Label rows, top down: (slot, y). The approved layout of 24 Nov 2026, moved 20 down to clear the Customize row.
+# Label rows, top down: (slot, y). The approved layout of 24 Nov 2026, moved 38 down to clear the Customize row.
 ROWS = {
-    "L": [("l", 113), ("dpad_right", 138), ("dpad_up", 162), ("dpad_left", 196), ("dpad_down", 220),
-          ("left_stick", 244), ("touch_career", 268), ("touch_map", 294)],
-    "R": [("touch_shop", 65), ("touch_sms", 89), ("r", 113), ("square", 137), ("triangle", 161), ("circle", 196),
-          ("cross", 220), ("right_stick", 244)],
+    "L": [("l", 131), ("dpad_right", 156), ("dpad_up", 180), ("dpad_left", 214), ("dpad_down", 238),
+          ("left_stick", 262), ("touch_career", 286), ("touch_map", 312)],
+    "R": [("touch_shop", 83), ("touch_sms", 107), ("r", 131), ("square", 155), ("triangle", 179), ("circle", 214),
+          ("cross", 238), ("right_stick", 262)],
 }
 # A leader whose horizontal piece ends where another's does, then 45 degrees, then vertical.
 HORIZONTAL_ENDS = {"touch_career": "left_stick"}
@@ -218,7 +221,7 @@ def cross(a, b):
 
 
 def problems(lines=None):
-    """Rule breaks: crossings, buttons passed over, bad shapes, shared rows."""
+    """Rule breaks: crossings, buttons passed over, bad shapes, outside the box."""
     lines = lines or leaders()
     out = []
     names = list(lines)
@@ -235,8 +238,20 @@ def problems(lines=None):
         for other in SHAPES:
             if other != name and over_shape(other, p):
                 out.append("%s passes over %s" % (name, other))
-        if any(not (CANVAS[0] <= x <= CANVAS[2] and CANVAS[1] <= y <= CANVAS[3]) for x, y in p):
-            out.append("%s leaves the canvas" % name)
+        if any(not (BOX[0] <= x <= BOX[2] and BOX[1] <= y <= BOX[3]) for x, y in p):
+            out.append("%s leaves the box" % name)
+        if not BOX[1] < label[1] - LABEL_HALF_HEIGHT < label[1] + LABEL_HALF_HEIGHT < BOX[3]:
+            out.append("%s's label row leaves the box" % name)
+    t = targets()
+    for name, (end, short) in t.items():
+        p = lines.get(name, (0, 0, [(0.0, 0.0)]))[2]
+        x, y = p[-1]
+        if name in STICKS and abs(math.hypot(x - end[0], y - end[1]) - short) > 1e-6:
+            out.append("%s does not end on the stick's edge" % name)
+        if name in SHOULDERS and (abs(x - end[0]) > 1e-6 or abs(y - (end[1] - short)) > 1e-6 or len(p) < 4):
+            out.append("%s does not come down onto the shoulder" % name)
+        if name in TOUCH and (x, y) != end:
+            out.append("%s does not end at the zone" % name)
     if sorted(lines) != sorted(SLOTS):
         out.append("the rows do not hold every slot once")
     return out

@@ -101,6 +101,9 @@ public:
     // False until a touch. button: latched presses and releases. Any thread.
     static bool getTouch(Touch* touch, bool button = false);
 
+    // While set, getTouch reports no touch and no button: the front touch does not reach the game. Any thread.
+    static void setTouchBlocked(bool blocked);
+
     // Display 0..1 to pointer area 0..1; false outside.
     typedef bool (*TouchMap)(float* x, float* y);
     // Without one, the area is the whole display. Any thread.

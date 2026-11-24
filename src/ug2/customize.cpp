@@ -67,6 +67,16 @@ Verdict onButton(Entry entry, int button, Control* control)
     return Bind;
 }
 
+Verdict onPadFrame(uint32_t inputs)
+{
+    return inputs & win32::controls::bit(win32::controls::Start) ? Cancel : Ignore;
+}
+
+bool touchReachesGame(bool inputHeld)
+{
+    return !inputHeld;
+}
+
 Verdict onAxis(Entry entry, int32_t axisId, Control* control)
 {
     const Control stick = axisId == data::AxisX || axisId == data::AxisY ? data::CtlLeftStick :

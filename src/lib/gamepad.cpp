@@ -67,6 +67,7 @@ bool                    s_appendOnly;       // the game's editor has no cursor: 
 Gamepad::PollHook       s_pollHook;         // not guarded: set before the game starts
 std::atomic<float>      s_rightStick[2];    // the last pump's right stick
 std::atomic<float>      s_leftStick[2];     // the last pump's left stick
+std::atomic<bool>       s_touchBlocked;     // setTouchBlocked
 std::atomic<uint32_t>   s_lastInputs;       // the last pump's inputs, injected included
 controls::PadSample     s_injected;         // setInjectedPad
 Gamepad::Touch          s_touch;            // getTouch
@@ -497,9 +498,27 @@ void Gamepad::getFixedRightStick(float* x, float* y)
     controls::fixedShape(s_rightStick[0], s_rightStick[1], x, y);
 }
 
+void Gamepad::setTouchBlocked(bool blocked)
+{
+    s_touchBlocked = blocked;
+}
+
 bool Gamepad::getTouch(Touch* touch, bool button)
 {
     pf::LwLockGuard lock(s_mutex);
+    if (s_touchBlocked)
+    {
+        if (button)
+        {
+            s_buttonReader = true;
+            pump();
+            s_pressPending = false;
+            s_releasePending = false;
+        }
+        *touch = s_touch;
+        touch->down = false;
+        return false;
+    }
     if (!button)
     {
         *touch = s_touch;

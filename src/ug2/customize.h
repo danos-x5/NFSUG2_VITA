@@ -28,6 +28,12 @@ Verdict onButton(Entry entry, int button, Control* control);
 // An axis the PC capture found (0x5B8250), by axis id.
 Verdict onAxis(Entry entry, int32_t axisId, Control* control);
 
+// Our own look at the pad each frame of the wait: Start cancels whatever the PC capture is doing, so a capture that keeps
+// ending (a stuck Escape, a hat at rest) can never trap the player.
+Verdict onPadFrame(uint32_t inputs);
+// Front touch reaches the menu only when no bind wait holds the input.
+bool touchReachesGame(bool inputHeld);
+
 // Shift pair and Free Look: our watch takes their sticks.
 bool watchesSticks(Entry entry);
 const float StickOn = 0.7f, StickOff = 0.3f;

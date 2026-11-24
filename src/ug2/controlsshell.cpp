@@ -70,7 +70,8 @@ const reg32 SetPadMask = 0x537950;          // cdecl (package name, mask): its f
 const reg32 HelpBarName = 0x790000;         // "UI_PC_Help_Bar.fng", from 0x50CEA0
 const reg32 SetScript = 0x51cf70;           // cdecl (object, script name, 1)
 const reg32 ScriptPulse = 0x78f6bc, ScriptHighlight = 0x78f228;
-const reg32 CaptureAction = 0x33c, CaptureFlag = 0x870768;     // slot field and global the PC capture runs on
+const reg32 CaptureAction = 0x33c, CaptureFlag = 0x870768;
+const reg32 EscapeFlag = 0x87075c, PadWords = 0x870760, PadIndex = 0x230;   // the capture poll's Escape flag, pad array pointer, slot pad index     // slot field and global the PC capture runs on
 const reg32 MessageButton1 = 0xc519bfc0;
 const reg32 PadMessages[] = { 0x406415e3, MessageAccept, 0x911ab364, 0x9120409e, 0xb5971bf1, 0x72619778, 0x911c0a4b, 0xc519bfbf,
                               MessageButton1, 0xc519bfc1, 0xc519bfc2, 0xb5af2461, 0x5073ef13, 0xd9feec59, 0x911e0fdc };
@@ -464,6 +465,15 @@ void waitFrame(win32::WinApplication* app, x86::CPU& cpu)
         }
         return;
     }
+    static uint32_t s_lastInputs = 0;
+    if (s_wait.result == customize::Ignore && customize::onPadFrame(inputs) == customize::Cancel && !(s_lastInputs & win32::controls::bit(win32::controls::Start)))
+    {
+        s_wait.result = customize::Cancel;
+        s_wait.found = "Start (our pad check)";
+        BIND_LOG("controlsshell: Start pressed during the bind wait (inputs %08x): cancelling", unsigned(inputs));
+        endCapture(s_wait.slot);
+    }
+    s_lastInputs = inputs;
     if (s_wait.result == customize::Ignore &&
         customize::onSticks(&s_wait.watch, s_wait.entry, sticks, &s_wait.control) == customize::Bind)
     {
@@ -478,7 +488,19 @@ void waitFrame(win32::WinApplication* app, x86::CPU& cpu)
     }
     if (!rc::ld32(s_wait.slot + CaptureAction))
     {
-        BIND_LOG("controlsshell: the PC capture ended with nothing we take, armed again");
+        const reg32 esc = rc::ld8(EscapeFlag);
+        std::string hats;
+        const reg32 words = rc::ld32(PadWords), index = rc::ld32(s_wait.slot + PadIndex);
+        for (reg32 h = 0; words && h < 4; ++h)
+        {
+            const reg32 value = rc::ld16(words + (index * 0x44 + h) * 4 + 0x20);
+            if (value != 0xFFFF)
+                hats += " hat" + std::to_string(h) + "=" + std::to_string(value);
+        }
+        BIND_LOG("controlsshell: the PC capture ended with nothing we take, armed again: Escape flag %u%s, inputs %08x, sticks %.2f %.2f %.2f %.2f%s",
+                 unsigned(esc), esc ? " (cleared)" : "", unsigned(inputs), double(sticks[0]), double(sticks[1]), double(sticks[2]), double(sticks[3]),
+                 hats.empty() ? ", no hat off centre" : hats.c_str());
+        rc::st8(EscapeFlag, 0);
         armCapture(app, cpu);
     }
 }
@@ -1036,6 +1058,7 @@ bool inputHeld()
 
 void frame(win32::WinApplication* app, x86::CPU& cpu)
 {
+    win32::Gamepad::setTouchBlocked(!customize::touchReachesGame(inputHeld()));
     if (s_screen == ScreenNone)
         return;
     const x86::CPU saved = cpu;

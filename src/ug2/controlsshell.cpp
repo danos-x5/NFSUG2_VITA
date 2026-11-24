@@ -98,7 +98,7 @@ const Entry Entries[] =
     { { 0, "Steer Right" }, "$BIND_LSTICK$" },
     { { 0, "Free Look" }, "$BIND_RSTICK$" },
     { { 0x619b23b0, nullptr }, "$BIND_CROSS$" },
-    { { 0x6ab80afa, nullptr }, "$BIND_L$" },
+    { { 0, "Brake" }, "$BIND_L$" },     // the game only has "Brake / Reverse"; ours until translated
     { { 0xb70ff4a4, nullptr }, "$BIND_R$" },
     { { 0x5e5c5f2e, nullptr }, "$BIND_CIRCLE$" },
     { { 0xdc1cd97d, nullptr }, "$BIND_TRIANGLE$" },

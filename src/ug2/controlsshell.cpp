@@ -1,14 +1,18 @@
-// Options > Controls as a visual shell on three own screens (copies of UI_Options and UI_OptionsController): rows,
-// texts, icons and navigation only. Nothing is remapped, saved or changed.
+// Options > Controls on three own screens (copies of UI_Options and UI_OptionsController): stick shape rows, Control
+// Type, and Customize rebinding through the PC capture, Square removing.
 
 #include "controlsshell.h"
 #include "fepackage.h"
 #include "controlsbake.h"
+#include "controlslink.h"
 #include "controlspack.h"
+#include "controlsrows.h"
+#include "customize.h"
 #include "ownscreens.h"
 #include "psprompt.h"
 #include "vitapicture.h"
 
+#include <lib/gamepad.h>
 #include <lib/memmap.h>
 #include <platform/config.h>
 #include <platform/log.h>
@@ -60,6 +64,16 @@ const reg32 TextAlign = 0x6c, TextAlignCentre = 1, TextAlignRight = 2;
 const reg32 TitleObject = 0x42adb44c;
 const reg32 TextControls = 0x04dc6db5, TextJoypad = 0xf91fba4d, TextCustomize = 0x8d5abf58, TextControlType = 0xba7306aa,
             TextNone = 0x001a076f;
+const reg32 ArmCapture = 0x5c2100;          // thiscall on a pad slot (action, flag), ret 8
+const reg32 SelectMap = 0x5cf320;           // thiscall on a pad slot (map), ret 4
+const reg32 SetPadMask = 0x537950;          // cdecl (package name, mask): its four ports' pad masks
+const reg32 HelpBarName = 0x790000;         // "UI_PC_Help_Bar.fng", from 0x50CEA0
+const reg32 SetScript = 0x51cf70;           // cdecl (object, script name, 1)
+const reg32 ScriptPulse = 0x78f6bc, ScriptHighlight = 0x78f228;
+const reg32 CaptureAction = 0x33c, CaptureFlag = 0x870768;     // slot field and global the PC capture runs on
+const reg32 MessageButton1 = 0xc519bfc0;
+const reg32 PadMessages[] = { 0x406415e3, MessageAccept, 0x911ab364, 0x9120409e, 0xb5971bf1, 0x72619778, 0x911c0a4b, 0xc519bfbf,
+                              MessageButton1, 0xc519bfc1, 0xc519bfc2, 0xb5af2461, 0x5073ef13, 0xd9feec59, 0x911e0fdc };
 const double RowLabelWidth = 225.0;
 const float ValueCentreShift = 48.0f;
 
@@ -84,35 +98,30 @@ struct Text
 
 const Text StickLabels[6] = { { 0, "Left Dead Zone" }, { 0, "Left Outer Limit" }, { 0, "Left Sensitivity" },
                               { 0, "Right Dead Zone" }, { 0, "Right Outer Limit" }, { 0, "Right Sensitivity" } };
-const char* const StickValues[6] = { "10%", "100%", "100%", "10%", "100%", "100%" };
 
-// Customize entries with Control Type 1's controls; empty is "None".
-struct Entry
+// Customize entry labels, in controlsdata::Entry order.
+const Text Entries[] =
 {
-    Text label;
-    const char* value;
-};
-const Entry Entries[] =
-{
-    { { 0, "Steer Left" }, "$BIND_LSTICK$" },
-    { { 0, "Steer Right" }, "$BIND_LSTICK$" },
-    { { 0, "Free Look" }, "$BIND_RSTICK$" },
-    { { 0x619b23b0, nullptr }, "$BIND_CROSS$" },
-    { { 0, "Brake" }, "$BIND_L$" },     // the game only has "Brake / Reverse"; ours until translated
-    { { 0xb70ff4a4, nullptr }, "$BIND_R$" },
-    { { 0x5e5c5f2e, nullptr }, "$BIND_CIRCLE$" },
-    { { 0xdc1cd97d, nullptr }, "$BIND_TRIANGLE$" },
-    { { 0x56afe190, nullptr }, "$BIND_SQUARE$" },
-    { { 0x13121940, nullptr }, "$BIND_DPAD_LEFT$" },
-    { { 0xd38df194, nullptr }, "$BIND_DPAD_RIGHT$" },
-    { { 0x4a1341b3, nullptr }, "Touchscreen" },
-    { { 0x6026c91f, nullptr }, "Touchscreen" },
-    { { 0x6ef09d0d, nullptr }, "Touchscreen" },
-    { { 0x70a30056, nullptr }, "Touchscreen" },
-    { { 0xeac74624, nullptr }, "" },
-    { { 0x64730aac, nullptr }, "" },
+    { 0, "Steer Left" },
+    { 0, "Steer Right" },
+    { 0, "Free Look" },
+    { 0x619b23b0, nullptr },
+    { 0, "Brake" },     // the game only has "Brake / Reverse"; ours until translated
+    { 0xb70ff4a4, nullptr },
+    { 0x5e5c5f2e, nullptr },
+    { 0xdc1cd97d, nullptr },
+    { 0x56afe190, nullptr },
+    { 0x13121940, nullptr },
+    { 0xd38df194, nullptr },
+    { 0x4a1341b3, nullptr },
+    { 0x6026c91f, nullptr },
+    { 0x6ef09d0d, nullptr },
+    { 0x70a30056, nullptr },
+    { 0xeac74624, nullptr },
+    { 0x64730aac, nullptr },
 };
 const int EntryCount = int(sizeof(Entries) / sizeof(Entries[0]));
+static_assert(EntryCount == controlsdata::EntryCount, "one row per controlsdata::Entry");
 
 struct Row
 {
@@ -134,6 +143,21 @@ float s_valueReference = 0.0f;       // row 1's value x after the game's first l
 bool s_haveReference = false;
 int s_resetLogs = 0;
 reg32 s_pictureTexture = 0;
+
+enum WaitPhase { WaitNone, WaitArmed, WaitGuard };
+
+// The bind wait: armed on the PC capture, then held until every control is released.
+struct Wait
+{
+    WaitPhase phase = WaitNone;
+    controlsdata::Entry entry = controlsdata::EntrySteerLeft;
+    reg32 slot = 0, value = 0;                  // the pad slot, the row's value object
+    customize::StickWatch watch;
+    customize::Verdict result = customize::Ignore;
+    controlsdata::Control control = controlsdata::CtlCross;
+    std::string found;                          // what the capture saw, for logs
+};
+Wait s_wait;
 
 reg32 guestMemory(size_t bytes)
 {
@@ -276,23 +300,27 @@ void rowTexts(win32::WinApplication* app, x86::CPU& cpu, const Row& r)
         break;
     case KindStick:
         setText(app, cpu, label, StickLabels[r.index]);
-        setPlain(app, cpu, value, StickValues[r.index]);
+        setPlain(app, cpu, value, std::to_string(controlsrows::stickPercent(win32::controls::stickShape(r.index >= 3),
+                                                                            controlsrows::StickPart(r.index % 3))) + "%");
         break;
     case KindControlType:
+    {
+        const int type = controlstore::type(controlslink::backend());
         setHash(app, cpu, label, TextControlType);
-        setPlain(app, cpu, value, "1");
+        setPlain(app, cpu, value, controlsdata::controlTypeName(type + 1));
         break;
+    }
     case KindCustomize:
         setHash(app, cpu, label, TextCustomize);
         setPlain(app, cpu, value, "");
         break;
     case KindEntry:
     {
-        const Entry& e = Entries[r.index];
-        setText(app, cpu, label, e.label);
-        fitLabel(app, cpu, label, e.label);
-        if (*e.value)
-            setPlain(app, cpu, value, e.value);
+        const std::string shown = customize::entryValue(controlstore::active(controlslink::backend()), controlsdata::Entry(r.index));
+        setText(app, cpu, label, Entries[r.index]);
+        fitLabel(app, cpu, label, Entries[r.index]);
+        if (!shown.empty())
+            setPlain(app, cpu, value, shown);
         else
             setHash(app, cpu, value, TextNone);
         break;
@@ -324,6 +352,189 @@ void refreshRows(win32::WinApplication* app, x86::CPU& cpu)
 {
     for (const Row& r : s_rows)
         rowTexts(app, cpu, r);
+}
+
+#ifdef DEV_TOOLS
+#define BIND_LOG(...) pf::logInfo(__VA_ARGS__)
+#else
+#define BIND_LOG(...) do {} while (0)
+#endif
+
+const char* const ControlNames[controlsdata::ControlCount] = { "Triangle", "Circle", "Cross", "Square", "L", "R", "d-pad up",
+    "d-pad down", "d-pad left", "d-pad right", "left stick", "right stick", "rear L2", "rear R2", "rear L3", "rear R3" };
+
+std::string entryName(int entry)
+{
+    const Text& t = Entries[entry];
+    return t.plain ? std::string(t.plain) : tableText(t.hash);
+}
+
+void setInstruction(win32::WinApplication* app, x86::CPU& cpu, reg32 text)
+{
+    setHash(app, cpu, findObject(app, cpu, controlsbake::instructionHash()), text);
+}
+
+// The PC's input block: our screen and the help bar.
+void padMasks(win32::WinApplication* app, x86::CPU& cpu, reg32 mask)
+{
+    if (s_package)
+        call(app, cpu, SetPadMask, 0, { s_package, mask });
+    call(app, cpu, SetPadMask, 0, { HelpBarName, mask });
+}
+
+void armCapture(win32::WinApplication* app, x86::CPU& cpu)
+{
+    call(app, cpu, ArmCapture, s_wait.slot, { customize::armAction(s_wait.entry), 0 });
+}
+
+// As the PC capture ends one (0x5B853A).
+void endCapture(reg32 slot)
+{
+    rc::st32(slot + CaptureAction, 0);
+    rc::st8(CaptureFlag, 0);
+}
+
+// X on an entry: the PC screen's wait (0x4F93CC).
+void startWait(win32::WinApplication* app, x86::CPU& cpu, const Row& r)
+{
+    const reg32 slot = controlslink::padSlot();
+    if (!slot)
+    {
+        pf::logError("controlsshell: no pad slot, no bind wait for %s", entryName(r.index).c_str());
+        return;
+    }
+    s_wait = Wait();
+    s_wait.phase = WaitArmed;
+    s_wait.entry = controlsdata::Entry(r.index);
+    s_wait.slot = slot;
+    s_wait.value = rc::ld32(r.row + ValueObject);
+    padMasks(app, cpu, 0);
+    armCapture(app, cpu);
+    if (s_wait.value)
+        call(app, cpu, SetScript, 0, { s_wait.value, ScriptPulse, 1 });
+    setInstruction(app, cpu, controlsbake::TextPressButton);
+    BIND_LOG("controlsshell: bind wait for %s starts: slot %08x armed with action %u%s", entryName(r.index).c_str(), unsigned(slot),
+             unsigned(customize::armAction(s_wait.entry)), customize::watchesSticks(s_wait.entry) ? ", sticks watched by us" : "");
+}
+
+// The capture's result written, the flash stopped, then the release guard.
+void finishWait(win32::WinApplication* app, x86::CPU& cpu)
+{
+    const std::string name = entryName(s_wait.entry);
+    controlstore::Backend& store = controlslink::backend();
+    if (s_wait.result == customize::Cancel)
+    {
+        for (reg32 map : { 0u, 2u, 3u, 1u })
+            call(app, cpu, SelectMap, s_wait.slot, { map });
+        BIND_LOG("controlsshell: bind wait for %s cancelled by %s", name.c_str(), s_wait.found.c_str());
+    }
+    else
+    {
+        const int typeBefore = controlstore::type(store);
+        const bool changed = controlstore::bindEntry(store, s_wait.entry, s_wait.control);
+        BIND_LOG("controlsshell: bind %s to %s (%s): %s", name.c_str(), ControlNames[s_wait.control], s_wait.found.c_str(),
+                 changed ? "written" : "no change");
+        if (changed)
+        {
+            BIND_LOG("controlsshell: registry.txt saved: Controls_Custom, Controls_Type %d%s", controlstore::type(store),
+                     typeBefore != controlstore::type(store) ? " (was a Control Type, now Custom)" : "");
+            controlslink::storeChanged("Customize");
+        }
+    }
+    if (s_wait.value)
+        call(app, cpu, SetScript, 0, { s_wait.value, ScriptHighlight, 1 });
+    setInstruction(app, cpu, controlsbake::TextConfigure);
+    refreshRows(app, cpu);
+    s_wait.phase = WaitGuard;
+    BIND_LOG("controlsshell: bind wait for %s ends; input back once every control is released", name.c_str());
+}
+
+void waitFrame(win32::WinApplication* app, x86::CPU& cpu)
+{
+    uint32_t inputs;
+    float sticks[4];
+    win32::Gamepad::getPad(&inputs, sticks);
+    if (s_wait.phase == WaitGuard)
+    {
+        if (customize::released(inputs, sticks))
+        {
+            padMasks(app, cpu, 0xff);
+            s_wait.phase = WaitNone;
+            BIND_LOG("controlsshell: every control released, input back");
+        }
+        return;
+    }
+    if (s_wait.result == customize::Ignore &&
+        customize::onSticks(&s_wait.watch, s_wait.entry, sticks, &s_wait.control) == customize::Bind)
+    {
+        s_wait.result = customize::Bind;
+        s_wait.found = "our stick watch";
+        endCapture(s_wait.slot);
+    }
+    if (s_wait.result != customize::Ignore)
+    {
+        finishWait(app, cpu);
+        return;
+    }
+    if (!rc::ld32(s_wait.slot + CaptureAction))
+    {
+        BIND_LOG("controlsshell: the PC capture ended with nothing we take, armed again");
+        armCapture(app, cpu);
+    }
+}
+
+// Left/right on Control Type: saved at once, the slot follows.
+void changeType(int direction)
+{
+    controlstore::Backend& store = controlslink::backend();
+    const int before = controlstore::type(store), after = controlsrows::nextType(before, direction);
+    controlstore::setType(store, after);
+    controlslink::storeChanged("the Control Type row");
+    BIND_LOG("controlsshell: Control Type %s -> %s, registry.txt saved (Controls_Type %d)", controlsdata::controlTypeName(before + 1),
+             controlsdata::controlTypeName(after + 1), after);
+}
+
+// Left/right on a stick row: one step, saved to the cfg.
+void changeStick(int index, int direction)
+{
+    namespace in = win32::controls;
+    const bool right = index >= 3;
+    const controlsrows::StickPart part = controlsrows::StickPart(index % 3);
+    const in::StickShape before = in::stickShape(right), after = controlsrows::stepStick(before, part, direction);
+    if (controlsrows::stickPercent(after, part) == controlsrows::stickPercent(before, part))
+        return;
+    in::setStickShape(right, after);
+    controlslink::saveShape(right);
+    BIND_LOG("controlsshell: %s %d%% -> %d%%, saved to the cfg", StickLabels[index].plain, controlsrows::stickPercent(before, part),
+             controlsrows::stickPercent(after, part));
+}
+
+// Square on an entry: Remove.
+void removeHighlighted(win32::WinApplication* app, x86::CPU& cpu)
+{
+    const Row* r = rowOf(rc::ld32(s_screenObject + HighlightedRow));
+    if (!r || r->kind != KindEntry)
+        return;
+    controlstore::Backend& store = controlslink::backend();
+    const int typeBefore = controlstore::type(store);
+    const bool changed = controlstore::removeEntry(store, controlsdata::Entry(r->index));
+    BIND_LOG("controlsshell: remove %s: %s", entryName(r->index).c_str(), changed ? "written" : "nothing bound, no change");
+    if (!changed)
+        return;
+    BIND_LOG("controlsshell: registry.txt saved: Controls_Custom, Controls_Type %d%s", controlstore::type(store),
+             typeBefore != controlstore::type(store) ? " (was a Control Type, now Custom)" : "");
+    controlslink::storeChanged("Customize Remove");
+    refreshRows(app, cpu);
+}
+
+bool padMessage(reg32 message)
+{
+    for (reg32 m : PadMessages)
+    {
+        if (m == message)
+            return true;
+    }
+    return false;
 }
 
 // Centre alignment; true when the flag changed.
@@ -602,6 +813,18 @@ void open(win32::WinApplication* app, x86::CPU& cpu, Screen target)
 void screenMessage(win32::WinApplication* app, x86::CPU& cpu)
 {
     const reg32 entry = cpu.esp, screen = cpu.ecx, message = rc::ld32(entry + 4);
+    if (screen == s_screenObject && s_screen == ScreenCustomize && padMessage(message) &&
+        (s_wait.phase != WaitNone || message == MessageButton1))
+    {
+        const x86::CPU saved = cpu;
+        if (s_wait.phase == WaitNone)
+            removeHighlighted(app, cpu);
+        else
+            BIND_LOG("controlsshell: pad message %08x dropped during the bind wait", unsigned(message));
+        cpu = saved;
+        cpu.esp = entry + 0x14;
+        return;
+    }
     if (screen == s_screenObject && message == MessageOutroDone && rc::ld32(screen + ScreenLeaving) == MessageBack)
     {
         const Screen parent = ScreenParents[s_screen];
@@ -641,6 +864,16 @@ void screenDestructor(win32::WinApplication* app, x86::CPU& cpu)
 {
     if (cpu.ecx == s_screenObject)
     {
+        if (s_wait.phase != WaitNone)
+        {
+            const x86::CPU saved = cpu;
+            if (s_wait.phase == WaitArmed)
+                endCapture(s_wait.slot);
+            call(app, cpu, SetPadMask, 0, { HelpBarName, 0xff });
+            cpu = saved;
+            s_wait.phase = WaitNone;
+            pf::logInfo("controlsshell: Customize closed during the bind wait: capture ended, help bar input back");
+        }
         s_screenObject = 0;
         s_screen = ScreenNone;
         s_rows.clear();
@@ -658,8 +891,17 @@ void rowMessage(win32::WinApplication* app, x86::CPU& cpu)
         open(app, cpu, ScreenJoypad);
     else if (r && message == MessageAccept && r->kind == KindCustomize)
         open(app, cpu, ScreenCustomize);
-    else if (r && hasArrows(r->kind) && (message == MessageLeft || message == MessageRight))
+    else if (r && message == MessageAccept && r->kind == KindEntry && s_wait.phase == WaitNone)
+        startWait(app, cpu, *r);
+    else if (r && hasArrows(r->kind) && (message == MessageLeft || message == MessageRight) && s_wait.phase == WaitNone)
+    {
+        const int direction = message == MessageLeft ? -1 : 1;
+        if (r->kind == KindControlType)
+            changeType(direction);
+        else
+            changeStick(r->index, direction);
         call(app, cpu, rc::ld32(rc::ld32(row) + 4 * SlotBase), row, { message });
+    }
     if (r && rowOf(row))
         rowTexts(app, cpu, *rowOf(row));
     cpu = saved;
@@ -753,6 +995,45 @@ void configure(win32::WinApplication& app)
     pf::logInfo("controlsshell: Options > Controls opens %s (Joypad Configuration, Customize below it)", top);
 }
 
+bool captureButton(reg32 slot, int button)
+{
+    if (s_wait.phase != WaitArmed || slot != s_wait.slot)
+        return false;
+    if (s_wait.result != customize::Ignore)
+        return true;
+    const customize::Verdict v = customize::onButton(s_wait.entry, button, &s_wait.control);
+    BIND_LOG("controlsshell: PC capture: button %d (%s)", button, v == customize::Bind ? ControlNames[s_wait.control] :
+             v == customize::Cancel ? "Start, cancels" : "ignored, the wait goes on");
+    if (v == customize::Ignore)
+        return true;
+    s_wait.result = v;
+    s_wait.found = "button " + std::to_string(button);
+    endCapture(slot);
+    return true;
+}
+
+bool captureAxis(reg32 slot, int32_t axisId, int direction)
+{
+    if (s_wait.phase != WaitArmed || slot != s_wait.slot)
+        return false;
+    if (s_wait.result != customize::Ignore)
+        return true;
+    const customize::Verdict v = customize::onAxis(s_wait.entry, axisId, &s_wait.control);
+    BIND_LOG("controlsshell: PC capture: axis %d direction %+d (%s)", int(axisId), direction,
+             v == customize::Bind ? ControlNames[s_wait.control] : "ignored, the wait goes on");
+    if (v == customize::Ignore)
+        return true;
+    s_wait.result = v;
+    s_wait.found = "axis " + std::to_string(axisId);
+    endCapture(slot);
+    return true;
+}
+
+bool inputHeld()
+{
+    return s_wait.phase != WaitNone;
+}
+
 void frame(win32::WinApplication* app, x86::CPU& cpu)
 {
     if (s_screen == ScreenNone)
@@ -769,6 +1050,8 @@ void frame(win32::WinApplication* app, x86::CPU& cpu)
             hideArrows(app, cpu, r.row);
     }
     centreValues(app, cpu);
+    if (s_wait.phase != WaitNone && s_screen == ScreenCustomize)
+        waitFrame(app, cpu);
     if (s_checkIn > 0 && --s_checkIn == 0)
     {
         checkHidden(app, cpu);

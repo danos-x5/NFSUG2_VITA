@@ -43,6 +43,9 @@ Record active(Backend& backend);            // what the pad slot holds: the type
 Record activeFor(Backend& backend, int type);   // the same for a given type
 void setType(Backend& backend, int type);   // a preset leaves Controls_Custom alone (a first write copies Type 0 into it)
 void setCustom(Backend& backend, const Record& record);     // stores the record and makes the type Custom
+// Customize edits: Custom only on a real change, else false.
+bool bindEntry(Backend& backend, controlsdata::Entry entry, controlsdata::Control control);
+bool removeEntry(Backend& backend, controlsdata::Entry entry);
 Record forProfile(Backend& backend);        // what a profile save writes: always the custom record, never a preset
 // Puts record into the slot's entry of the profile block.
 void patchProfile(uint8_t* records, int slot, const Record& record);

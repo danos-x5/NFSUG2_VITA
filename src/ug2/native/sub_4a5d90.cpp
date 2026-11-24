@@ -1,6 +1,7 @@
 // Garage camera orbit (sub_4a5d90): the right stick reaches the garage screen as the game's own car orbit
 // events, through its handler 0x4A5740.
 
+#include "../controlsshell.h"
 #include "../garage_stick.h"
 #include <native/common.h>
 #include <lib/gamepad.h>
@@ -47,7 +48,7 @@ void sub_4a5d90(win32::WinApplication* app, x86::CPU& cpu)
 {
     const x86::reg32 screen = cpu.ecx;
     float x = 0.0f, y = 0.0f;
-    if (enabled())
+    if (enabled() && !controlsshell::inputHeld())
         win32::Gamepad::getFixedRightStick(&x, &y);
     const garage_stick::OrbitBytes orbit = garage_stick::orbitBytes(x, y, 0.0f);
     static bool s_held;

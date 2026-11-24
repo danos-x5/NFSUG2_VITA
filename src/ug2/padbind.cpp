@@ -6,6 +6,7 @@
 #include "pad_defaults.h"
 #include "controlslink.h"
 #include "controlsshell.h"
+#include "startprompt.h"
 #include "ownscreens.h"
 #include "psbar.h"
 #include "psprompt.h"
@@ -268,6 +269,7 @@ void peekMessageHook(win32::WinApplication* app, x86::CPU& cpu)
     program(app, cpu);
     ownscreens::frame(app, cpu);
     controlsshell::frame(app, cpu);
+    startprompt::frame();
     if (s_namesSlot)
     {
         logNames(app, cpu, s_namesSlot);

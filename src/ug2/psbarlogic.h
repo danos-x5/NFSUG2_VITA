@@ -86,6 +86,25 @@ const uint32_t PsRoot = 0x02DDF58C, PsName = 0xEB406FEC ^ Salt, PsMoney = 0xEB3A
 const uint32_t PsHelpWord = 0x00169268, PsHelpIcon = 0x35E8F0B2, PsSecondWord = 0x010CBA23, PsSecondIcon = 0x97B71DDE;
 const uint32_t PcRealGroup = 0x3B949CD0;    // the PC art group the fill shows; renamed so the fill finds nothing
 
+// Whether Help does anything on a screen: its table entry carries a help hash that resolves to a text. screenKnown is false
+// when no table entry has the screen's name.
+struct HelpVerdict
+{
+    bool        available;
+    const char* why;
+};
+
+inline HelpVerdict helpVerdict(bool screenKnown, uint32_t helpHash, bool resolves)
+{
+    if (!screenKnown)
+        return { false, "no screen table entry" };
+    if (!helpHash)
+        return { false, "the screen's help hash is 0" };
+    if (!resolves)
+        return { false, "the help hash has no text" };
+    return { true, "the help hash resolves to a text" };
+}
+
 // The text a prompt shows: its button token, then the language word.
 inline void promptLine(const Prompt& prompt, const char* word, char* out, size_t size)
 {

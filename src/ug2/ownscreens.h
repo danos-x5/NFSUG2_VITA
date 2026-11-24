@@ -43,6 +43,8 @@ bool registered(const std::string& name);
 bool loadPackage(const std::string& name, fepackage::Package* out);
 // Per frame on the game thread: registers the pending copies.
 void frame(win32::WinApplication* app, x86::CPU& cpu);
+// The game's hash of a package name.
+x86::reg32 hashOfName(const std::string& name);
 // Our entry for a package hash, else 0.
 x86::reg32 entryOf(x86::reg32 hash);
 

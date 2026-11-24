@@ -1,6 +1,7 @@
 // The controls store joined to the game: registry backend, pad slot, the profile's control load and save.
 
 #include "controlslink.h"
+#include "controlsrows.h"
 
 #include <lib/controls.h>
 #include <lib/file.h>
@@ -301,13 +302,7 @@ void patchProfileSave(reg32 out)
 
 void saveShape(bool right)
 {
-    const win32::controls::StickShape s = win32::controls::stickShape(right);
-    const std::string side = right ? "right_stick_" : "left_stick_";
-    auto percent = [](float fraction) { return std::to_string(int(fraction * 100.0f + 0.5f)); };
-    pf::Config::set((side + "deadzone").c_str(), percent(s.deadZone).c_str());
-    pf::Config::set((side + "saturation").c_str(), percent(s.saturation).c_str());
-    pf::Config::set((side + "sensitivity").c_str(), percent(s.sensitivity).c_str());
-    pf::Config::save();
+    controlsrows::saveShape(right);
 }
 
 }}

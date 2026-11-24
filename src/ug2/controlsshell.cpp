@@ -1,11 +1,12 @@
-// Options > Controls on three own screens (copies of UI_Options and UI_OptionsController). Customize shows the stored
-// controls, rebinds through the PC screen's capture and removes with Square.
+// Options > Controls on three own screens (copies of UI_Options and UI_OptionsController): stick shape rows, Control
+// Type, and Customize rebinding through the PC capture, Square removing.
 
 #include "controlsshell.h"
 #include "fepackage.h"
 #include "controlsbake.h"
 #include "controlslink.h"
 #include "controlspack.h"
+#include "controlsrows.h"
 #include "customize.h"
 #include "ownscreens.h"
 #include "psprompt.h"
@@ -97,7 +98,6 @@ struct Text
 
 const Text StickLabels[6] = { { 0, "Left Dead Zone" }, { 0, "Left Outer Limit" }, { 0, "Left Sensitivity" },
                               { 0, "Right Dead Zone" }, { 0, "Right Outer Limit" }, { 0, "Right Sensitivity" } };
-const char* const StickValues[6] = { "10%", "100%", "100%", "10%", "100%", "100%" };
 
 // Customize entry labels, in controlsdata::Entry order.
 const Text Entries[] =
@@ -300,7 +300,8 @@ void rowTexts(win32::WinApplication* app, x86::CPU& cpu, const Row& r)
         break;
     case KindStick:
         setText(app, cpu, label, StickLabels[r.index]);
-        setPlain(app, cpu, value, StickValues[r.index]);
+        setPlain(app, cpu, value, std::to_string(controlsrows::stickPercent(win32::controls::stickShape(r.index >= 3),
+                                                                            controlsrows::StickPart(r.index % 3))) + "%");
         break;
     case KindControlType:
     {
@@ -480,6 +481,32 @@ void waitFrame(win32::WinApplication* app, x86::CPU& cpu)
         BIND_LOG("controlsshell: the PC capture ended with nothing we take, armed again");
         armCapture(app, cpu);
     }
+}
+
+// Left/right on Control Type: saved at once, the slot follows.
+void changeType(int direction)
+{
+    controlstore::Backend& store = controlslink::backend();
+    const int before = controlstore::type(store), after = controlsrows::nextType(before, direction);
+    controlstore::setType(store, after);
+    controlslink::storeChanged("the Control Type row");
+    BIND_LOG("controlsshell: Control Type %s -> %s, registry.txt saved (Controls_Type %d)", controlsdata::controlTypeName(before + 1),
+             controlsdata::controlTypeName(after + 1), after);
+}
+
+// Left/right on a stick row: one step, saved to the cfg.
+void changeStick(int index, int direction)
+{
+    namespace in = win32::controls;
+    const bool right = index >= 3;
+    const controlsrows::StickPart part = controlsrows::StickPart(index % 3);
+    const in::StickShape before = in::stickShape(right), after = controlsrows::stepStick(before, part, direction);
+    if (controlsrows::stickPercent(after, part) == controlsrows::stickPercent(before, part))
+        return;
+    in::setStickShape(right, after);
+    controlslink::saveShape(right);
+    BIND_LOG("controlsshell: %s %d%% -> %d%%, saved to the cfg", StickLabels[index].plain, controlsrows::stickPercent(before, part),
+             controlsrows::stickPercent(after, part));
 }
 
 // Square on an entry: Remove.
@@ -866,8 +893,15 @@ void rowMessage(win32::WinApplication* app, x86::CPU& cpu)
         open(app, cpu, ScreenCustomize);
     else if (r && message == MessageAccept && r->kind == KindEntry && s_wait.phase == WaitNone)
         startWait(app, cpu, *r);
-    else if (r && hasArrows(r->kind) && (message == MessageLeft || message == MessageRight))
+    else if (r && hasArrows(r->kind) && (message == MessageLeft || message == MessageRight) && s_wait.phase == WaitNone)
+    {
+        const int direction = message == MessageLeft ? -1 : 1;
+        if (r->kind == KindControlType)
+            changeType(direction);
+        else
+            changeStick(r->index, direction);
         call(app, cpu, rc::ld32(rc::ld32(row) + 4 * SlotBase), row, { message });
+    }
     if (r && rowOf(row))
         rowTexts(app, cpu, *rowOf(row));
     cpu = saved;

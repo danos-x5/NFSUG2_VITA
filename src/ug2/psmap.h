@@ -163,18 +163,18 @@ inline Cell cellOf(Icon icon)
     }
     if (icon >= IconRearUL)
     {
-        // 32x18 texels, rows 20 apart
+        // 30x20 texels, columns 32 and rows 20 apart
         const float sub = float(int(icon) - IconRearUL);
         const float u = 0.5f + float(int(sub) % 2) * 0.125f, v = 0.75f + float(int(sub) / 2) * (20.0f / 256.0f);
-        return { u + inset, v + inset, u + 0.125f - inset, v + 18.0f / 256.0f - inset };
+        return { u + inset, v + inset, u + 30.0f / 256.0f - inset, v + 20.0f / 256.0f - inset };
     }
     const float step = 0.25f;
     const float u = float(int(icon) % 4) * step, v = float(int(icon) / 4) * step;
     return { u + inset, v + inset, u + step - inset, v + step - inset };
 }
 
-// Size of an icon in a line of text: square at the line height, except the rear pad, which keeps its 16:9 shape at
-// three quarters of the line height and sits vertically centred.
+// Size of an icon in a line of text: square at the line height, except the rear pad: its 3:2 cell (a 14:9 pad
+// inside) at three quarters of the line height, vertically centred.
 struct IconBox
 {
     float width, height, top;   // top: the offset from the line's top
@@ -185,7 +185,7 @@ inline IconBox boxOf(Icon icon, float lineHeight)
     if (icon >= IconRearUL && icon < IconArmUp)
     {
         const float h = lineHeight * 0.75f;
-        return { h * 16.0f / 9.0f, h, (lineHeight - h) * 0.5f };
+        return { h * 1.5f, h, (lineHeight - h) * 0.5f };
     }
     return { lineHeight, lineHeight, 0.0f };
 }

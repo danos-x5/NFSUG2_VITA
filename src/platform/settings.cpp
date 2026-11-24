@@ -171,6 +171,7 @@ const Setting s_table[] =
     BOOL("gxm_core2", Developer, 1, "Allow a command list worker on core 2.", 0),
     BOOL("gxm_program_list", Developer, 1, "Load the list of shader programs to build at start.", 0),
     BOOL("cull_swap", Developer, 0, "Swap the culling direction.", 0),
+    STR("debug_instruction", Developer, "", "wait: Customize's instruction line shows the bind wait text.", DS),
     BOOL("debug_frame_dump", Developer, 0, "Dump frames to files.", 0),
     INT("debug_hold_frame", Developer, 0, 0, 100000, 100, "Hold the shown frame from this frame on and write hold.bmp; 0 is off.", DT),
     INT("debug_skip_vp", Developer, 0, 0, 1000, 1, "Skip drawing with this vertex program; 0 is off.", 0),

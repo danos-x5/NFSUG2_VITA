@@ -67,12 +67,36 @@ public:
     bool hasTag(size_t object, uint16_t id) const;
     uint32_t tag32(size_t object, uint16_t id) const;
     bool setTag32(size_t object, uint16_t id, uint32_t value);
+    // A tag's bytes to read or edit in place (same size), null when the object has none.
+    std::vector<uint8_t>* tagData(size_t object, uint16_t id);
+    const std::vector<uint8_t>* tagData(size_t object, uint16_t id) const;
     // The object and every object below it.
     std::vector<size_t> subtree(size_t object) const;
     // Hides these objects and their children; how many changed.
     size_t hide(uint32_t hash);
     // Copies an object subtree after itself; the copy's index.
     size_t clone(size_t object, uint32_t newHash);
+    // prefix<model+1>..prefix<count> become copies of prefix<model>; older ones are renamed and hidden. The number made.
+    int extendSeries(const std::string& prefix, int model, int count);
+    // Scripts named script whose colour keys change alpha: a copy named keepAs, then alpha held. The number made steady.
+    int steadyColourScript(uint32_t script, uint32_t keepAs);
+    // The alpha changes of every colour key (after the first) of the object's scripts named script.
+    std::vector<int32_t> colourAlphaDeltas(size_t object, uint32_t script) const;
+    bool hasScript(size_t object, uint32_t script) const;
+    // Drops the "next script" link (Sc) of the object's script; false when it had none.
+    bool unchainScript(size_t object, uint32_t script);
+    bool scriptChained(size_t object, uint32_t script) const;
+    // Alpha of the first colour key of the object's script, -1 when it has none.
+    int32_t colourStartAlpha(size_t object, uint32_t script) const;
+    // Messages the object responds to (MsgR), and copying another object's responses onto it.
+    std::vector<uint32_t> responseMessages(size_t object) const;
+    void addResponses(size_t object, const Package& other, size_t from);
+    // Adds an object id to a message's target list (Targ); false when the package has no list for it.
+    bool addTarget(uint32_t message, uint32_t guid);
+    // Makes a top-level object a child of another (PA after OP).
+    void setParent(size_t object, uint32_t parentGuid);
+    // The message target lists (Targ) holding this object id.
+    std::vector<uint32_t> targetsOf(uint32_t guid) const;
     // Resource names (RsNm) in index order.
     std::vector<std::string> resourceNames() const;
     // Copies an object subtree out of another package after this one's objects, as a new top-level object. Resources are
@@ -92,6 +116,7 @@ private:
     const Tag* findTag(size_t object, uint16_t id) const;
     Tag* findTag(size_t object, uint16_t id);
     std::vector<uint8_t> header() const;
+    void addTargets(const std::vector<std::pair<uint32_t, uint32_t>>& ids);
 
     std::vector<Chunk> m_top;           // top-level chunks; the Obj chunk and PkHd are rebuilt
     size_t m_objChunk = 0, m_headerChunk = 0;

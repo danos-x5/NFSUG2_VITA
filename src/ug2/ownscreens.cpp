@@ -149,6 +149,12 @@ bool registerCopy(win32::WinApplication* app, x86::CPU& cpu, Copy& copy)
 
 }
 
+bool loadPackage(const std::string& name, fepackage::Package* out)
+{
+    const reg32 record = findRecord(fepackage::nameHash(name));
+    return record && readRecord(record, out);
+}
+
 bool loadFromArchive(const std::string& guestPath, const std::string& name, fepackage::Package* out)
 {
     FILE* file = fopen(win32::File::hostPath(guestPath.c_str()).c_str(), "rb");

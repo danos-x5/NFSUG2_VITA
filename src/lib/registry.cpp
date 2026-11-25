@@ -18,6 +18,10 @@ struct Value
     std::string             name;
     x86::reg32              type;
     std::vector<x86::reg8>  data;
+    bool                    temporary = false;      // set for this run only: the file keeps kept, if there is one
+    bool                    keptExists = false;
+    x86::reg32              keptType = 0;
+    std::vector<x86::reg8>  kept;
 };
 
 struct Key
@@ -95,8 +99,10 @@ void writeKey(FILE* file, const Key* key)
         fprintf(file, "[%s]\n", pathOf(key).c_str());
         for (const Value& v : key->values)
         {
-            fprintf(file, "%s\t%u\t", v.name.c_str(), unsigned(v.type));
-            for (x86::reg8 b : v.data)
+            if (v.temporary && !v.keptExists)
+                continue;
+            fprintf(file, "%s\t%u\t", v.name.c_str(), unsigned(v.temporary ? v.keptType : v.type));
+            for (x86::reg8 b : v.temporary ? v.kept : v.data)
                 fprintf(file, "%02x", b);
             fputc('\n', file);
         }
@@ -125,10 +131,11 @@ void store(Key* key, const std::string& name, x86::reg32 type, const void* data,
     Value* v = findValue(key, name);
     if (!v)
     {
-        key->values.push_back(Value{name, type, {}});
+        key->values.push_back(Value{name, type, {}, false, false, 0, {}});
         v = &key->values.back();
     }
     v->type = type;
+    v->temporary = false;
     const x86::reg8* bytes = static_cast<const x86::reg8*>(data);
     v->data.assign(bytes, bytes + size);
 }
@@ -389,6 +396,27 @@ void setValue(Key* key, const std::string& name, x86::reg32 type, const void* da
     pf::LwLockGuard guard(s_mutex);
     store(key, name, type, data, size);
     save();
+}
+
+void setOverride(Key* key, const std::string& name, x86::reg32 type, const void* data, x86::reg32 size)
+{
+    pf::LwLockGuard guard(s_mutex);
+    Value* v = findValue(key, name);
+    if (!v)
+    {
+        key->values.push_back(Value{name, type, {}, false, false, 0, {}});
+        v = &key->values.back();
+    }
+    else if (!v->temporary)
+    {
+        v->kept = v->data;
+        v->keptType = v->type;
+        v->keptExists = true;
+    }
+    v->temporary = true;
+    v->type = type;
+    const x86::reg8* bytes = static_cast<const x86::reg8*>(data);
+    v->data.assign(bytes, bytes + size);
 }
 
 void setDefault(Key* key, const std::string& name, x86::reg32 type, const void* data, x86::reg32 size)

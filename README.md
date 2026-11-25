@@ -136,6 +136,11 @@ frame_rate=0
 
 Delete the file to get a fresh copy on the next start.
 
+`language` (or the Language row of the start-up screen) picks the game's language: `default` is the game's own, or
+`english`, `french`, `german`, `italian`, `spanish`, `dutch`, `swedish`, `danish`, `korean`, `chinese` or `japanese`.
+A language is used only if the game folder has its `LANGUAGES/<NAME>.BIN` and `memcard/LOCALE_<NAME>.loc`, copied from a
+PC copy of the game that has them; if not, the game starts in its default language.
+
 Settings that start with `dev_` are experiments that may change or go away. 
 
 The first start writes graphics values tuned for the Vita. The game's own Display menu changes them, and they are

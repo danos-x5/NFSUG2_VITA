@@ -25,6 +25,7 @@
 #include "scenery.h"
 #include "padbind.h"
 #include "textentry.h"
+#include "language.h"
 
 #include <lib/file.h>
 #include <lib/memmap.h>
@@ -308,6 +309,7 @@ int main(int argc, char** argv)
     win32::File::setDataDirectory((f.data + "/").c_str());
     win32::File::setCdDirectory((f.game + "/").c_str());
     win32::registry::load(join(f.data, "registry.txt").c_str());
+    ug2::language::configure(f.game);
     win32::kernel32::setModulePath(GuestExePath);
     win32::kernel32::setResourceSection(ug2::layout::imageBase, ug2::layout::resourceSection);
     ug2::bankcode::install();

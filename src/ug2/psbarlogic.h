@@ -80,9 +80,11 @@ Prompt secondPrompt(const char* screen, uint32_t flags, MessageOfBit messageOfBi
 }
 
 // The PS2 bar group of the screen packages (UI_OptionsController.fng) copied into UI_PC_Help_Bar.fng. Hashes the bar package
-// already has (the PC's name, money, d-pad group and panels) get a salt on the copy.
-const uint32_t Salt = 0x5A5A5A5A;
-const uint32_t PsRoot = 0x02DDF58C, PsName = 0xEB406FEC ^ Salt, PsMoney = 0xEB3A688A ^ Salt, PsDpad = 0x2BAC0CEE ^ Salt;
+// already has (the d-pad group and panels) get a salt on the copy. The PC's name and money texts are renamed (PcOldSalt) first,
+// so the PS2 name and money take their hashes and the PC bank/name switcher (0x537E60) finds, fills and fades them.
+const uint32_t Salt = 0x5A5A5A5A, PcOldSalt = 0xA5A5A5A5;
+const uint32_t PcMoney = 0xEB3A688A, PcName = 0xEB406FEC;
+const uint32_t PsRoot = 0x02DDF58C, PsName = PcName, PsMoney = PcMoney, PsDpad = 0x2BAC0CEE ^ Salt;
 const uint32_t PsHelpWord = 0x00169268, PsHelpIcon = 0x35E8F0B2, PsSecondWord = 0x010CBA23, PsSecondIcon = 0x97B71DDE;
 const uint32_t PcRealGroup = 0x3B949CD0;    // the PC art group the fill shows; renamed so the fill finds nothing
 
@@ -218,9 +220,7 @@ inline bool visibilityChanged(int applied, bool shown)
     return applied != (shown ? 1 : 0);
 }
 
-// The PC bar's bank/name switcher (0x537E60) fades these two in turn; hidden on panel-row screens.
-const uint32_t PcMoney = 0xEB3A688A, PcName = 0xEB406FEC;
-
+// The PC bar's bank/name switcher (0x537E60) fades PcMoney and PcName (now the PS2 bar's own texts) in turn; stopped on panel-row screens.
 struct Switcher
 {
     uint32_t current;   // bar +0x3C: the object shown now, 0 stops the switcher (0x537F50)

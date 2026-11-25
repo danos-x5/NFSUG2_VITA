@@ -30,6 +30,11 @@ bool buildBar(fepackage::Package& bar, const fepackage::Package& donor, Built* o
     }
     for (size_t i : work.find(PcRealGroup))
         work.setHash(i, PcRealGroup + 1);
+    for (uint32_t hash : { PcName, PcMoney })
+    {
+        for (size_t i : work.find(hash))
+            work.setHash(i, hash ^ PcOldSalt);
+    }
     size_t root = donor.objectCount();
     for (size_t i : donor.find(PsRoot))
     {
@@ -58,7 +63,7 @@ bool buildBar(fepackage::Package& bar, const fepackage::Package& donor, Built* o
             }
         }
     }
-    for (uint32_t hash : { PsMoney, PsDpad, PsSecondWord, PsSecondIcon })
+    for (uint32_t hash : { PsDpad, PsSecondWord, PsSecondIcon })
         work.hide(hash);
     work.hide(PsRoot);
     out->copied = added.size();

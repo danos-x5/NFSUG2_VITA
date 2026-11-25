@@ -10,7 +10,9 @@
 #include <platform/log.h>
 #include <recomp.h>
 
+#include <cstring>
 #include <string>
+#include <vector>
 
 namespace ug2 { namespace psbar {
 
@@ -32,7 +34,7 @@ const reg32 DataOffset = 0x2C, ObjectFlags = 0x1C, DirtyFlag = 0x400000;
 const char* const Bar = "UI_PC_Help_Bar.fng", *const Donor = "UI_OptionsController.fng";
 const char* const DonorArchive = "C:\\FRONTEND\\FrontB.lzc";
 const reg32 GameMode = 0x00850078;
-const reg32 DataX = 0x1C, DataAlpha = 0x0C, SwitcherCurrent = 0x3C;
+const reg32 DataX = 0x1C, SwitcherCurrent = 0x3C;
 const reg32 BarObject = 0x008384D8, BarShown = 0x6C;
 
 Prompt s_second = { 0, nullptr };
@@ -48,7 +50,6 @@ Prompt s_items[ItemCount];
 bool s_pairShown[LayoutCount][ItemCount] = {};
 reg32 s_switcherSaved = 0;
 int s_applied = -1;
-reg32 s_bankAlpha[2] = { ~0u, ~0u };
 
 std::string readString(reg32 address)
 {
@@ -126,11 +127,8 @@ void writeText(win32::WinApplication* app, x86::CPU& cpu, reg32 object, const st
 
 void hideExtras(win32::WinApplication* app, x86::CPU& cpu, reg32 package)
 {
-    for (reg32 hash : { PsMoney, PsDpad })
-    {
-        if (const reg32 object = find(app, cpu, package, hash))
-            call(app, cpu, HideObject, { object });
-    }
+    if (const reg32 object = find(app, cpu, package, PsDpad))
+        call(app, cpu, HideObject, { object });
     if (!s_help.available)
     {
         for (reg32 hash : { PsHelpWord, PsHelpIcon })
@@ -241,8 +239,8 @@ bool showPair(win32::WinApplication* app, x86::CPU& cpu, reg32 package, int item
     return true;
 }
 
-// No bank or name on panel-row screens; both back elsewhere.
-void bank(win32::WinApplication* app, x86::CPU& cpu, reg32 bar, reg32 package, bool panelRow)
+// The bar's bank/name texts are the PC switcher's targets; stopped on panel-row screens, where the hidden root shows nothing.
+void bank(reg32 bar, bool panelRow)
 {
     const Switcher now = { rc::ld32(bar + SwitcherCurrent), s_switcherSaved };
     const Switcher next = switcherFor(panelRow, now);
@@ -253,28 +251,6 @@ void bank(win32::WinApplication* app, x86::CPU& cpu, reg32 bar, reg32 package, b
             pf::logInfo("psbar: bank/name switcher %s (object %08x)", panelRow ? "stopped on a panel-row screen" : "resumed", unsigned(next.current ? next.current : now.current));
     }
     s_switcherSaved = next.saved;
-    const reg32 hashes[2] = { PcMoney, PcName };
-    for (int i = 0; i < 2; ++i)
-    {
-        const reg32 object = find(app, cpu, package, hashes[i]);
-        const reg32 data = object ? rc::ld32(object + DataOffset) : 0;
-        if (!data)
-            continue;
-        if (panelRow)
-        {
-            if (s_bankAlpha[i] == ~0u)
-                s_bankAlpha[i] = rc::ld32(data + DataAlpha);
-            rc::st32(data + DataAlpha, 0);
-            call(app, cpu, HideObject, { object });
-            rc::st32(object + ObjectFlags, rc::ld32(object + ObjectFlags) | DirtyFlag);
-        }
-        else if (s_bankAlpha[i] != ~0u)
-        {
-            rc::st32(data + DataAlpha, s_bankAlpha[i]);
-            s_bankAlpha[i] = ~0u;
-            rc::st32(object + ObjectFlags, rc::ld32(object + ObjectFlags) | DirtyFlag);
-        }
-    }
 }
 
 // Prompts in the panel's button row; no bar.
@@ -417,7 +393,7 @@ void afterFill(win32::WinApplication* app, x86::CPU& cpu, reg32 bar)
     }
     const bool shown = rc::ld8(bar + BarShown) != 0;
     s_applied = shown ? 1 : 0;
-    bank(app, cpu, bar, package, s_panelRow);
+    bank(bar, s_panelRow);
     if (!shown || s_panelRow)
     {
         call(app, cpu, HideObject, { root });
@@ -467,7 +443,7 @@ void visibility(win32::WinApplication* app, x86::CPU& cpu, reg32 bar, bool show)
     if (!root)
         return;
     s_applied = show ? 1 : 0;
-    bank(app, cpu, bar, package, s_panelRow);
+    bank(bar, s_panelRow);
     if (!show || s_panelRow)
     {
         call(app, cpu, HideObject, { root });

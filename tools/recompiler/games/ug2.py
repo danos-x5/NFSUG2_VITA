@@ -203,7 +203,7 @@ THREAD_SEGMENTS = []
 MOD_SWITCHES = [
     # NFSU/NFSU2 Visual Reputation Remover 1.1 [NFSU2] RemoveVisualRep: customization screen step 0x557EC0, NOP run 0x557EDE-0x557EEF:
     # the five pushes stay, the call of 0x555D00 (ret 0x14, which pops them) becomes a native that pops them
-    (0x557eeb, 'e810deffff', None, 'modrt::visualRepRemoved', 'call native::visualRepMeter'),
+    (0x557eeb, 'e810deffff', None, 'modrt::visualRepRemoved', 'call native::visualRepMeter edx reads edx'),
     # ExtraOptions 5.1.0.1340 [Gameplay] UnlockRegionalCars: PickRandomCarsOfSomeSort (0x4FEAF0) list length 26 -> 28
     (0x4feb9d, '1a', '1c', 'modrt::euCarsAiList'),
     # ExtraOptions 5.1.0.1340 [LapControllers] Minimum, Maximum: TONumLaps::Act (0x4B3D60) wrap limits

@@ -13,7 +13,7 @@ namespace
 const Scheme Presets[4] =
 {
     //  Triangle      Circle   Cross       Square       L1         R1            D-pad up   right    down          left           L2  R2  L3          R3                  left stick  right stick
-    { { ShiftUp,      Nitrous, Handbrake,  ShiftDown }, Brake,     Accelerate, { EnterShop, ReadSms, ChangeCamera, WorldMap  }, { Headlights, 0,  Hydraulics, HydraulicsBounce }, RoleSteer,  RoleLook },
+    { { ShiftUp,      Nitrous, Handbrake,  ShiftDown }, Brake,     Accelerate, { EnterShop, ReadSms, ChangeCamera, WorldMap  }, { 0,  0,  Hydraulics, HydraulicsBounce }, RoleSteer,  RoleLook },
     { { ChangeCamera, 0,       Accelerate, Brake     }, Handbrake, Nitrous,    { EnterShop, ShiftUp, Headlights,   ShiftDown }, { 0,  0,  Hydraulics, HydraulicsBounce }, RoleSteer,  RoleLook },
     { { ChangeCamera, 0,       0,          LookBack  }, Handbrake, Nitrous,    { EnterShop, ShiftUp, Headlights,   ShiftDown }, { 0,  0,  Hydraulics, HydraulicsBounce }, RoleSteer,  RoleThrottle },
     { { ChangeCamera, Nitrous, Handbrake,  LookBack  }, Brake,     Accelerate, { EnterShop, ReadSms, Headlights,   WorldMap  }, { 0,  0,  Hydraulics, HydraulicsBounce }, RoleSteer,  RoleShift },

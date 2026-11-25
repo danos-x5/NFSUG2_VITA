@@ -126,7 +126,7 @@ With nothing changed the game runs locked to 30 frames a second, in widescreen, 
 Two fixes from NFSU2 Extra Options are always on and have no setting: cracked glass and other car damage show
 outside the crash camera too (DamageFix), and the Megalow performance shop shows its own scenery (MegalowPartsFix).
 Headlights can be bound in Options > Controls > Customize: each press switches the lights off, to low beam and to high
-beam. It is on D-pad down in Control Types 2 to 4 and on the rear upper left in Type 1.
+beam. It is on D-pad down in Control Types 2 to 4; Type 1 has none by default.
 
 The first time the game starts it writes a settings file, `ux0:data/NeedForSpeedUnderground2/NeedForSpeedUnderground2.cfg`.
 Every setting in it is listed at its default behind a `#`. To change one, remove the `#` at the start of its line,

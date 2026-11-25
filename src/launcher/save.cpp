@@ -15,6 +15,15 @@ void save(const cfgui::Configurator& ui, const std::string& configPath, pf::cfgf
     const bool unreadable = configState == pf::cfgfile::FileState::Unreadable;
     if ((unreadable || !ui.configChanges().empty()) && !pf::cfgfile::writeFile(configPath.c_str(), ui.savedConfig()))
         pf::logError("launcher: writing %s failed", configPath.c_str());
+    if (!ui.registryChanges().empty())
+    {
+        const std::string path = gameFolder + "/registry.txt";
+        std::string current;
+        if (pf::cfgfile::readText(path.c_str(), &current) == pf::cfgfile::FileState::Unreadable)
+            pf::logError("launcher: %s is unreadable, its settings are not saved", path.c_str());
+        else if (!pf::cfgfile::writeFile(path.c_str(), ui.savedRegistry()))
+            pf::logError("launcher: writing %s failed", path.c_str());
+    }
     std::set<std::string> rewritten;
     for (int i = 0; i < ui.modCount(); ++i)
     {

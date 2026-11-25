@@ -136,10 +136,11 @@ frame_rate=0
 
 Delete the file to get a fresh copy on the next start.
 
-`language` (or the Language row of the start-up screen) picks the game's language: `default` is the game's own, or
-`english`, `french`, `german`, `italian`, `spanish`, `dutch`, `swedish`, `danish`, `korean`, `chinese` or `japanese`.
-A language is used only if the game folder has its `LANGUAGES/<NAME>.BIN` and `memcard/LOCALE_<NAME>.loc`, copied from a
-PC copy of the game that has them; if not, the game starts in its default language.
+The Language row of the start-up screen's Config tab picks the game's language: `default` is the game's own, or
+`french`, `german`, `italian`, `spanish`, `dutch`, `swedish`, `danish`, `korean`, `chinese` or `japanese`. It is kept
+in `registry.txt` (the `Language` value, which the game reads itself), not in the settings file. A language is used
+only if the game folder has its `LANGUAGES/<NAME>.BIN` and `memcard/LOCALE_<NAME>.loc`, copied from a PC copy of the
+game that has them; if not, the game starts in its default language and `registry.txt` keeps your choice.
 
 Settings that start with `dev_` are experiments that may change or go away. 
 

@@ -150,7 +150,8 @@ enum class Outcome { Running, Boot, SaveAndBoot };
 class Configurator
 {
 public:
-    Configurator(const std::string& cfgText, const std::vector<ModView>& mods, const char* version);
+    Configurator(const std::string& cfgText, const std::vector<ModView>& mods, const char* version,
+                 const std::string& registryText = std::string());
 
     // Starts the splash timer; splash=false opens the manager directly.
     void begin(uint64_t nowUs, bool splash = true);
@@ -169,6 +170,8 @@ public:
     bool changed(const char* key) const;
     int changeCount() const;
     std::vector<pf::cfgfile::Change> configChanges() const;
+    std::vector<pf::cfgfile::Change> registryChanges() const;
+    std::string savedRegistry() const;                      // registry.txt with the changes applied
     std::string savedConfig() const;                        // the cfg text with the changes applied
     int modAt(int row) const { return m_modRows[row].mod; }      // Mods tab row to mod index, -1 for a heading
     int modCount() const { return int(m_mods.size()); }
@@ -261,6 +264,7 @@ private:
     void endDownload(bool installed);
 
     std::string m_cfgText;
+    std::string m_registryText;
     std::string m_configPath;
     pf::cfgfile::FileState m_configState = pf::cfgfile::FileState::Readable;
     std::string m_configWarning;
@@ -308,6 +312,7 @@ void drawMessage(Canvas& canvas, const Font& font, const std::vector<std::string
 
 // Shared with the runner and the tests.
 std::string valueOf(const pf::Setting& setting, const std::string& cfgText);
+std::string registryValueOf(const pf::Setting& setting, const std::string& registryText);
 bool atDefault(const pf::Setting& setting, const std::string& value);
 const float StickDeadZone = 0.5f;       // of full deflection, on the stick vector
 const float StickDiagonalBand = 4.5f;   // degrees either side of a diagonal where the stick does nothing

@@ -151,14 +151,15 @@ private:
     }
 }
 
-void configure(Screen& screen, const std::string& configPath, const std::string& text, pf::cfgfile::FileState state)
+void configure(Screen& screen, const std::string& configPath, const std::string& text, pf::cfgfile::FileState state,
+               const std::string& registryText)
 {
     if (!screen.open())
     {
         pf::logError("launcher: no memory for the screen, starting the game");
         return;
     }
-    cfgui::Configurator ui(text, mods::views(GameFolder), NFSU_VERSION);
+    cfgui::Configurator ui(text, mods::views(GameFolder), NFSU_VERSION, registryText);
     ui.setConfigFile(configPath, state, notice::cfgUnreadable(configPath));
 #ifdef NFSU_MOD_DOWNLOAD
     launcher::ModDownloads::Options options;
@@ -214,7 +215,12 @@ int main()
     if (stat(Game, &info) != 0)
         fail(screen, std::string(Game) + " is missing.");
     if (enabled)
-        configure(screen, configPath, text, state);
+    {
+        std::string registryText;
+        if (pf::cfgfile::readText((std::string(GameFolder) + "/registry.txt").c_str(), &registryText) != pf::cfgfile::FileState::Readable)
+            registryText.clear();
+        configure(screen, configPath, text, state, registryText);
+    }
     else
         pf::logInfo("launcher: start-up screen off (show_configurator_on_boot=off)");
     pf::logInfo("launcher: starting %s at %llu us", Game, (unsigned long long)sceKernelGetProcessTimeWide());

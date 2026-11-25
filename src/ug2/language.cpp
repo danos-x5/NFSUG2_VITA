@@ -1,9 +1,7 @@
-// The game's language: the cfg key language picks one of the game's own languages when its files are in the game folder.
+// The game's languages: the registry's Language value names one, and its files must be in the game folder.
 
 #include "language.h"
-#include <lib/registry.h>
-#include <platform/config.h>
-#include <platform/log.h>
+#include <cctype>
 #include <cstring>
 #include <dirent.h>
 #include <strings.h>
@@ -14,6 +12,7 @@ const char* const Names[Count] = { "ENGLISH", "FRENCH", "GERMAN", "ITALIAN", "SP
                                    "KOREAN", "CHINESE", "JAPANESE" };
 const char* const RegistryNames[Count] = { "English US", "French", "German", "Italian", "Spanish", "Dutch", "Swedish",
                                            "Danish", "Korean", "Chinese (Traditional)", "Japanese" };
+const char DefaultRegistryName[] = "English US";
 
 namespace
 {
@@ -45,14 +44,24 @@ bool hasFile(const std::string& gameFolder, const char* folder, const std::strin
 
 }
 
-int indexOf(const char* value)
+int indexOf(const char* name)
 {
     for (int i = 0; i < Count; ++i)
     {
-        if (strcasecmp(value, Names[i]) == 0)
+        if (strcasecmp(name, Names[i]) == 0)
             return i;
     }
     return -1;
+}
+
+int indexOfRegistryName(const char* value)
+{
+    for (int i = 0; i < Count; ++i)
+    {
+        if (strcasecmp(value, RegistryNames[i]) == 0)
+            return i;
+    }
+    return strcasecmp(value, "English UK") == 0 ? 0 : -1;
 }
 
 bool available(const std::string& gameFolder, int index)
@@ -63,38 +72,21 @@ bool available(const std::string& gameFolder, int index)
     return hasFile(gameFolder, "LANGUAGES", name + ".BIN") && hasFile(gameFolder, "memcard", "LOCALE_" + name + ".loc");
 }
 
-int choose(const char* value, const std::string& gameFolder)
+std::string optionOf(const std::string& registryValue)
 {
-    if (!*value || strcasecmp(value, "default") == 0)
-        return -1;
-    const int index = indexOf(value);
-    if (index < 0)
-    {
-        pf::logError("language: '%s' is not a language of the game, the default stays", value);
-        return -1;
-    }
-    if (!available(gameFolder, index))
-    {
-        pf::logError("language: LANGUAGES/%s.BIN or memcard/LOCALE_%s.loc is not in the game folder, the default stays",
-                     Names[index], Names[index]);
-        return -1;
-    }
-    return index;
+    const int index = indexOfRegistryName(registryValue.c_str());
+    if (index <= 0)
+        return "default";
+    std::string option = Names[index];
+    for (char& c : option)
+        c = char(tolower(static_cast<unsigned char>(c)));
+    return option;
 }
 
-void configure(const std::string& gameFolder)
+std::string registryValueOf(const std::string& option)
 {
-    const int index = choose(pf::Config::getString("language", "default"), gameFolder);
-    if (index < 0)
-    {
-        pf::logInfo("language: default");
-        return;
-    }
-    win32::registry::Key* game = win32::registry::find(win32::registry::root(win32::HKEY_LOCAL_MACHINE),
-                                                       "Software\\EA Games\\Need for Speed Underground 2", true);
-    const char* value = RegistryNames[index];
-    win32::registry::setOverride(game, "Language", win32::registry::REG_SZ, value, x86::reg32(strlen(value) + 1));
-    pf::logInfo("language: %s (LANGUAGES/%s.BIN)", Names[index], Names[index]);
+    const int index = indexOf(option.c_str());
+    return index <= 0 ? std::string() : std::string(RegistryNames[index]);
 }
 
 }}

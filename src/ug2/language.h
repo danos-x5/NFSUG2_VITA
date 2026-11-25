@@ -3,21 +3,25 @@
 
 #include <string>
 
-// The game's language: the cfg key language picks one of the game's own languages when its files are in the game folder.
+// The game's languages: the registry's Language value names one, and its files must be in the game folder.
 
 namespace ug2 { namespace language {
 
 const int Count = 11;
 extern const char* const Names[Count];          // the game's table at 0x7F7020, by language index
 extern const char* const RegistryNames[Count];  // the registry's Language value that gives each one
+extern const char DefaultRegistryName[];        // the value the port seeds: the game's own default
 
-// Language index a value names, or -1.
-int indexOf(const char* value);
+// Language index a name or registry value gives, or -1.
+int indexOf(const char* name);
+int indexOfRegistryName(const char* value);
 // Whether the language's files are in the game folder.
 bool available(const std::string& gameFolder, int index);
-// Index for the game, or -1 for its own.
-int choose(const char* value, const std::string& gameFolder);
-// After the registry loads: gives the game the chosen language.
+// The settings value, such as french, for a registry value; default for English US and unknown ones.
+std::string optionOf(const std::string& registryValue);
+// The registry value for a settings value; empty for default.
+std::string registryValueOf(const std::string& option);
+// After the registry loads: a language without its files gives way to the default.
 void configure(const std::string& gameFolder);
 
 }}

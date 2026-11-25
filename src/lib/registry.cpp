@@ -288,7 +288,8 @@ static void seedDefaults()
         const std::string saved = last ? std::string(last->data.begin(), last->data.end()) : std::string();
         const size_t name = saved.find_first_not_of("abcdefghijklmnopqrstuvwxyz");
         const bool changed = last && name != std::string::npos && saved.substr(name) != tail + '\0';
-        const bool apply = !s_existed || changed;
+        const bool firstLaunch = !s_existed || !findValue(game, "VERSION");
+        const bool apply = firstLaunch || changed;
         for (const Setting& s : s_settings)
         {
             const x86::reg32 value = settingValue(s, level, overrides);
@@ -299,7 +300,7 @@ static void seedDefaults()
             store(game, PresetMarker, REG_SZ, applied.c_str(), x86::reg32(applied.size() + 1));
         save();
         pf::logInfo("registry: graphics level %d (gfx_level)%s%s: %s", level, *overrides ? ", overrides " : "", overrides,
-                    apply ? (s_existed ? "applied over the saved settings" : "Vita values written, first launch")
+                    apply ? (firstLaunch ? "Vita values written, first launch" : "applied over the saved settings")
                           : "the saved settings (Display menu) kept");
     }
     // ~MHz spares the EA clock (0x6F5E41) its one-second busy-wait measurement.

@@ -1,6 +1,8 @@
 // State of the start-up screen and the settings manager; drawing is in cfgui_draw.cpp.
 
 #include "cfgui.h"
+#include "language.h"
+#include <platform/regfile.h>
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
@@ -103,13 +105,24 @@ std::string valueOf(const Setting& s, const std::string& cfgText)
     return raw;
 }
 
+const char RegistryPath[] = "HKEY_LOCAL_MACHINE\\Software\\EA Games\\Need for Speed Underground 2";
+
+std::string registryValueOf(const Setting& s, const std::string& registryText)
+{
+    std::string raw;
+    if (strcmp(s.key, "language") == 0 && pf::regfile::findString(registryText, RegistryPath, "Language", &raw))
+        return ug2::language::optionOf(raw);
+    return pf::defaultText(s);
+}
+
 bool atDefault(const Setting& s, const std::string& value)
 {
     return value == pf::defaultText(s);
 }
 
-Configurator::Configurator(const std::string& cfgText, const std::vector<ModView>& mods, const char* version)
-    :   m_cfgText(cfgText), m_version(version ? version : "")
+Configurator::Configurator(const std::string& cfgText, const std::vector<ModView>& mods, const char* version,
+                           const std::string& registryText)
+    :   m_cfgText(cfgText), m_registryText(registryText), m_version(version ? version : "")
 {
     int count = 0;
     const Setting* table = pf::settingsTable(&count);
@@ -126,7 +139,7 @@ Configurator::Configurator(const std::string& cfgText, const std::vector<ModView
                 m_rows.push_back(Row{ nullptr, s.group, std::string(), std::string() });
                 heading = true;
             }
-            const std::string value = valueOf(s, cfgText);
+            const std::string value = (s.flags & pf::SettingRegistry) ? registryValueOf(s, registryText) : valueOf(s, cfgText);
             m_rows.push_back(Row{ &s, s.group, value, value });
         }
     }
@@ -399,10 +412,35 @@ std::vector<pf::cfgfile::Change> Configurator::configChanges() const
     std::vector<pf::cfgfile::Change> changes;
     for (const Row& row : m_rows)
     {
-        if (row.setting && row.current != row.initial)
+        if (row.setting && !(row.setting->flags & pf::SettingRegistry) && row.current != row.initial)
             changes.push_back({ row.setting->key, row.current, atDefault(*row.setting, row.current) });
     }
     return changes;
+}
+
+std::vector<pf::cfgfile::Change> Configurator::registryChanges() const
+{
+    std::vector<pf::cfgfile::Change> changes;
+    for (const Row& row : m_rows)
+    {
+        if (row.setting && (row.setting->flags & pf::SettingRegistry) && row.current != row.initial)
+            changes.push_back({ row.setting->key, row.current, atDefault(*row.setting, row.current) });
+    }
+    return changes;
+}
+
+std::string Configurator::savedRegistry() const
+{
+    std::string text = m_registryText;
+    for (const pf::cfgfile::Change& change : registryChanges())
+    {
+        if (change.key != "language")
+            continue;
+        const std::string value = ug2::language::registryValueOf(change.value);
+        text = pf::regfile::setString(text, RegistryPath, "Language",
+                                      value.empty() ? std::string(ug2::language::DefaultRegistryName) : value);
+    }
+    return text;
 }
 
 std::string Configurator::savedConfig() const

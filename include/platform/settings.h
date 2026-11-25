@@ -22,6 +22,7 @@ enum SettingFlags : unsigned
     SettingHostOnly         = 16,   // read by the host build only
     SettingNeedsShadowBuild = 64,   // read only with NFSU_NATIVE_SHADOW
     SettingInGame           = 128,  // set in the game's own menus, not shown by the configurator
+    SettingRegistry         = 256,  // kept in registry.txt by the configurator, not in the cfg
 };
 
 // Bool: def 0 or 1. Int: def within min..max. Enum: def indexes text, "a|b|c". String: text is the default.

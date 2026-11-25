@@ -27,7 +27,7 @@ const Setting s_table[] =
 {
     // ---- General ----
     BOOL("show_configurator_on_boot", General, 1, "Show the start-up screen (press START to configure) before the game boots.", 0),
-    ENUM("language", General, 0, "default|english|french|german|italian|spanish|dutch|swedish|danish|korean|chinese|japanese", "The game's language; default is the game's own. A language whose files are missing falls back to default.", 0),
+    ENUM("language", General, 0, "default|french|german|italian|spanish|dutch|swedish|danish|korean|chinese|japanese", "The game's language, kept in registry.txt; default is the game's own. Missing files fall back to it.", SettingRegistry),
     BOOL("log_info", General, 0, "Write a detailed log to NeedForSpeedUnderground2.log. Errors are logged either way.", 0),
 
     // ---- Display ----

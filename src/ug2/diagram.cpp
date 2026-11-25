@@ -45,7 +45,7 @@ Label stickLabel(StickRole role)
 {
     switch (role)
     {
-    case RoleSteer:     return { actionText(SteerLeft), actionText(SteerRight) };
+    case RoleSteer:     return { { 0x63aa639d, "Steer" }, NoText };
     case RoleThrottle:  return { actionText(Accelerate), actionText(Brake) };
     case RoleShift:     return { actionText(ShiftUp), actionText(ShiftDown) };
     case RoleLook:      return { { 0, "Free Look" }, NoText };

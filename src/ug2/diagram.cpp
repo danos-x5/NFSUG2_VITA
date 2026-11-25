@@ -37,6 +37,7 @@ Text actionText(uint32_t action)
     case CareerStats:       return { 0x70a30056, "Career Statistics" };
     case HydraulicsBounce:  return { 0x64730aac, "Hydraulics Bounce" };
     case Hydraulics:        return { 0xeac74624, "Hydraulics" };
+    case Headlights:        return { 0x3dc6a111, "Headlights" };
     default:                return NoText;
     }
 }

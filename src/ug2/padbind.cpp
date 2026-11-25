@@ -11,6 +11,8 @@
 #include "ownscreens.h"
 #include "psbar.h"
 #include "psprompt.h"
+#include "headlights.h"
+#include "controlsdata.h"
 
 #include <lib/controls.h>
 #include <lib/gamepad.h>
@@ -182,6 +184,21 @@ void logZonesLive()
 }
 #endif
 
+// Feeds the first pad's Headlights action (a cleared mask bit is held) to headlights::frame.
+void headlightsFrame()
+{
+    bool held = false;
+    for (reg32 slot = Slots; slot < Slots + SlotCount * SlotSize; slot += SlotSize)
+    {
+        if (!padSlot(slot))
+            continue;
+        const unsigned long long mask = rc::ld32(slot + SlotMask) | (unsigned long long)rc::ld32(slot + SlotMask + 4) << 32;
+        held = !(mask & (1ull << controlsdata::Headlights));
+        break;
+    }
+    headlights::frame(win32::g_guestBase, held, rc::ld32(GameState));
+}
+
 // Sends the HUD taps as the game's world action events.
 void sendWorldRequests(win32::WinApplication* app, x86::CPU& cpu)
 {
@@ -202,6 +219,7 @@ void sendWorldRequests(win32::WinApplication* app, x86::CPU& cpu)
 void program(win32::WinApplication* app, x86::CPU& cpu)
 {
     controlslink::frame();
+    headlightsFrame();
     if (s_log)
         logCar();
     const bool driving = rc::ld32(InputMap) != 1;
@@ -300,6 +318,7 @@ namespace padbind
 void configure(win32::WinApplication& app)
 {
     s_log = pf::Config::getBool("pad_log", false);
+    headlights::reset();
     controlslink::configure();
     pad_defaults::install(controlslink::defaultsType());
     psprompt::configure(app);

@@ -270,6 +270,8 @@ MOD_SWITCHES = [
     (0x532908, 'e883370400', None, 'modrt::exoStartingCash', 'call native::exoptsStartingCash eax ecx'),
     # ExtraOptions 5.1.0.1340 [Gameplay] UnlockAllThings: CarCustomizeManager::GetPartUnlockFilter jne -> NOPs
     (0x50f0d8, '7516', '9090', 'modrt::exoUnlockAll'),
+    # Built-in Headlights action (src/ug2/headlights.cpp): the brightness immediate of 0x61594C, which a press rewrites
+    (0x615950, '0000803f', '0000803f', 'headlights::on', 'value'),
 ]
 
 # Net x87 pushes of functions the depth analysis cannot follow.

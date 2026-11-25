@@ -125,6 +125,7 @@ const Text Entries[] =
     { 0x70a30056, nullptr },
     { 0xeac74624, nullptr },
     { 0x64730aac, nullptr },
+    { 0x3dc6a111, nullptr },
 };
 const int EntryCount = int(sizeof(Entries) / sizeof(Entries[0]));
 static_assert(EntryCount == controlsdata::EntryCount, "one row per controlsdata::Entry");

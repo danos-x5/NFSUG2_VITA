@@ -24,6 +24,8 @@ void freeStick(Binds* b, int side);
 void setRole(Binds* b, int side, StickRole role)
 {
     freeStick(b, side);
+    if (side)
+        b->map[FreeLookOff] = role == RoleNone ? FreeLookOffMark : 0;
     if (role == RoleSteer)
     {
         b->axisId[0] = side ? AxisRz : AxisX;
@@ -157,7 +159,7 @@ StickRole stickRole(const Binds& b, int side)
     const int hat = side ? HatRightStick : HatLeftStick;
     if (b.map[hat] == ShiftDown || b.map[hat + 1] == ShiftUp)     // the hat's left and right entries are the game's own defaults
         return RoleShift;
-    return side ? RoleLook : RoleNone;
+    return side && b.map[FreeLookOff] != FreeLookOffMark ? RoleLook : RoleNone;
 }
 
 win32::controls::StickRoles inputRoles(const Binds& b)
@@ -247,7 +249,10 @@ bool bindControl(Binds* b, Entry entry, Control control)
         return false;
     const uint32_t action = EntryActions[entry];
     if (entry == EntryFreeLook)
+    {
         freeStick(b, 1);
+        b->map[FreeLookOff] = 0;
+    }
     else if (isStick(control))
     {
         StickRole role = RoleNone;
@@ -267,7 +272,12 @@ bool bindControl(Binds* b, Entry entry, Control control)
 bool unbindEntry(Binds* b, Entry entry)
 {
     if (entry == EntryFreeLook)
-        return false;
+    {
+        if (stickRole(*b, 1) != RoleLook)
+            return false;
+        b->map[FreeLookOff] = FreeLookOffMark;
+        return true;
+    }
     const Binds before = *b;
     clearAction(b, EntryActions[entry]);
     return memcmp(&before, b, sizeof(before)) != 0;
@@ -290,6 +300,8 @@ void onePerAction(Binds* b)
                 b->map[HatBase + 4 * hat + d] = 0;
         }
     }
+    if (right == RoleNone)
+        b->map[FreeLookOff] = FreeLookOffMark;
     for (StickRole role : { left, right })
     {
         if (role != RoleSteer && role != RoleThrottle && role != RoleShift)

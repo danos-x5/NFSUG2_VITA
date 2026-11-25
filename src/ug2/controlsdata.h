@@ -29,6 +29,9 @@ const int TypeCustom = 5;
 // Race map hat entries: hat 1 holds the left stick's Shift flicks, hat 2 the right stick's (down, up).
 // Hats 0 and 3 never move.
 const int HatBase = 16, HatLeftStick = HatBase + 4, HatRightStick = HatBase + 8;
+// Hat 3 never moves: its last entry holds FreeLookOffMark when free look is removed from the right stick.
+const int FreeLookOff = HatBase + 15;
+const uint32_t FreeLookOffMark = 13;
 // DIJOYSTATE axis ids (byte offsets) as the axis setup holds them: left stick X and Y, right Rz and Z.
 const int32_t AxisX = 0, AxisY = 4, AxisZ = 8, AxisRz = 20;
 
@@ -80,7 +83,7 @@ struct Binds
 Binds presetBinds(int type);
 Binds bindsOf(const Scheme& scheme);
 Scheme schemeOf(const Binds& binds);
-// Side 0 left, 1 right; unbound right gives RoleLook.
+// Side 0 left, 1 right; a free right stick gives RoleLook unless free look is removed (RoleNone).
 StickRole stickRole(const Binds& binds, int side);
 // What the input layer routes for this record.
 win32::controls::StickRoles inputRoles(const Binds& binds);

@@ -63,8 +63,8 @@ const reg32 ChunkHeader = 8;
 const int LateFrames = 0x10;                   // frames behind the clock before the codec skips to a key frame
 const int RingSize = 4;
 
-// ModeVp6: the .mp4 when there is one, else libavcodec's VP6 decoder; ModeVp6Only never uses the .mp4.
-enum Mode { ModeGame, ModeNative, ModeVp6, ModeVp6Only };
+// ModeGame: the game's decoder (host default); ModeVp6: .mp4 if present, else native VP6; ModeVp6Only: native VP6.
+enum Mode { ModeGame, ModeVp6, ModeVp6Only };
 
 struct Session
 {
@@ -424,7 +424,7 @@ void startSession(reg32 codec)
     const int height = int(rc::ld32(codec + CodecHeight));
     if (!stream)
     {
-        if (s_mode >= ModeVp6 && startVp6(codec, name, width, height))
+        if (startVp6(codec, name, width, height))
             return;
         pf::logInfo("movies: %s: no native video, the game decodes it", name);
         return;
@@ -824,14 +824,24 @@ void selfTestVp6(const char* name)
 void configure(win32::WinApplication& app)
 {
 #ifdef __vita__
-    const char* const defaultMode = "native";
+    const Mode defaultMode = ModeVp6;
     const char* const defaultDir = "ux0:data/NeedForSpeedUnderground2/MOVIES";
 #else
-    const char* const defaultMode = "game";
+    const Mode defaultMode = ModeGame;
     const char* const defaultDir = "";
 #endif
-    static const char* const modes[] = { "game", "native", "vp6", "vp6only" };
-    s_mode = Mode(pf::Config::getChoice("movies", modes, 4, strcmp(defaultMode, "native") == 0 ? 1 : 0));
+    static const char* const modes[] = { "vp6preferred", "vp6only" };
+    const std::string choice = pf::Config::getString("movies", "");
+    s_mode = defaultMode;
+    if (strcasecmp(choice.c_str(), "vp6only") == 0)
+        s_mode = ModeVp6Only;
+    else if (strcasecmp(choice.c_str(), "vp6preferred") == 0 || strcasecmp(choice.c_str(), "vp6") == 0)
+        s_mode = ModeVp6;
+    else if (!choice.empty())
+    {
+        s_mode = ModeVp6;
+        pf::logInfo("movies: movies=%s is not one of %s/%s, %s used", choice.c_str(), modes[0], modes[1], modes[0]);
+    }
     s_dir = pf::Config::getString("movies_dir", defaultDir);
     while (s_dir.size() > 1 && (s_dir.back() == '/' || s_dir.back() == '\\'))
         s_dir.pop_back();
@@ -854,7 +864,7 @@ void configure(win32::WinApplication& app)
     }
     if (s_dir.empty())
     {
-        pf::logError("movies: movies=%s needs movies_dir; the game decodes its movies", modes[s_mode]);
+        pf::logError("movies: movies=%s needs movies_dir; the game decodes its movies", modes[s_mode - 1]);
         s_mode = ModeGame;
         return;
     }
@@ -873,7 +883,7 @@ void configure(win32::WinApplication& app)
     s_createFile = app.replaceMethod(rc::ld32(CreateFileSlot), createFileHook);
     s_decode = app.replaceMethod(CodecDecode, decodeHook);
     s_destroy = app.replaceMethod(CodecDestroy, destroyHook);
-    pf::logInfo("movies: movies=%s, playback from %s (the game's VP6 decoder when no source works)", modes[s_mode],
+    pf::logInfo("movies: movies=%s, playback from %s (the game's VP6 decoder when no source works)", modes[s_mode - 1],
                 s_dir.c_str());
 }
 

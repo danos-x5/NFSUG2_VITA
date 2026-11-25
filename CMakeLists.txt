@@ -66,7 +66,7 @@ include(cmake/sources.cmake)
 
 nfsu_add_shaders(NFSU_SHADER_SOURCES)
 
-# Native VP6 movies (movies=vp6): the minimal FFmpeg that tools/vita/build_ffmpeg_vp6.py builds, linked when present.
+# Native VP6 movies (movies=vp6preferred or vp6only): the minimal FFmpeg that tools/vita/build_ffmpeg_vp6.py builds, linked when present.
 set(NFSU_FFMPEG_DIR "${CMAKE_SOURCE_DIR}/build-ffmpeg-vp6/install" CACHE PATH "FFmpeg for VP6 (build_ffmpeg_vp6.py)")
 set(NFSU_FFMPEG_LIBS "")
 if(EXISTS "${NFSU_FFMPEG_DIR}/lib/libavcodec.a" AND EXISTS "${NFSU_FFMPEG_DIR}/lib/libavutil.a")

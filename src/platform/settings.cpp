@@ -32,7 +32,7 @@ const Setting s_table[] =
     // ---- Display ----
     ENUM("frame_rate", Display, 0, "30|60|0", "30 locks to 30 fps for steady pacing; 60 shows each frame for one vblank; 0 unlocks.", 0),
     ENUM("gfx_preset", Display, 0, "vita|max", "Graphics the port is tuned for, or everything on (much slower). The Display menu changes them.", 0),
-    ENUM("movies", Display, 1, "game|native|vp6|vp6only", "native: the .mp4s, Vita decoder; vp6: else native VP6 (vp6only: VP6 always); game: the game's own decoder.", 0),
+    ENUM("movies", Display, 0, "vp6preferred|vp6only", "vp6preferred: converted .mp4 if present, else native VP6; vp6only: always native VP6.", 0),
 
     // ---- Controls ----
     BOOL("rear_touch", Controls, 1, "Rear touch pad works as L2, R2, L3 and R3, unbound until set in the Controls screen.", SettingInGame),

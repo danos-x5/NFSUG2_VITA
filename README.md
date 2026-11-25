@@ -68,7 +68,7 @@ so a profile called `Player` ends up as `ux0:data/NeedForSpeedUnderground2/save/
 ### Movies
 
 The game's movies are the `.vp6` files in its `MOVIES` folder, and the port needs them there. On their own they
-are decoded in software. 
+are decoded in software. Converted `.mp4` files beside them are optional and faster; `movies=vp6preferred` (the default) uses them when present, `movies=vp6only` always decodes the `.vp6`.
 
 ## Controls
 

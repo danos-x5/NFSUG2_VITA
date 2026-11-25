@@ -42,7 +42,7 @@ its code.
 
 ## FFmpeg
 
-The optional native VP6 movie decoder (`movies=vp6`) links libavcodec and libavutil from FFmpeg 7.1.2
+The optional native VP6 movie decoder (`movies=vp6preferred` and `vp6only`) links libavcodec and libavutil from FFmpeg 7.1.2
 (https://ffmpeg.org/releases/ffmpeg-7.1.2.tar.xz), under the GNU Lesser General Public License, version 2.1 or later.
 The build uses no GPL or nonfree options: `tools/vita/build_ffmpeg_vp6.py` downloads that release, checks its SHA-256,
 applies the port's changes to it and builds only the VP6 decoders as a static library. The changes are the patches in

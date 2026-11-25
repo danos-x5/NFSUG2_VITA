@@ -156,7 +156,7 @@ def main():
     step('FFmpeg for native VP6 movies (optional)')
     if run(python() + ['-I', os.path.join(HERE, 'vita', 'build_ffmpeg_vp6.py'), '--vitasdk', vitasdk,
                        '--jobs', str(args.jobs)], env=dict(os.environ)) != 0:
-        print('FFmpeg did not build: the port is built without native VP6 movies (movies=vp6).')
+        print('FFmpeg did not build: the port is built without native VP6 movies (movies=vp6preferred or vp6only).')
     if packages:
         step('libarchive for the launcher\'s mod downloads (optional)')
         if run(python() + ['-I', os.path.join(HERE, 'vita', 'build_libarchive.py'), '--vitasdk', vitasdk, '--packages',

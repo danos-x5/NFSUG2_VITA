@@ -58,18 +58,14 @@ const uint32_t NeonBrightnessBytes = 0x60d8d0;
 const uint32_t PlayerBarriersLetter = 0x7a078b;     // "PLAYER_BARRIERS_%d"
 const uint32_t BarriersLetter = 0x7a0798;           // "BARRIERS_%d"
 const uint32_t CareerBarriersLetter = 0x7a073c;     // "BARRIERS_CAREER%d"
-// ExtraOptions 5.1.0.1340 [Gameplay] GameRegion, UnlockAllThings: _BuildRegion, _UnlockAllThings.
-const uint32_t BuildRegion = 0x864f24;
+// ExtraOptions 5.1.0.1340 [Gameplay] UnlockAllThings: _UnlockAllThings.
 const uint32_t UnlockAllFlag = 0x838464;
-// ExtraOptions 5.1.0.1340 [Menu] DisableTakeover: the licence blurb text, in the zero bytes past .rdata.
-const uint32_t TakeoverText = 0x7e7f80;
-const char* const TakeoverString = "NFSU2 Extra Options - \xa9 2022 ExOpts Team. No rights reserved.";
 
 // The generated code's switches (MOD_SWITCHES in tools/recompiler/games/ug2.py) and the natives' state.
 extern bool euCarsAiList;
 extern bool exoLapLimits, exoDriftAxB, exoDriftPlus, exoDriftNifty, exoDriftLevels, exoShowOutrun, exoShowSubs,
-    exoAnyTrack, exoFreeRunSelect, exoOutrunSelect, exoVinyls, exoTakeover, exoCameras, exoNeon, exoLapPercent,
-    exoStartingCash, exoUnlockAll, exoWheels, exoSplitScreen, exoRaceBarriers, exoDriftFactor;
+    exoAnyTrack, exoFreeRunSelect, exoOutrunSelect, exoVinyls, exoCameras, exoNeon, exoLapPercent,
+    exoStartingCash, exoUnlockAll, exoRaceBarriers, exoDriftFactor;
 extern int32_t exoStartingCashValue;
 // Writes the active features' patches into guest memory, before the game code runs. The count of changes made.
 int applyPatches(uint8_t* guestBase);

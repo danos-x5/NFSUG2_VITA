@@ -7,10 +7,6 @@ namespace ug2
 {
 
 void sub_578060(win32::WinApplication* app, x86::CPU& cpu);
-void sub_5379c0(win32::WinApplication* app, x86::CPU& cpu);
-void sub_50ca50(win32::WinApplication* app, x86::CPU& cpu);
-void sub_51d4d0(win32::WinApplication* app, x86::CPU& cpu);
-void sub_537b80(win32::WinApplication* app, x86::CPU& cpu);
 void sub_545920(win32::WinApplication* app, x86::CPU& cpu);
 
 namespace native
@@ -40,8 +36,6 @@ template <typename... Args> bool callCdecl(win32::WinApplication* app, x86::CPU&
     return !cpu.terminate;
 }
 
-const reg32 LicenseBlurb = 0x4b98c4b9;
-const reg32 Copyright = 0xc70ccfc7;
 const reg32 PlayerBarriersLetter = 0x7a078b, BarriersLetter = 0x7a0798;
 const reg32 CurrentRace = 0x883dac;
 
@@ -78,27 +72,6 @@ void exoptsVinylCategories(win32::WinApplication* app, x86::CPU& cpu)
     cpu.esp -= 4;
     cpu.ecx = screen;
     sub_545920(app, cpu);
-}
-
-// The splash screen's licence blurb (cdecl: FE object; esi the screen).
-void exoptsTakeover(win32::WinApplication* app, x86::CPU& cpu)
-{
-    // ExtraOptions 5.1.0.1340 [Menu] DisableTakeover: SplashScreenCodeCave in place of FEngSetInvisible at 0x4A91B6
-    sub_50ca50(app, cpu);
-    if (cpu.terminate)
-        return;
-    cpu.eax = rc::ld32(cpu.esi + 4);
-    if (!callCdecl(app, cpu, sub_537b80, cpu.eax, LicenseBlurb, modrt::TakeoverText))
-        return;
-    const reg32 centres[2][2] = { { Copyright, 0x433a0000 }, { LicenseBlurb, 0x434c0000 } };
-    for (const auto& centre : centres)
-    {
-        cpu.eax = rc::ld32(cpu.esi + 4);
-        if (!callCdecl(app, cpu, sub_5379c0, cpu.eax, centre[0]))
-            return;
-        if (!callCdecl(app, cpu, sub_51d4d0, cpu.eax, 0, centre[1]))
-            return;
-    }
 }
 
 // The value 0x53290D stores as a new career's cash.

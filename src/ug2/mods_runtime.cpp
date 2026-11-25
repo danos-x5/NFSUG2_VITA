@@ -91,8 +91,8 @@ double value(Feature feature)
 bool euCarsAiList = false;
 bool exoLapLimits = false, exoDriftAxB = false, exoDriftPlus = false, exoDriftNifty = false, exoDriftLevels = false,
      exoShowOutrun = false, exoShowSubs = false, exoAnyTrack = false, exoFreeRunSelect = false,
-     exoOutrunSelect = false, exoVinyls = false, exoTakeover = false, exoCameras = false, exoNeon = false,
-     exoLapPercent = false, exoStartingCash = false, exoUnlockAll = false, exoWheels = false, exoSplitScreen = false,
+     exoOutrunSelect = false, exoVinyls = false, exoCameras = false, exoNeon = false,
+     exoLapPercent = false, exoStartingCash = false, exoUnlockAll = false,
      exoRaceBarriers = false, exoDriftFactor = false;
 int32_t exoStartingCashValue = 0;
 
@@ -100,8 +100,8 @@ int applyPatches(uint8_t* guestBase)
 {
     bool* const flags[] = { &euCarsAiList, &exoLapLimits, &exoDriftAxB, &exoDriftPlus, &exoDriftNifty,
                             &exoDriftLevels, &exoShowOutrun, &exoShowSubs, &exoAnyTrack, &exoFreeRunSelect,
-                            &exoOutrunSelect, &exoVinyls, &exoTakeover, &exoCameras, &exoNeon, &exoLapPercent,
-                            &exoStartingCash, &exoUnlockAll, &exoWheels, &exoSplitScreen, &exoRaceBarriers,
+                            &exoOutrunSelect, &exoVinyls, &exoCameras, &exoNeon, &exoLapPercent,
+                            &exoStartingCash, &exoUnlockAll, &exoRaceBarriers,
                             &exoDriftFactor };
     for (bool* flag : flags)
         *flag = false;
@@ -169,13 +169,6 @@ int applyPatches(uint8_t* guestBase)
     // ExtraOptions 5.1.0.1340 [Menu] FreeRunTrackSelect, OutrunTrackSelect: != 0
     exoFreeRunSelect = active(FreeRunTrackSelect);
     exoOutrunSelect = active(OutrunTrackSelect);
-    // ExtraOptions 5.1.0.1340 [Menu] DisableTakeover: the takeover text shows when the key is 0
-    exoTakeover = present(DisableTakeover) && !active(DisableTakeover);
-    if (exoTakeover)
-    {
-        memcpy(guestBase + TakeoverText, TakeoverString, strlen(TakeoverString) + 1);
-        ++count;
-    }
 
     // ExtraOptions 5.1.0.1340 [Gameplay] EnableHiddenCameraModes: 5 camera modes, GetPOVTypeFromPlayerCamera
     exoCameras = active(EnableHiddenCameraModes);
@@ -195,12 +188,6 @@ int applyPatches(uint8_t* guestBase)
     }
     // ExtraOptions 5.1.0.1340 [Gameplay] ShowPercentOn1LapRaces: != 0
     exoLapPercent = active(ShowPercentOn1LapRaces);
-    // ExtraOptions 5.1.0.1340 [Gameplay] GameRegion: BYTE % 13 into _BuildRegion
-    if (present(GameRegion))
-    {
-        guestBase[BuildRegion] = byteOf(GameRegion) % 13;
-        ++count;
-    }
     // ExtraOptions 5.1.0.1340 [Gameplay] StartingCash: the int the cave stores
     if (present(StartingCash))
     {
@@ -221,10 +208,6 @@ int applyPatches(uint8_t* guestBase)
         exoNeon = true;
         ++count;
     }
-
-    // ExtraOptions 5.1.0.1340 [Fixes] DisappearingWheelsFix, ExperimentalSplitScreenFix: != 0
-    exoWheels = active(DisappearingWheelsFix);
-    exoSplitScreen = active(ExperimentalSplitScreenFix);
 
     pf::logInfo("mods: %s %s: %d changes", exopts::Name, exopts::Version, count);
     return count;

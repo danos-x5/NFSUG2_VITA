@@ -18,10 +18,8 @@ enum Id
     LapMinimum, LapMaximum,
     DriftMaximumMultiplier, DriftPlusSign, DriftShowWithoutMultiplying, DriftHideNiftyMessages,
     ShowOutrun, ShowSubs, ShowSpecialVinyls, AnyTrackInAnyRaceMode, FreeRunTrackSelect, OutrunTrackSelect,
-    DisableTakeover,
-    EnableHiddenCameraModes, RemoveRaceBarriers, RemoveLockedAreaBarriers, ShowPercentOn1LapRaces, GameRegion,
+    EnableHiddenCameraModes, RemoveRaceBarriers, RemoveLockedAreaBarriers, ShowPercentOn1LapRaces,
     StartingCash, UnlockAllThings, NeonBrightness,
-    DisappearingWheelsFix, ExperimentalSplitScreenFix,
     Count
 };
 

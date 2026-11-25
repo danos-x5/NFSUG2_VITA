@@ -55,7 +55,7 @@ Source s_sources[SourceCount] =
             { "Menu", "SplashScreenTimeLimit", "30", false },
             { "Menu", "ShowcaseCamInfiniteYRotation", "0", false },
             { "Menu", "AllowLongerProfileNames", "1", false },
-            { "Menu", "DisableTakeover", "0", true },
+            { "Menu", "DisableTakeover", "0", false },
             { "Gameplay", "EnableHiddenCameraModes", "0", true },
             { "Gameplay", "EnableDebugCamera", "0", false },
             { "Gameplay", "GameSpeed", "1", false },
@@ -66,7 +66,7 @@ Source s_sources[SourceCount] =
             { "Gameplay", "RemoveRaceBarriers", "0", true },
             { "Gameplay", "RemoveLockedAreaBarriers", "0", true },
             { "Gameplay", "ShowPercentOn1LapRaces", "1", true },
-            { "Gameplay", "GameRegion", "0", true },
+            { "Gameplay", "GameRegion", "0", false },
             { "Gameplay", "StartingCash", "0", true },
             { "Gameplay", "UnlockRegionalCars", "1", true },
             { "Gameplay", "UnlockAllThings", "0", true },
@@ -80,8 +80,8 @@ Source s_sources[SourceCount] =
             { "Weather", "RainCrossing", "0.02", false },
             { "Weather", "RainSpeed", "0.03", false },
             { "Weather", "RainGravity", "0.35", false },
-            { "Fixes", "DisappearingWheelsFix", "1", true },
-            { "Fixes", "ExperimentalSplitScreenFix", "0", true },
+            { "Fixes", "DisappearingWheelsFix", "1", false },
+            { "Fixes", "ExperimentalSplitScreenFix", "0", false },
             { "Fixes", "DamageFix", "1", false },
             { "Fixes", "MegalowPartsFix", "1", false },
             { "Misc", "WindowedMode", "0", false },
@@ -135,12 +135,10 @@ const Mod s_mods[Count] =
            "hidden tracks in menus. This will make the list too long. After some races, icons won't scroll. But you "
            "can select a race safely. If you select a Sprint Drift (Heights Drifts) for another game mode, your game "
            "will crash when you finish the race.", "1 lists every track in every race mode", "any_track"),
-    // ExtraOptions 5.1.0.1340 [Menu] FreeRunTrackSelect, OutrunTrackSelect, DisableTakeover
+    // ExtraOptions 5.1.0.1340 [Menu] FreeRunTrackSelect, OutrunTrackSelect
     EXOPTS(FreeRunTrackSelect, "They have a very long list! Just try it.", "1 lets Free Run pick its track", "free_run_track_select"),
     EXOPTS(OutrunTrackSelect, "They have a very long list! Just try it. No more random tracks for Outrun game mode!",
            "1 lets Outrun pick its track", "outrun_track_select"),
-    EXOPTS(DisableTakeover, "Removes \"Extra Options by ExOpts Team\" text from Copyright area.",
-           "1 hides the Extra Options line on the splash screen", "takeover_text"),
     // ExtraOptions 5.1.0.1340 [Gameplay] EnableHiddenCameraModes, RemoveRaceBarriers, RemoveLockedAreaBarriers
     EXOPTS(EnableHiddenCameraModes, "Birds eye free roam? Yeah, it's here! Unused Driver Camera is here, too!",
            "1 adds the hidden camera modes", "camera_modes"),
@@ -149,22 +147,15 @@ const Mod s_mods[Count] =
            "1 removes the race route barriers", "race_barriers"),
     EXOPTS(RemoveLockedAreaBarriers, "Locked area barriers or route indicators, remove if you don't want them!",
            "1 removes the locked area barriers", "locked_area_barriers"),
-    // ExtraOptions 5.1.0.1340 [Gameplay] ShowPercentOn1LapRaces, GameRegion, StartingCash, UnlockAllThings
+    // ExtraOptions 5.1.0.1340 [Gameplay] ShowPercentOn1LapRaces, StartingCash, UnlockAllThings
     EXOPTS(ShowPercentOn1LapRaces, "No more LAPS 1/1! You'll see % progress on 1-lap races now.",
            "1 shows the % progress on 1-lap races", "lap_percent"),
-    EXOPTS(GameRegion, "You can't play with your European friends? Just change your game region code to anything "
-           "else. It may change your cars' frontend information. (Logos and names)",
-           "0 NTSC-U, 1 to 12 PAL/NTSC-J", "game_region"),
     EXOPTS(StartingCash, "Start with a specified amount of cash. Get rich easily from the start!",
            "cash of a new career", "starting_cash"),
     EXOPTS(UnlockAllThings, "This will unlock everything in game. Like a season pass, but it's for FREE!",
            "1 unlocks everything", "unlock_all"),
-    // ExtraOptions 5.1.0.1340 [Gameplay] NeonBrightness, [Fixes] DisappearingWheelsFix, ExperimentalSplitScreenFix
+    // ExtraOptions 5.1.0.1340 [Gameplay] NeonBrightness
     EXOPTS(NeonBrightness, "Are that neons too bright for you? You can dim them.", "under-car neon brightness", "neon_brightness"),
-    EXOPTS(DisappearingWheelsFix, "You can use open-wheel cars now! Disappearing wheels issue is fixed.",
-           "1 keeps the wheels drawn", "wheels_fix"),
-    EXOPTS(ExperimentalSplitScreenFix, "It's experimental and doesn't fix any race behaviour. Use with 'ShowOutrun' "
-           "option in [Menu] section.", "1 fixes the Outrun black screen (experimental)", "split_screen_fix"),
 };
 
 #undef EXOPTS

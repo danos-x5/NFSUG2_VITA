@@ -92,26 +92,19 @@ const Option s_vinyls("Special Vinyls", "Menu", "ShowSpecialVinyls", B, "1", "1"
 const Option s_anyTrack("Any Track in Any Mode", "Menu", "AnyTrackInAnyRaceMode", B, "1", "0", "0");
 const Option s_freeRun("Free Run Track Select", "Menu", "FreeRunTrackSelect", B, "1", "1", "0");
 const Option s_outrunSelect("Outrun Track Select", "Menu", "OutrunTrackSelect", B, "1", "1", "0");
-const Option s_takeover("Hide Extra Options Text", "Menu", "DisableTakeover", B, "0", "0", "1");
 const Option s_cameras("Hidden Camera Modes", "Gameplay", "EnableHiddenCameraModes", B, "1", "0", "0");
 const Option s_raceBarriers("Remove Race Barriers", "Gameplay", "RemoveRaceBarriers", B, "0", "0", "0");
 const Option s_lockedBarriers("Remove Locked Area Barriers", "Gameplay", "RemoveLockedAreaBarriers", B, "1", "0", "0");
 const Option s_percent("Percent on 1-Lap Races", "Gameplay", "ShowPercentOn1LapRaces", B, "0", "1", "0");
-const Option s_region("Game Region", "Gameplay", "GameRegion", E, "0", "0", "0", 0, 12, 1,
-                      { "NTSC-U (NFSU2NA)", "PAL/NTSC-J 1", "PAL/NTSC-J 2", "PAL/NTSC-J 3", "PAL/NTSC-J 4",
-                        "PAL/NTSC-J 5", "PAL/NTSC-J 6", "PAL/NTSC-J 7", "PAL/NTSC-J 8", "PAL/NTSC-J 9",
-                        "PAL/NTSC-J 10", "PAL/NTSC-J 11", "PAL/NTSC-J 12" });
 const Option s_cash("Starting Cash", "Gameplay", "StartingCash", I, "0", "0", "", 0, 9999000, 1000);
 const Option s_unlockAll("Unlock All Things", "Gameplay", "UnlockAllThings", B, "1", "0", "0");
 const Option s_neon("Neon Brightness", "Gameplay", "NeonBrightness", F, "1", "1", "1", 0, 10, 0.05);
-const Option s_wheels("Disappearing Wheels Fix", "Fixes", "DisappearingWheelsFix", B, "1", "1", "0");
-const Option s_splitScreen("Split Screen Fix", "Fixes", "ExperimentalSplitScreenFix", B, "0", "0", "0");
 
 const Setting* const s_settings[SettingCount] =
 {
     &s_euCars, &s_lapMin, &s_lapMax, &s_driftMax, &s_driftPlus, &s_driftAxB, &s_driftNifty, &s_outrun, &s_subs,
-    &s_vinyls, &s_anyTrack, &s_freeRun, &s_outrunSelect, &s_takeover, &s_cameras, &s_raceBarriers,
-    &s_lockedBarriers, &s_percent, &s_region, &s_cash, &s_unlockAll, &s_neon, &s_wheels, &s_splitScreen,
+    &s_vinyls, &s_anyTrack, &s_freeRun, &s_outrunSelect, &s_cameras, &s_raceBarriers,
+    &s_lockedBarriers, &s_percent, &s_cash, &s_unlockAll, &s_neon,
 };
 
 // std::stoi(text, nullptr, base): false where it would throw.

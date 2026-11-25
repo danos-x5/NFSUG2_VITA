@@ -237,8 +237,6 @@ MOD_SWITCHES = [
     (0x5268f8, '740b', '9090', 'modrt::exoOutrunSelect'),
     # ExtraOptions 5.1.0.1340 [Menu] ShowSpecialVinyls: the cave at 0x54625C follows this last category call
     (0x546257, 'e8c4f6ffff', None, 'modrt::exoVinyls', 'call native::exoptsVinylCategories eax ecx edx'),
-    # ExtraOptions 5.1.0.1340 [Menu] DisableTakeover: SplashScreen ctor, the cave replacing the call at 0x4A91B6
-    (0x4a91b6, 'e845380600', None, 'modrt::exoTakeover', 'call native::exoptsTakeover eax ecx edx reads esi'),
     # ExtraOptions 5.1.0.1340 [Gameplay] EnableHiddenCameraModes: PlayerSettings::ScrollDriveCam 5 camera modes
     (0x50254e, '03000000', '05000000', 'modrt::exoCameras'),
     (0x502575, '04000000', '05000000', 'modrt::exoCameras'),
@@ -267,11 +265,6 @@ MOD_SWITCHES = [
     (0x532908, 'e883370400', None, 'modrt::exoStartingCash', 'call native::exoptsStartingCash eax ecx'),
     # ExtraOptions 5.1.0.1340 [Gameplay] UnlockAllThings: CarCustomizeManager::GetPartUnlockFilter jne -> NOPs
     (0x50f0d8, '7516', '9090', 'modrt::exoUnlockAll'),
-    # ExtraOptions 5.1.0.1340 [Fixes] DisappearingWheelsFix: CarPartCuller::CullParts culled flag 0 -> 1
-    (0x60c5a9, '00', '01', 'modrt::exoWheels'),
-    # ExtraOptions 5.1.0.1340 [Fixes] ExperimentalSplitScreenFix: 0x5DACB0 jne -> jmp, 0x5C21E0 xor eax, eax -> NOPs
-    (0x5dacdb, '75', 'eb', 'modrt::exoSplitScreen'),
-    (0x5c23a9, '33c0', '9090', 'modrt::exoSplitScreen'),
 ]
 
 # Net x87 pushes of functions the depth analysis cannot follow.

@@ -2,6 +2,7 @@
 
 #include "diagram.h"
 #include "diagram_art.h"
+#include "translations.h"
 
 #include <algorithm>
 #include <cstring>
@@ -90,7 +91,7 @@ Label touchLabel(const Binds& b, uint32_t action)
 std::string textString(const Text& t, const Lookup& lookup)
 {
     const std::string game = t.hash ? lookup(t.hash) : std::string();
-    return !game.empty() ? game : t.plain ? std::string(t.plain) : std::string();
+    return !game.empty() ? game : t.plain ? translations::translate(t.plain) : std::string();
 }
 
 // Decodes a make_layers.py run-length coded layer.

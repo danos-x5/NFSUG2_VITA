@@ -35,7 +35,7 @@ const char DefaultSettingsFile[] =
     "#left_stick_sensitivity=60\n"
     "#right_stick_deadzone=15\n"
     "#right_stick_saturation=94\n"
-    "#right_stick_sensitivity=60\n"
+    "#right_stick_sensitivity=100\n"
     "\n"
     "# Scenery narrower than this many pixels on screen uses its simpler model. 0 is off; 128 gives more\n"
     "# speed, and higher values show more pop-in.\n"

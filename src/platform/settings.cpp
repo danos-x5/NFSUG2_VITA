@@ -42,7 +42,7 @@ const Setting s_table[] =
     INT("left_stick_sensitivity", Controls, 60, 0, 100, 5, "Left stick response (100 linear, lower finer at the centre) while it steers, accelerates/brakes or shifts.", SettingInGame),
     INT("right_stick_deadzone", Controls, 15, 0, 50, 1, "Right stick dead zone in percent, while it steers, accelerates/brakes or shifts.", SettingInGame),
     INT("right_stick_saturation", Controls, 94, 50, 100, 1, "Right stick travel that counts as full, in percent; only while it steers, accelerates/brakes or shifts.", SettingInGame),
-    INT("right_stick_sensitivity", Controls, 60, 0, 100, 5, "Right stick response (100 linear, lower finer at the centre) while it steers, accelerates/brakes or shifts.", SettingInGame),
+    INT("right_stick_sensitivity", Controls, 100, 0, 100, 5, "Right stick response (100 linear, lower finer at the centre) while it steers, accelerates/brakes or shifts.", SettingInGame),
 
     // ---- Audio ----
     BOOL("music_hw_decode", Audio, 1, "Decode music with the Vita's MP3 decoder, which frees the CPU; the game's decoder is the fallback.", 0),

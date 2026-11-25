@@ -97,6 +97,8 @@ static const uint64_t s_tapUs = 100000;
 // A flick past FlickOn moves the hat; re-arms under FlickOff.
 static const float FlickOn  = 0.7f;
 static const float FlickOff = 0.3f;
+static const float ConeFullDegrees  = 45.0f;    // up to this far off the axis a rim push is full
+static const float ConeOuterDegrees = 60.0f;    // from here on only the axis component counts
 
 // ---- Roles and shaping ----
 
@@ -108,6 +110,7 @@ struct Shared
     std::atomic<uint32_t> roles;
     std::atomic<float>    shape[2][3];      // left, right: dead zone, saturation, sensitivity
     std::atomic<bool>     driving;
+    std::atomic<bool>     cone;
 
     Shared();
 };
@@ -130,6 +133,7 @@ float percent(int value, int low, int high)
 Shared::Shared()
     :   roles(packRoles({ { true, false }, { false, false }, true, { false, false } }))
     ,   driving(false)
+    ,   cone(pf::Config::getBool("stick_axis_cone", true))
 {
     shape[0][0] = percent(pf::Config::getInt("left_stick_deadzone", 15), 0, 50);
     shape[0][1] = percent(pf::Config::getInt("left_stick_saturation", 94), 50, 100);
@@ -155,6 +159,16 @@ StickRoles stickRoles()
 void setStickRoles(const StickRoles& roles)
 {
     shared().roles = packRoles(roles);
+}
+
+bool stickCone()
+{
+    return shared().cone;
+}
+
+void setStickCone(bool on)
+{
+    shared().cone = on;
 }
 
 bool rightStickUnbound()
@@ -728,8 +742,10 @@ State Mapper::update(const PadSample& pad, uint64_t nowUs)
         if (driving && roles.axes[side])
         {
             const StickShape shape = stickShape(side != 0);
-            stick[side][0] = roles.throttle[side] ? 0.0f : shapeAxis(x, shape);
-            stick[side][1] = roles.throttle[side] ? shapeAxis(y, shape) : 0.0f;
+            const bool vertical = roles.throttle[side], cone = shared().cone;
+            const float u = cone ? coneInput(x, y, vertical) : (vertical ? y : x);
+            stick[side][0] = vertical ? 0.0f : shapeAxis(u, shape);
+            stick[side][1] = vertical ? shapeAxis(u, shape) : 0.0f;
         }
         else
             shapeStick(x, y, roleShape(roles, side != 0), &stick[side][0], &stick[side][1]);
@@ -787,6 +803,19 @@ float shapeAxis(float v, const StickShape& shape)
         std::fmin(1.0f, (a - shape.deadZone) / (shape.saturation - shape.deadZone)) : 1.0f;
     const float r = clampUnit(shape.sensitivity * t + (1.0f - shape.sensitivity) * t * t * t);
     return v < 0.0f ? -r : r;
+}
+
+float coneInput(float x, float y, bool vertical)
+{
+    const float v = vertical ? y : x, along = std::fabs(v), across = std::fabs(vertical ? x : y);
+    if (along <= 0.0f)
+        return 0.0f;
+    const float degrees = std::atan2(across, along) * (180.0f / 3.14159265358979f);
+    const float s = std::min(1.0f, std::max(0.0f, (ConeOuterDegrees - degrees) / (ConeOuterDegrees - ConeFullDegrees)));
+    const float w = s * s * (3.0f - 2.0f * s);
+    const float m = std::min(1.0f, std::sqrt(x * x + y * y));
+    const float u = w * m + (1.0f - w) * along;
+    return v < 0.0f ? -u : u;
 }
 
 void shapeStick(float x, float y, const StickShape& shape, float* outX, float* outY)

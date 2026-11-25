@@ -31,7 +31,6 @@ const Setting s_table[] =
 
     // ---- Display ----
     ENUM("frame_rate", Display, 0, "30|60|0", "30 locks to 30 fps for steady pacing; 60 shows each frame for one vblank; 0 unlocks.", 0),
-    ENUM("gfx_preset", Display, 0, "vita|max", "Graphics the port is tuned for, or everything on (much slower). The Display menu changes them.", 0),
     ENUM("movies", Display, 0, "vp6preferred|vp6only", "vp6preferred: converted .mp4 if present, else native VP6; vp6only: always native VP6.", 0),
 
     // ---- Controls ----
@@ -331,7 +330,7 @@ const Setting s_table[] =
 
 // Keys that no longer exist: a cfg line for one is skipped without a message.
 const char* const s_retired[] = { "front_touch", "widescreen", "control_type", "custom_binds", "left_stick_mode", "right_stick_mode",
-                                  "dpad_mode", "free_look",
+                                  "dpad_mode", "free_look", "gfx_preset",
                                   "left_stick_deadzone", "left_stick_saturation", "left_stick_sensitivity", "right_stick_deadzone",
                                   "right_stick_saturation", "right_stick_sensitivity" };
 

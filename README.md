@@ -126,8 +126,8 @@ Delete the file to get a fresh copy on the next start.
 
 Settings that start with `dev_` are experiments that may change or go away. 
 
-The graphics settings can be changed in the game's own Display menu, and they are kept between sessions. The
-resolution stays at 960x544. 
+The first start writes graphics values tuned for the Vita. The game's own Display menu changes them, and they are
+kept between sessions. The resolution stays at 960x544.
 
 ## Mods
 

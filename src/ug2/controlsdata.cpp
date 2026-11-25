@@ -9,14 +9,14 @@ namespace ug2 { namespace controlsdata {
 namespace
 {
 
-// The Control Types: any action on any control (0 for none); the rear is unbound everywhere.
+// The Control Types: any action on any control (0 for none); the rear is L2, R2 (upper) and L3, R3 (lower).
 const Scheme Presets[4] =
 {
-    //  Triangle      Circle    Cross       Square     L1       R1          D-pad up  right         down       left        rear x4     left stick         right stick
-    { { ShiftUp,      Nitrous,  Accelerate, ShiftDown }, Brake,   Handbrake,  { 0,       ChangeCamera, 0,         LookBack }, { 0, 0, 0, 0 }, RoleSteer, RoleLook },
-    { { ShiftUp,      Nitrous,  Handbrake,  ShiftDown }, Brake,   Accelerate, { 0,       ChangeCamera, 0,         LookBack }, { 0, 0, 0, 0 }, RoleSteer, RoleLook },
-    { { 0,            0,        0,          0         }, Nitrous, Handbrake,  { ShiftUp, ChangeCamera, ShiftDown, LookBack }, { 0, 0, 0, 0 }, RoleSteer, RoleThrottle },
-    { { 0,            Nitrous,  Handbrake,  0         }, Brake,   Accelerate, { 0,       ChangeCamera, 0,         LookBack }, { 0, 0, 0, 0 }, RoleSteer, RoleShift },
+    //  Triangle      Circle   Cross       Square       L1         R1            D-pad up   right    down          left           L2  R2  L3          R3                  left stick  right stick
+    { { ShiftUp,      Nitrous, Handbrake,  ShiftDown }, Brake,     Accelerate, { EnterShop, ReadSms, ChangeCamera, WorldMap  }, { 0,  0,  Hydraulics, HydraulicsBounce }, RoleSteer,  RoleLook },
+    { { ChangeCamera, 0,       Accelerate, Brake     }, Handbrake, Nitrous,    { EnterShop, ShiftUp, 0,            ShiftDown }, { 0,  0,  Hydraulics, HydraulicsBounce }, RoleSteer,  RoleLook },
+    { { ChangeCamera, 0,       0,          LookBack  }, Handbrake, Nitrous,    { EnterShop, ShiftUp, 0,            ShiftDown }, { 0,  0,  Hydraulics, HydraulicsBounce }, RoleSteer,  RoleThrottle },
+    { { ChangeCamera, Nitrous, Handbrake,  LookBack  }, Brake,     Accelerate, { EnterShop, ReadSms, 0,            WorldMap  }, { 0,  0,  Hydraulics, HydraulicsBounce }, RoleSteer,  RoleShift },
 };
 
 void freeStick(Binds* b, int side);

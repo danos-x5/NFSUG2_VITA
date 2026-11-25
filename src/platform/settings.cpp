@@ -38,10 +38,10 @@ const Setting s_table[] =
     BOOL("rear_touch", Controls, 1, "Rear touch pad works as L2, R2, L3 and R3, unbound until set in the Controls screen.", SettingInGame),
     BOOL("garage_stick", Controls, 1, "The right stick turns the car in the garage and the customisation menus.", SettingInGame),
     INT("left_stick_deadzone", Controls, 15, 0, 50, 1, "Left stick dead zone in percent, while it steers, accelerates/brakes or shifts.", SettingInGame),
-    INT("left_stick_saturation", Controls, 94, 50, 100, 1, "Left stick travel that counts as full, in percent; only while it steers, accelerates/brakes or shifts.", SettingInGame),
-    INT("left_stick_sensitivity", Controls, 60, 0, 100, 5, "Left stick response (100 linear, lower finer at the centre) while it steers, accelerates/brakes or shifts.", SettingInGame),
+    INT("left_stick_saturation", Controls, 100, 50, 100, 1, "Left stick travel that counts as full, in percent; only while it steers, accelerates/brakes or shifts.", SettingInGame),
+    INT("left_stick_sensitivity", Controls, 100, 0, 100, 5, "Left stick response (100 linear, lower finer at the centre) while it steers, accelerates/brakes or shifts.", SettingInGame),
     INT("right_stick_deadzone", Controls, 15, 0, 50, 1, "Right stick dead zone in percent, while it steers, accelerates/brakes or shifts.", SettingInGame),
-    INT("right_stick_saturation", Controls, 94, 50, 100, 1, "Right stick travel that counts as full, in percent; only while it steers, accelerates/brakes or shifts.", SettingInGame),
+    INT("right_stick_saturation", Controls, 100, 50, 100, 1, "Right stick travel that counts as full, in percent; only while it steers, accelerates/brakes or shifts.", SettingInGame),
     INT("right_stick_sensitivity", Controls, 100, 0, 100, 5, "Right stick response (100 linear, lower finer at the centre) while it steers, accelerates/brakes or shifts.", SettingInGame),
 
     // ---- Audio ----

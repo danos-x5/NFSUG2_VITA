@@ -136,10 +136,10 @@ Shared::Shared()
     ,   cone(pf::Config::getBool("stick_axis_cone", true))
 {
     shape[0][0] = percent(pf::Config::getInt("left_stick_deadzone", 15), 0, 50);
-    shape[0][1] = percent(pf::Config::getInt("left_stick_saturation", 94), 50, 100);
-    shape[0][2] = percent(pf::Config::getInt("left_stick_sensitivity", 60), 0, 100);
+    shape[0][1] = percent(pf::Config::getInt("left_stick_saturation", 100), 50, 100);
+    shape[0][2] = percent(pf::Config::getInt("left_stick_sensitivity", 100), 0, 100);
     shape[1][0] = percent(pf::Config::getInt("right_stick_deadzone", 15), 0, 50);
-    shape[1][1] = percent(pf::Config::getInt("right_stick_saturation", 94), 50, 100);
+    shape[1][1] = percent(pf::Config::getInt("right_stick_saturation", 100), 50, 100);
     shape[1][2] = percent(pf::Config::getInt("right_stick_sensitivity", 100), 0, 100);
 }
 

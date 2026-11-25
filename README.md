@@ -104,7 +104,7 @@ before v0.8.4 have no sound; convert them again.
 
 The Vita appears to the game as a PlayStation 2 controller. Control Type 1, the default, is shown below; change the
 controls in the game's Options > Controls (Joypad Configuration). Text fields, such as a profile name, open the Vita
-keyboard. To quit, use the PS button.
+keyboard, the touch screen taps menu items like a mouse click, and the PS button quits.
 
 ![Control Type 1 on the Joypad Configuration screen](images/controls/readme_controls_type1.png)
 
@@ -178,7 +178,7 @@ Delete the file to get a fresh copy on the next start.
 |---------|--------|--------------|
 | `frame_rate` | `30` (default), `0` | Locked to 30 frames a second for steady pacing, or unlocked |
 | `gfx_preset` | `vita` (default), `max` | Graphics the port is tuned for, or everything on (much slower). Can be changed in game Options -> Display|
-| `rear_touch` | `on` (default), `off` | Rear touch pad L2, R2, L3, R3 (unbound until set in Options > Controls) |
+| `rear_touch` | `on` (default), `off` | Rear touch pad L2, R2, L3, R3 (L3 and R3 are the hydraulics in the presets) |
 | `garage_stick` | `on` (default), `off` | The right stick turns the car in the garage and customisation menus. `garage_stick_deadzone` (default `30`, percent) tunes it. The right stick does not move menu selections |
 | `dev_world_lod_pixels` | `0` (default, off), a width in pixels | Experimental. Scenery narrower than this on screen uses its simpler model. `128` gives more speed; higher values show more pop-in. The old name `world_lod_pixels` still works |
 | `dev_world_min_pixels` | `0` (default, off) to `64` | Experimental. Scenery smaller than this on screen is not drawn. More speed, more pop-in. The old name `world_min_pixels` still works |

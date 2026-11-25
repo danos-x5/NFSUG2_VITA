@@ -170,6 +170,7 @@ win32::controls::StickRoles inputRoles(const Binds& b)
         const StickRole role = stickRole(b, side);
         roles.axes[side] = role == RoleSteer || role == RoleThrottle;
         roles.flick[side] = role == RoleShift;
+        roles.throttle[side] = role == RoleThrottle;
     }
     roles.freeLook = stickRole(b, 1) == RoleLook;
     return roles;

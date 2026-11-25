@@ -114,12 +114,12 @@ struct Shared
 
 uint32_t packRoles(const StickRoles& r)
 {
-    return (r.axes[0] ? 1u : 0u) | (r.axes[1] ? 2u : 0u) | (r.flick[0] ? 4u : 0u) | (r.flick[1] ? 8u : 0u) | (r.freeLook ? 16u : 0u);
+    return (r.axes[0] ? 1u : 0u) | (r.axes[1] ? 2u : 0u) | (r.flick[0] ? 4u : 0u) | (r.flick[1] ? 8u : 0u) | (r.freeLook ? 16u : 0u) | (r.throttle[0] ? 32u : 0u) | (r.throttle[1] ? 64u : 0u);
 }
 
 StickRoles unpackRoles(uint32_t v)
 {
-    return { { (v & 1) != 0, (v & 2) != 0 }, { (v & 4) != 0, (v & 8) != 0 }, (v & 16) != 0 };
+    return { { (v & 1) != 0, (v & 2) != 0 }, { (v & 4) != 0, (v & 8) != 0 }, (v & 16) != 0, { (v & 32) != 0, (v & 64) != 0 } };
 }
 
 float percent(int value, int low, int high)
@@ -128,7 +128,7 @@ float percent(int value, int low, int high)
 }
 
 Shared::Shared()
-    :   roles(packRoles({ { true, false }, { false, false }, true }))
+    :   roles(packRoles({ { true, false }, { false, false }, true, { false, false } }))
     ,   driving(false)
 {
     shape[0][0] = percent(pf::Config::getInt("left_stick_deadzone", 15), 0, 50);
@@ -723,7 +723,17 @@ State Mapper::update(const PadSample& pad, uint64_t nowUs)
 
     float stick[2][2];
     for (int side = 0; side < 2; ++side)
-        shapeStick(pad.sticks[side * 2], pad.sticks[side * 2 + 1], roleShape(roles, side != 0), &stick[side][0], &stick[side][1]);
+    {
+        const float x = pad.sticks[side * 2], y = pad.sticks[side * 2 + 1];
+        if (driving && roles.axes[side])
+        {
+            const StickShape shape = stickShape(side != 0);
+            stick[side][0] = roles.throttle[side] ? 0.0f : shapeAxis(x, shape);
+            stick[side][1] = roles.throttle[side] ? shapeAxis(y, shape) : 0.0f;
+        }
+        else
+            shapeStick(x, y, roleShape(roles, side != 0), &stick[side][0], &stick[side][1]);
+    }
     for (int h = 0; h < HatCount; ++h)
         state.pov[h] = -1;
     if (!driving)
@@ -767,6 +777,17 @@ State Mapper::update(const PadSample& pad, uint64_t nowUs)
 }
 
 // ---- Stick shaping ----
+
+float shapeAxis(float v, const StickShape& shape)
+{
+    const float a = std::fabs(v);
+    if (a <= shape.deadZone)
+        return 0.0f;
+    const float t = shape.saturation > shape.deadZone ?
+        std::fmin(1.0f, (a - shape.deadZone) / (shape.saturation - shape.deadZone)) : 1.0f;
+    const float r = clampUnit(shape.sensitivity * t + (1.0f - shape.sensitivity) * t * t * t);
+    return v < 0.0f ? -r : r;
+}
 
 void shapeStick(float x, float y, const StickShape& shape, float* outX, float* outY)
 {

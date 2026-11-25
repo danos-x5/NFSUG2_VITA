@@ -121,12 +121,13 @@ private:
     std::vector<Entry> m_entries;
 };
 
-// Stick roles from the pad record, applied while driving: a stick without an axis role sends centred axes.
+// Stick roles from the pad record, applied while driving: a stick without an axis role sends centred axes. Steer and Throttle shape only their own axis.
 struct StickRoles
 {
     bool axes[2];       // left, right: the stick drives game axes (X and Y left, Rz and Z right)
     bool flick[2];      // the stick's up and down flicks move its hat: HatLeftStick for the left, HatRightStick for the right
     bool freeLook;      // the right stick has no action
+    bool throttle[2];   // with axes: the role is Throttle (vertical axis), not Steer (horizontal axis)
 };
 StickRoles stickRoles();
 void setStickRoles(const StickRoles& roles);
@@ -233,6 +234,8 @@ private:
 
 // Radial dead zone and response curve of one stick.
 void shapeStick(float x, float y, const StickShape& shape, float* outX, float* outY);
+// One axis shaped on its own: sign(v) * response(|v|).
+float shapeAxis(float v, const StickShape& shape);
 
 }
 

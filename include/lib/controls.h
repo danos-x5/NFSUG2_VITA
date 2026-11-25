@@ -151,9 +151,9 @@ const StickShape FixedStickShape = { 0.30f, 1.0f, 1.0f };
 // Driving shape: from left_stick_* and right_stick_* in the cfg.
 StickShape stickShape(bool right);
 void setStickShape(bool right, const StickShape& shape);
-// Cone shaping of Steer and Throttle on (default, cfg stick_axis_cone) or plain per-axis.
-bool stickCone();
-void setStickCone(bool on);
+// Cone half-angle in degrees (cfg stick_cone_angle, 0 to 45); 0 reads the axis alone.
+int stickConeAngle();
+void setStickConeAngle(int degrees);
 // The cfg shape for a driving role, else FixedStickShape.
 StickShape roleShape(const StickRoles& roles, bool right);
 // A raw stick shaped with FixedStickShape.
@@ -239,8 +239,8 @@ private:
 void shapeStick(float x, float y, const StickShape& shape, float* outX, float* outY);
 // One axis shaped on its own: sign(v) * response(|v|).
 float shapeAxis(float v, const StickShape& shape);
-// Signed input for a role's axis: stick distance within the cone, else the axis value.
-float coneInput(float x, float y, bool vertical);
+// Role axis input: stick distance within the cone angle, else the axis; 0 is axis only.
+float coneInput(float x, float y, bool vertical, int angle);
 
 }
 

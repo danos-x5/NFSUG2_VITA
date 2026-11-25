@@ -43,6 +43,7 @@ const Setting s_table[] =
     INT("right_stick_deadzone", Controls, 15, 0, 50, 1, "Right stick dead zone in percent, while it steers, accelerates/brakes or shifts.", SettingInGame),
     INT("right_stick_saturation", Controls, 100, 50, 100, 1, "Right stick travel that counts as full, in percent; only while it steers, accelerates/brakes or shifts.", SettingInGame),
     INT("right_stick_sensitivity", Controls, 100, 0, 100, 5, "Right stick response (100 linear, lower finer at the centre) while it steers, accelerates/brakes or shifts.", SettingInGame),
+    INT("stick_cone_angle", Controls, 25, 0, 45, 1, "Steer/throttle stick: degrees off its axis that still count as a full push. 0 is the PC game's way.", SettingInGame),
 
     // ---- Audio ----
     BOOL("music_hw_decode", Audio, 1, "Decode music with the Vita's MP3 decoder, which frees the CPU; the game's decoder is the fallback.", 0),
@@ -71,7 +72,6 @@ const Setting s_table[] =
     BOOL("ps2_prompts", Developer, 1, "PS2-style prompts: button icons in every menu text and Help on Triangle; off is the PC menus.", 0),
     BOOL("pad_log", Developer, 0, "Log the pad bindings and the buttons pressed.", 0),
     INT("free_look_swing", Developer, 180, 0, 2000, 10, "Free look: degrees a second the camera swings to aims less than 90 from ahead; 0 snaps.", 0),
-    BOOL("stick_axis_cone", Developer, 1, "Steer and Throttle sticks: a rim push within 45 degrees of the axis is full; off reads the axis alone.", 0),
     BOOL("free_look_release_swing", Developer, 0, "Free look: letting go swings back to the chase view instead of snapping.", 0),
     STR("pad_script", Developer, "", "Scripted pad input for tests.", 0),
     BOOL("boot_race", Developer, 0, "Skip the menus and start a test race.", 0),

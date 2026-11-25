@@ -8,6 +8,8 @@
 namespace pf
 {
 
+const int FreeLookDeadZoneDefault = 30;     // percent; 0 would let any stick drift turn the camera
+
 enum class SettingType : unsigned char { Bool, Int, Enum, String };
 enum class SettingGroup : unsigned char { General, Display, Controls, Audio, Performance, Developer, Count };
 

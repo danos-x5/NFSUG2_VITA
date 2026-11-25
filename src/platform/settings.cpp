@@ -37,6 +37,8 @@ const Setting s_table[] =
     // ---- Controls ----
     BOOL("rear_touch", Controls, 1, "Rear touch pad works as L2, R2, L3 and R3, unbound until set in the Controls screen.", SettingInGame),
     BOOL("garage_stick", Controls, 1, "The right stick turns the car in the garage and the customisation menus.", SettingInGame),
+    INT("garage_stick_deadzone", Controls, 30, 0, 70, 1, "Right stick dead zone in the garage and customisation menus, in percent; raise it if the car spins alone.", SettingInGame),
+    INT("free_look_deadzone", Controls, FreeLookDeadZoneDefault, 0, 70, 1, "Dead zone of the right stick for free look, in percent; raise it if the camera moves by itself.", SettingInGame),
     INT("left_stick_deadzone", Controls, 15, 0, 50, 1, "Left stick dead zone in percent, while it steers, accelerates/brakes or shifts.", SettingInGame),
     INT("left_stick_saturation", Controls, 100, 50, 100, 1, "Left stick travel that counts as full, in percent; only while it steers, accelerates/brakes or shifts.", SettingInGame),
     INT("left_stick_sensitivity", Controls, 100, 0, 100, 5, "Left stick response (100 linear, lower finer at the centre) while it steers, accelerates/brakes or shifts.", SettingInGame),
@@ -335,7 +337,7 @@ const Setting s_table[] =
 
 // Keys that no longer exist: a cfg line for one is skipped without a message.
 const char* const s_retired[] = { "front_touch", "widescreen", "control_type", "custom_binds", "left_stick_mode", "right_stick_mode",
-                                  "dpad_mode", "garage_stick_deadzone", "free_look" };
+                                  "dpad_mode", "free_look" };
 
 const SettingAlias s_aliases[] =
 {

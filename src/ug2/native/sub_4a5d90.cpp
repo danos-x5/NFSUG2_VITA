@@ -4,6 +4,7 @@
 #include "../controlsshell.h"
 #include "../garage_stick.h"
 #include <native/common.h>
+#include <lib/controls.h>
 #include <lib/gamepad.h>
 #include <platform/config.h>
 
@@ -29,6 +30,12 @@ bool enabled()
     return on;
 }
 
+int deadZone()
+{
+    static const int percent = pf::Config::getInt("garage_stick_deadzone", 30);
+    return percent;
+}
+
 // Sends one joy event to the screen's orbit handler.
 void orbitEvent(win32::WinApplication* app, x86::CPU& cpu, x86::reg32 screen, x86::reg32 event, uint8_t value)
 {
@@ -49,7 +56,11 @@ void sub_4a5d90(win32::WinApplication* app, x86::CPU& cpu)
     const x86::reg32 screen = cpu.ecx;
     float x = 0.0f, y = 0.0f;
     if (enabled() && !controlsshell::inputHeld())
-        win32::Gamepad::getFixedRightStick(&x, &y);
+    {
+        float rx = 0.0f, ry = 0.0f;
+        win32::Gamepad::getRightStick(&rx, &ry);
+        win32::controls::deadZoneShape(rx, ry, deadZone(), &x, &y);
+    }
     const garage_stick::OrbitBytes orbit = garage_stick::orbitBytes(x, y, 0.0f);
     static bool s_held;
     if (orbit.held || s_held)

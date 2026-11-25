@@ -9,6 +9,7 @@
 #include <lib/gamepad.h>
 #include <platform/config.h>
 #include <platform/log.h>
+#include <platform/settings.h>
 #include <recomp.h>
 
 #include <algorithm>
@@ -58,6 +59,12 @@ struct State
 };
 
 State s_state;
+
+int deadZone()
+{
+    static const int percent = pf::Config::getInt("free_look_deadzone", pf::FreeLookDeadZoneDefault);
+    return percent;
+}
 Update s_update = {};
 
 struct Settings
@@ -169,8 +176,9 @@ void update(reg32 camera)
     }
     setLive(true, camera, "driving, right stick unbound");
 
-    float x, y;
-    win32::Gamepad::getFixedRightStick(&x, &y);
+    float x, y, rx, ry;
+    win32::Gamepad::getRightStick(&rx, &ry);
+    win32::controls::deadZoneShape(rx, ry, deadZone(), &x, &y);
     s.stickX = x;
     s.stickY = y;
     const fm::Aim aim = fm::aim(x, y);

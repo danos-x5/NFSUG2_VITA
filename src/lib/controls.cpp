@@ -202,6 +202,12 @@ void fixedShape(float x, float y, float* outX, float* outY)
     shapeStick(x, y, FixedStickShape, outX, outY);
 }
 
+void deadZoneShape(float x, float y, int percent, float* outX, float* outY)
+{
+    const StickShape shape = { std::min(std::max(percent, 0), 70) / 100.0f, 1.0f, 1.0f };
+    shapeStick(x, y, shape, outX, outY);
+}
+
 void setDriving(bool driving)
 {
     shared().driving = driving;

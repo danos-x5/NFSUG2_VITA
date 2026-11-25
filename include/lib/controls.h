@@ -158,6 +158,8 @@ void setStickConeAngle(int degrees);
 StickShape roleShape(const StickRoles& roles, bool right);
 // A raw stick shaped with FixedStickShape.
 void fixedShape(float x, float y, float* outX, float* outY);
+// A raw stick with a dead zone of percent (clamped 0 to 70), full travel, linear.
+void deadZoneShape(float x, float y, int percent, float* outX, float* outY);
 
 // Set by the pad hook while driving; roles apply then.
 void setDriving(bool driving);

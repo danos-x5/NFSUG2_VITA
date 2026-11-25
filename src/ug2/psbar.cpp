@@ -311,6 +311,20 @@ void install()
         else
             pf::logInfo("psbar: %u in-game prompt pairs baked at the PC items' layout positions", unsigned(s_inGame.pairs));
 #ifdef DEV_TOOLS
+        for (uint32_t hash : { PcName, PcMoney })
+        {
+            const std::vector<size_t> ours = bar.find(hash), old = bar.find(hash ^ PcOldSalt);
+            const std::vector<uint8_t>* data = ours.size() == 1 ? bar.tagData(ours[0], 0x4153) : nullptr;
+            float x = 0, y = 0;
+            if (data && data->size() >= 0x24)
+            {
+                memcpy(&x, &(*data)[0x1C], 4);
+                memcpy(&y, &(*data)[0x20], 4);
+            }
+            pf::logInfo("psbar: bank/name text %08x: %u PS2 object(s) (parent %08x, at %.2f %.2f, Fade_In %d, Fade_Out %d), %u PC original(s) renamed to %08x", unsigned(hash),
+                        unsigned(ours.size()), ours.size() == 1 ? unsigned(bar.parent(ours[0])) : 0u, x, y, ours.size() == 1 && bar.hasScript(ours[0], fepackage::nameHash("Fade_In")),
+                        ours.size() == 1 && bar.hasScript(ours[0], fepackage::nameHash("Fade_Out")), unsigned(old.size()), unsigned(hash ^ PcOldSalt));
+        }
         for (int layout = 0; layout < LayoutCount; ++layout)
         {
             for (int item = 0; item < ItemCount; ++item)

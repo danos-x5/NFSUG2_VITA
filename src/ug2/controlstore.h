@@ -2,7 +2,7 @@
 #define UG2_CONTROLSTORE_H_
 
 // Controls kept per Vita in registry.txt as the game's PS2 record: Controls_Type (0..3 the Control Types, 4 Custom)
-// and Controls_Custom. No game access, so host tests cover it.
+// and Controls_Custom, plus the six stick shape percents. No game access, so host tests cover it.
 
 #include "controlsdata.h"
 #include <cstdint>
@@ -53,6 +53,14 @@ void patchProfile(uint8_t* records, int slot, const Record& record);
 bool importProfile(Backend& backend, const Record& profile);
 // No profile: Type 0, Custom its copy; false when stored.
 bool startWithoutProfile(Backend& backend);
+
+// The six stick shape values: DWORD percents Controls_LeftStickDeadzone ... Controls_RightStickSensitivity.
+const int StickParts = 3;       // dead zone, outer limit, sensitivity
+const char* stickName(bool right, int part);
+int stickDefault(int part);     // 15, 100, 100
+int stickClamp(int part, int percent);      // 0..50, 50..100, 0..100
+bool stickStored(Backend& backend, bool right, int part, int* percent);     // false when the key is missing
+void setStick(Backend& backend, bool right, int part, int percent);         // writes only that key, clamped
 
 // What boot does with registry.txt.
 enum Start

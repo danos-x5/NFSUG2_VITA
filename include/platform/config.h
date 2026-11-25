@@ -18,6 +18,8 @@ public:
     static bool getBool(const char* key, bool defaultValue);
     static int  getInt(const char* key, int defaultValue);
     static const char* getString(const char* key, const char* defaultValue);
+    // The value of a retired key, as the loaded file had it (first line wins), or null; for a one-time migration.
+    static const char* getRetired(const char* key);
     // In memory; save() writes keys set since into the file.
     static void set(const char* key, const char* value);
     static bool save();

@@ -124,22 +124,17 @@ StickRoles unpackRoles(uint32_t v)
     return { { (v & 1) != 0, (v & 2) != 0 }, { (v & 4) != 0, (v & 8) != 0 }, (v & 16) != 0, { (v & 32) != 0, (v & 64) != 0 } };
 }
 
-float percent(int value, int low, int high)
-{
-    return float(std::min(std::max(value, low), high)) / 100.0f;
-}
-
 Shared::Shared()
     :   roles(packRoles({ { true, false }, { false, false }, true, { false, false } }))
     ,   driving(false)
     ,   coneAngle(std::min(std::max(pf::Config::getInt("stick_cone_angle", 25), 0), 45))
 {
-    shape[0][0] = percent(pf::Config::getInt("left_stick_deadzone", 15), 0, 50);
-    shape[0][1] = percent(pf::Config::getInt("left_stick_saturation", 100), 50, 100);
-    shape[0][2] = percent(pf::Config::getInt("left_stick_sensitivity", 100), 0, 100);
-    shape[1][0] = percent(pf::Config::getInt("right_stick_deadzone", 15), 0, 50);
-    shape[1][1] = percent(pf::Config::getInt("right_stick_saturation", 100), 50, 100);
-    shape[1][2] = percent(pf::Config::getInt("right_stick_sensitivity", 100), 0, 100);
+    shape[0][0] = 0.15f;
+    shape[0][1] = 1.0f;
+    shape[0][2] = 1.0f;
+    shape[1][0] = 0.15f;
+    shape[1][1] = 1.0f;
+    shape[1][2] = 1.0f;
 }
 
 Shared& shared()

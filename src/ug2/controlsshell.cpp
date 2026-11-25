@@ -520,7 +520,7 @@ void changeType(int direction)
              controlsdata::controlTypeName(after + 1), after);
 }
 
-// Left/right on a stick row: one step, saved to the cfg.
+// Left/right on a stick row: one step, saved to registry.txt.
 void changeStick(int index, int direction)
 {
     namespace in = win32::controls;
@@ -530,8 +530,8 @@ void changeStick(int index, int direction)
     if (controlsrows::stickPercent(after, part) == controlsrows::stickPercent(before, part))
         return;
     in::setStickShape(right, after);
-    controlslink::saveShape(right);
-    BIND_LOG("controlsshell: %s %d%% -> %d%%, saved to the cfg", StickLabels[index].plain, controlsrows::stickPercent(before, part),
+    controlslink::saveShape(right, part);
+    BIND_LOG("controlsshell: %s %d%% -> %d%%, saved to registry.txt", StickLabels[index].plain, controlsrows::stickPercent(before, part),
              controlsrows::stickPercent(after, part));
 }
 

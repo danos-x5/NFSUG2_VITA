@@ -6,6 +6,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <utility>
 #include <strings.h>
 #include <vector>
 
@@ -32,6 +33,7 @@ struct Entry
 };
 
 std::vector<Entry> s_entries;
+std::vector<std::pair<std::string, std::string>> s_retiredValues;
 std::vector<std::string> s_pending;     // keys set since the last save, in order
 std::string s_path;
 
@@ -82,10 +84,21 @@ bool readLine(FILE* file, char* line, int size, bool* tooLong)
 
 }
 
+const char* Config::getRetired(const char* key)
+{
+    for (const auto& old : s_retiredValues)
+    {
+        if (old.first == key)
+            return old.second.c_str();
+    }
+    return nullptr;
+}
+
 // A missing file is created from missingFileText, when given.
 bool Config::load(const char* path, const char* missingFileText)
 {
     s_entries.clear();
+    s_retiredValues.clear();
     s_pending.clear();
     s_path = path;
     std::string text;
@@ -136,7 +149,14 @@ bool Config::load(const char* path, const char* missingFileText)
             continue;
         }
         if (settingRetired(key))
+        {
+            bool seen = false;
+            for (const auto& old : s_retiredValues)
+                seen = seen || old.first == key;
+            if (!seen)
+                s_retiredValues.emplace_back(key, value);
             continue;
+        }
         const bool known = isKnown(key);
         const char* current = canonicalKey(key);
         const bool alias = current != key;

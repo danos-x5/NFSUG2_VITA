@@ -2,8 +2,9 @@
 #define UG2_CONTROLSROWS_H_
 
 // The Controls and Joypad Configuration rows as data: Control Type cycling, the stick shape rows' steps and limits,
-// and the shape's cfg keys. No game access, so the host tests cover it.
+// and the shape's registry.txt keys. No game access, so the host tests cover it.
 
+#include "controlstore.h"
 #include <lib/controls.h>
 
 namespace ug2 { namespace controlsrows {
@@ -21,8 +22,12 @@ StickLimits stickLimits(StickPart part);
 int stickPercent(const win32::controls::StickShape& shape, StickPart part);
 // One step left (-1) or right (+1), held at the limits.
 win32::controls::StickShape stepStick(const win32::controls::StickShape& shape, StickPart part, int direction);
-// The stick's shape into its three cfg keys, then the cfg saved.
-void saveShape(bool right);
+// The old cfg text of a retired stick key, or null.
+typedef const char* (*OldCfgValue)(const char* key);
+// At start-up: both shapes from registry.txt, else the old cfg key, else the default; nothing is written.
+void loadShapes(controlstore::Backend& backend, OldCfgValue oldValue);
+// Writes the part's own Controls_*Stick* key, and any value taken from the old cfg that is still unstored.
+void saveShape(controlstore::Backend& backend, bool right, StickPart part);
 
 }}
 

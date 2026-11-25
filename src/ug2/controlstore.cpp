@@ -106,6 +106,44 @@ void writeCustom(Backend& backend, const Record& r)
 
 }
 
+const char* stickName(bool right, int part)
+{
+    static const char* const names[2][StickParts] =
+    {
+        { "Controls_LeftStickDeadzone", "Controls_LeftStickSaturation", "Controls_LeftStickSensitivity" },
+        { "Controls_RightStickDeadzone", "Controls_RightStickSaturation", "Controls_RightStickSensitivity" },
+    };
+    return names[right ? 1 : 0][part < 0 || part >= StickParts ? 0 : part];
+}
+
+int stickDefault(int part)
+{
+    return part == 0 ? 15 : 100;
+}
+
+int stickClamp(int part, int percent)
+{
+    const int low = part == 1 ? 50 : 0, high = part == 0 ? 50 : 100;
+    return percent < low ? low : percent > high ? high : percent;
+}
+
+bool stickStored(Backend& backend, bool right, int part, int* percent)
+{
+    std::vector<uint8_t> bytes;
+    if (!backend.read(stickName(right, part), &bytes) || bytes.size() != 4)
+        return false;
+    uint32_t v;
+    memcpy(&v, bytes.data(), 4);
+    *percent = stickClamp(part, v > 1000u ? 1000 : int(v));
+    return true;
+}
+
+void setStick(Backend& backend, bool right, int part, int percent)
+{
+    const uint32_t v = uint32_t(stickClamp(part, percent));
+    backend.write(stickName(right, part), std::vector<uint8_t>(reinterpret_cast<const uint8_t*>(&v), reinterpret_cast<const uint8_t*>(&v) + 4));
+}
+
 bool has(Backend& backend)
 {
     int t;

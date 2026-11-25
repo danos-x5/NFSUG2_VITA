@@ -2,8 +2,9 @@
 #define UG2_CONTROLSLINK_H_
 
 // The controls store joined to the game: registry.txt as backend, the pad slot as the record, the profile's control
-// load (0x5B9570) and save (0x5B9420), and the stick shape cfg keys.
+// load (0x5B9570) and save (0x5B9420), and the stick shape values.
 
+#include "controlsrows.h"
 #include "controlstore.h"
 #include <lib/winapp.h>
 
@@ -30,8 +31,8 @@ void frame();
 void afterProfileLoad();
 // After the guest wrote the profile's controls at out.
 void patchProfileSave(x86::reg32 out);
-// Writes one stick's StickShape into the cfg.
-void saveShape(bool right);
+// Writes the stick row's value into registry.txt.
+void saveShape(bool right, controlsrows::StickPart part);
 
 }}
 

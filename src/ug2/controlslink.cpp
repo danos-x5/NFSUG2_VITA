@@ -225,6 +225,7 @@ void configure()
     }
     if (forcedType() >= 0)
         pf::logInfo("controls: debug_control_type plays %s; registry.txt is not changed", typeLabel(forcedType()).c_str());
+    controlsrows::loadShapes(backend(), pf::Config::getRetired);
     refresh("boot");
 }
 
@@ -309,9 +310,9 @@ void patchProfileSave(reg32 out)
 #endif
 }
 
-void saveShape(bool right)
+void saveShape(bool right, controlsrows::StickPart part)
 {
-    controlsrows::saveShape(right);
+    controlsrows::saveShape(backend(), right, part);
 }
 
 }}

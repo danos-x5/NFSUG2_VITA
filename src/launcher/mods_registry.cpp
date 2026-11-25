@@ -2,6 +2,7 @@
 
 #include "mods_registry.h"
 #include "exopts.h"
+#include "novisrep.h"
 #define MINI_CASE_SENSITIVE
 #include "mini/ini.h"
 #include <platform/settings.h>
@@ -92,6 +93,16 @@ Source s_sources[SourceCount] =
         },
         {},
     },
+    {   // https://nfsmods.xyz/mod/2773, v1.1: no ini of its own, the port keeps the switch in novisrep::IniPath
+        novisrep::Name,
+        novisrep::Version,
+        novisrep::Author,
+        novisrep::IniPath,
+        {
+            { novisrep::Section, novisrep::Key, "1", true },    // NFSU/NFSU2 Visual Reputation Remover 1.1 [NFSU2] RemoveVisualRep
+        },
+        {},
+    },
 };
 
 
@@ -156,6 +167,16 @@ const Mod s_mods[Count] =
            "1 unlocks everything", "unlock_all"),
     // ExtraOptions 5.1.0.1340 [Gameplay] NeonBrightness
     EXOPTS(NeonBrightness, "Are that neons too bright for you? You can dim them.", "under-car neon brightness", "neon_brightness"),
+    {   // NFSU/NFSU2 Visual Reputation Remover 1.1 [NFSU2] RemoveVisualRep
+        NoVisualRep,
+        modreq::VisualRepRemover,
+        "The Visual Rating system in NFSU2 only interacts with the availability of DVD Covers. Therefore this patch fixes "
+        "the rating at values good enough to acquire the covers for each game stage, as such, you receive SMS about cover "
+        "opportunities at the beginning of each stage. Stage 0, 1, 2, 3 and 4 are fixed with 0, 1, 3, 5.5 and 8 stars "
+        "respectively. Stage 5 onwards are fixed with 10 stars. Visual Rating Meter is removed from the customization menu.",
+        "1 fixes the visual rating by game stage and removes its meter, 0 keeps the game's",
+        { "visual_rating" },
+    },
 };
 
 #undef EXOPTS

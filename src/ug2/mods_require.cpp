@@ -2,6 +2,7 @@
 
 #include "mods_require.h"
 #include "exopts.h"
+#include "novisrep.h"
 #include <cctype>
 #include <cerrno>
 #include <climits>
@@ -75,6 +76,16 @@ public:
     std::string requirementsString(const std::string&) const override { return std::string(); }
 };
 
+// NFSU/NFSU2 Visual Reputation Remover 1.1 [NFSU2] RemoveVisualRep: the port's own key; the mod is always on, needs no files
+class VisualRep : public Setting
+{
+public:
+    VisualRep() : Setting(novisrep::Name, "Visual Rating Removal", novisrep::IniPath, novisrep::Section, novisrep::Key) {}
+
+    bool requirementsMet(const std::string&) const override { return true; }
+    std::string requirementsString(const std::string&) const override { return std::string(); }
+};
+
 const Kind B = Kind::Bool, I = Kind::Int, F = Kind::Float, E = Kind::Enum;
 
 // ExtraOptions 5.1.0.1340: code defaults from Init() (checked against the release ASI), shipped values from its ini,
@@ -100,11 +111,13 @@ const Option s_cash("Starting Cash", "Gameplay", "StartingCash", I, "0", "0", ""
 const Option s_unlockAll("Unlock All Things", "Gameplay", "UnlockAllThings", B, "1", "0", "0");
 const Option s_neon("Neon Brightness", "Gameplay", "NeonBrightness", F, "1", "1", "1", 0, 10, 0.05);
 
+const VisualRep s_visualRep;
+
 const Setting* const s_settings[SettingCount] =
 {
     &s_euCars, &s_lapMin, &s_lapMax, &s_driftMax, &s_driftPlus, &s_driftAxB, &s_driftNifty, &s_outrun, &s_subs,
     &s_vinyls, &s_anyTrack, &s_freeRun, &s_outrunSelect, &s_cameras, &s_raceBarriers,
-    &s_lockedBarriers, &s_percent, &s_cash, &s_unlockAll, &s_neon,
+    &s_lockedBarriers, &s_percent, &s_cash, &s_unlockAll, &s_neon, &s_visualRep,
 };
 
 // std::stoi(text, nullptr, base): false where it would throw.

@@ -17,6 +17,7 @@ enum SettingId
     ShowOutrun, ShowSubs, ShowSpecialVinyls, AnyTrackInAnyRaceMode, FreeRunTrackSelect, OutrunTrackSelect,
     EnableHiddenCameraModes, RemoveRaceBarriers, RemoveLockedAreaBarriers, ShowPercentOn1LapRaces,
     StartingCash, UnlockAllThings, NeonBrightness,
+    VisualRepRemover,
     SettingCount
 };
 

@@ -49,6 +49,8 @@ NATIVE_OVERRIDES = [
     0x5425a0,   # package chunk unload (cdecl; chunk): a replaced package's own chunk is unloaded (src/ug2/ownscreens.cpp)
     # Front touch (src/ug2/padbind.cpp)
     0x50b460,   # FE mouse cursor draw (cdecl; x, y): never drawn
+    # NFSU/NFSU2 Visual Reputation Remover 1.1 (src/ug2/novisrep.h)
+    0x5234c0,   # visual rating (thiscall, ret 4; st0): fixed per game stage (src/ug2/native/sub_5234c0.cpp)
     # Forwarding placeholders for the hot-function conversions (src/ug2/native/stubs.cpp, tools/native/placeholders.txt)
     0x5cf420, 0x5bc300, 0x61b670, 0x5bdde0, 0x5c5930, 0x5d6570,
     0x5bc210, 0x4013f0, 0x5bcc30, 0x4905a0, 0x5ceb30, 0x5dd490,
@@ -199,6 +201,9 @@ THREAD_SEGMENTS = []
 # Mod switches, generated both ways and picked at run time by a flag (src/ug2/mods_runtime.cpp, disasm/modswitch.py):
 # address, original bytes, the mod's bytes, flag[, 'value' | 'call NAME REG...'].
 MOD_SWITCHES = [
+    # NFSU/NFSU2 Visual Reputation Remover 1.1 [NFSU2] RemoveVisualRep: customization screen step 0x557EC0, NOP run 0x557EDE-0x557EEF:
+    # the five pushes stay, the call of 0x555D00 (ret 0x14, which pops them) becomes a native that pops them
+    (0x557eeb, 'e810deffff', None, 'modrt::visualRepRemoved', 'call native::visualRepMeter'),
     # ExtraOptions 5.1.0.1340 [Gameplay] UnlockRegionalCars: PickRandomCarsOfSomeSort (0x4FEAF0) list length 26 -> 28
     (0x4feb9d, '1a', '1c', 'modrt::euCarsAiList'),
     # ExtraOptions 5.1.0.1340 [LapControllers] Minimum, Maximum: TONumLaps::Act (0x4B3D60) wrap limits

@@ -62,7 +62,8 @@ is in `src/ug2/fonts/OFL.txt`.
 ## Mods tab descriptions
 
 The start-up screen's Mods tab quotes each feature's description from its mod's readme, credited to the mod's authors:
-Extra Options' from the NFSU2 Extra Options readme, by the ExOpts Team.
+Extra Options' from the NFSU2 Extra Options readme, by the ExOpts Team, and the Visual Reputation Remover's from its
+readme, by thelink2012.
 
 ## mINI
 
@@ -98,6 +99,16 @@ descriptions are quoted from the mod.
 
 The always-on fixes in `PATCHES` (`tools/recompiler/games/ug2.py`) follow the behaviour of Extra Options 5.1.0.1340's
 DamageFix and MegalowPartsFix, by the ExOpts Team; the patches are the port's own.
+
+## NFSU/NFSU2 Visual Reputation Remover
+
+The Visual Rating Removal feature of the Mods tab is based on the NFSU2 half of
+[NFSU/NFSU2 Visual Reputation Remover](https://github.com/thelink2012/novisualrep) 1.1 by thelink2012 (Denilson das
+Mercês Amorim, LINK/2012), MIT License, Copyright (c) 2015 Denilson das Mercês Amorim. The port makes the same two
+changes to the game's code (`MOD_SWITCHES` and `NATIVE_OVERRIDES` in `tools/recompiler/games/ug2.py`,
+`src/ug2/native/novisrep.cpp`, `src/ug2/native/sub_5234c0.cpp`), reimplemented from its behaviour, and contains none of
+its code. Its settings file is the port's own, as the mod has none. The Mods tab's description is quoted from the mod's
+readme.
 
 ## Need for Speed Underground 2
 

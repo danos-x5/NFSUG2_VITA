@@ -20,6 +20,7 @@ enum Id
     ShowOutrun, ShowSubs, ShowSpecialVinyls, AnyTrackInAnyRaceMode, FreeRunTrackSelect, OutrunTrackSelect,
     EnableHiddenCameraModes, RemoveRaceBarriers, RemoveLockedAreaBarriers, ShowPercentOn1LapRaces,
     StartingCash, UnlockAllThings, NeonBrightness,
+    VisualRepRemover,
     Count
 };
 
@@ -69,7 +70,7 @@ struct Source
     bool downloadable() const { return !download.url.empty() && !download.files.empty(); }
 };
 
-enum SourceId { ExtraOptions, SourceCount };
+enum SourceId { ExtraOptions, NoVisualRep, SourceCount };
 
 // A supported key: its name, section, key and requirements are the shared setting's (mods_require.h), or for a
 // launcher-only entry its own.

@@ -3,6 +3,7 @@
 #include "mods_runtime.h"
 #include "mods_hook.h"
 #include "exopts.h"
+#include "novisrep.h"
 #define MINI_CASE_SENSITIVE
 #include "mini/ini.h"
 #include <platform/log.h>
@@ -95,6 +96,7 @@ bool exoLapLimits = false, exoDriftAxB = false, exoDriftPlus = false, exoDriftNi
      exoLapPercent = false, exoStartingCash = false, exoUnlockAll = false,
      exoRaceBarriers = false, exoDriftFactor = false;
 int32_t exoStartingCashValue = 0;
+bool visualRepRemoved = false;
 
 int applyPatches(uint8_t* guestBase)
 {
@@ -106,7 +108,22 @@ int applyPatches(uint8_t* guestBase)
     for (bool* flag : flags)
         *flag = false;
     exoStartingCashValue = 0;
+    visualRepRemoved = false;
     int count = 0;
+    if (active(VisualRepRemover))
+    {
+        // NFSU/NFSU2 Visual Reputation Remover 1.1 [NFSU2] RemoveVisualRep: the mod's guard, 0xE8 at 0x557EEB, 0x55 at 0x5234C0
+        if (guestBase[novisrep::CallSite] == 0xe8 && guestBase[novisrep::RatingFunction] == 0x55)
+        {
+            visualRepRemoved = true;
+            pf::logInfo("mods: %s %s [%s] %s: 0x%x NOP run of %u bytes, rating function 0x%x replaced", novisrep::Name,
+                        novisrep::Version, novisrep::Section, novisrep::Key, novisrep::NopStart, novisrep::NopLength,
+                        novisrep::RatingFunction);
+            count += 2;
+        }
+        else
+            pf::logError("mods: %s %s stays off: unsupported game executable", novisrep::Name, novisrep::Version);
+    }
     if (active(EuCarContent))
     {
         // ExtraOptions 5.1.0.1340 [Gameplay] UnlockRegionalCars: region list ids <- 0xFF, no id matches a car

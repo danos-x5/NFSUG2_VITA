@@ -117,6 +117,7 @@ The settings files are under the game folder, `ux0:data/NeedForSpeedUnderground2
 |-------|---------------|-------|
 | ExtraOptions 5.1.0.1340 by ExOpts Team: EU Car Content | `scripts/NFSU2ExtraOptionsSettings.ini`, `UnlockRegionalCars = 1` in `[Gameplay]` | `CARS/CORSA` and `CARS/PEUGOT106`, each with `GEOMETRY.BIN`, `TEXTURES.BIN`, `VINYLS.BIN` and `PARTS_ANIMATIONS.bin`, copied from a European PC copy of the game |
 | ExtraOptions 5.1.0.1340 by ExOpts Team: the options below | the same file, `[LapControllers]` `Minimum`, `Maximum`; `[Drift]` `MaximumMultiplier`, `PlusSign`, `ShowWithoutMultiplying`, `HideNiftyDriftMessages`; `[Menu]` `ShowOutrun`, `ShowSubs`, `ShowSpecialVinyls`, `AnyTrackInAnyRaceMode`, `FreeRunTrackSelect`, `OutrunTrackSelect`; `[Gameplay]` `EnableHiddenCameraModes`, `RemoveRaceBarriers`, `RemoveLockedAreaBarriers`, `ShowPercentOn1LapRaces`, `StartingCash`, `UnlockAllThings`, `NeonBrightness` | nothing more |
+| NFSU/NFSU2 Visual Reputation Remover 1.1 by thelink2012: Visual Rating Removal | `scripts/NFSU2VitaNoVisualRep.ini`, `RemoveVisualRep = 1` in `[NFSU2]`; the mod has no settings file, so the port's own | nothing more |
 
 ### Settings file
 

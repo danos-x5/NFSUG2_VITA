@@ -67,6 +67,9 @@ extern bool exoLapLimits, exoDriftAxB, exoDriftPlus, exoDriftNifty, exoDriftLeve
     exoAnyTrack, exoFreeRunSelect, exoOutrunSelect, exoVinyls, exoCameras, exoNeon, exoLapPercent,
     exoStartingCash, exoUnlockAll, exoRaceBarriers, exoDriftFactor;
 extern int32_t exoStartingCashValue;
+// NFSU/NFSU2 Visual Reputation Remover 1.1 [NFSU2] RemoveVisualRep: on, and the executable's guard bytes match; read by
+// the call switch at 0x557EEB and the native 0x5234C0.
+extern bool visualRepRemoved;
 // Writes the active features' patches into guest memory, before the game code runs. The count of changes made.
 int applyPatches(uint8_t* guestBase);
 

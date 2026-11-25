@@ -11,7 +11,7 @@ It is very possible that some of these changes have brought about unexpected bug
 [Install](#install) · [Controls](#controls) · [Settings](#settings) · [Report Bug](../../issues)
 
 > **Playtest.** The game is playable in all aspects. The entire career mode is working, and the framerate is good in most scenes.
-> Expect rough edges; [Known issues](#known-issues--caveats) lists the ones we know.
+> Expect rough edges.
 
 ## Requirements
 
@@ -102,49 +102,16 @@ before v0.8.4 have no sound; convert them again.
 
 ## Controls
 
-All controls are configurable in the game's Options menu. The Vita appears to the game as a PlayStation 2
-controller (Cross is shown as Button 3), and the tables below are the defaults.
+The Vita appears to the game as a PlayStation 2 controller. Control Type 1, the default, is shown below; change the
+controls in the game's Options > Controls (Joypad Configuration). Text fields, such as a profile name, open the Vita
+keyboard. To quit, use the PS button.
 
-![Rear touch pad](images/rear-touch.svg)
+![Control Type 1 on the Joypad Configuration screen](images/controls/readme_controls_type1.png)
 
-### Menus
+The rear touch pad is split into four quadrants: L2 and R2 at the top, L3 and R3 at the bottom. In the presets L3 is
+Hydraulics and R3 is Hydraulics Bounce.
 
-| Button | Action |
-|--------|--------|
-| D-pad, left stick | Move |
-| Cross | Select |
-| Circle | Back |
-| Start | Start, skip movie |
-| Touch screen | Tap an item like a mouse click (no cursor is drawn) |
-
-### Driving
-
-| Button | Action |
-|--------|--------|
-| R | Accelerate |
-| L | Brake / reverse |
-| Left stick | Steer |
-| Cross | Handbrake |
-| Circle | Nitrous |
-| Triangle / Square | Change camera / look back |
-| Rear touch corners | Not bound; set them in Options > Controls |
-| Select | Reset car to the road |
-| Start | Pause |
-
-### Free roam
-
-| Button | Action |
-|--------|--------|
-| D-pad up | Enter a race or shop |
-| D-pad right | Read SMS |
-| D-pad down | Career statistics |
-| D-pad left | World map |
-| Tap the minimap | World map |
-| Tap the arms of the ring at the top left of the screen: up, right, down | Enter a race or shop, read SMS, career statistics |
-
-The taps always work, whatever the buttons are bound to.
-
-Text fields, such as a profile name, open the Vita keyboard. To quit, use the PS button.
+![Rear touch pad quadrants](images/controls/readme_rear_pad.png)
 
 ## Settings
 
@@ -256,16 +223,6 @@ game's asset files. They may cause crashes or major performance problems.
 
 The port does not check `SPEED2.EXE` on the Vita. A VPK is built from one particular executable, so a different one
 beside it may crash or misbehave.
-
-## Known issues / caveats
-
-- The game aims for 30 fps and drops below it in busy moments: race starts, heavy smoke and dense traffic. Graphics
-  settings above the vita preset make this much worse.
-- At lower settings the framerate is very stable and can even hit 60fps during gameplay if the framerate is set to unlocked mode.
-- On-screen button prompts show PC key names, such as "Enter", not Vita buttons.
-- World objects sometimes show the wrong texture for a while. A fix is in testing.
-- No online or LAN play.
-- Sound bug where sometimes the music continues playing after entering the pause menu or changing scenes.
 
 ## Build
 

@@ -17,47 +17,6 @@ namespace ug2 { namespace mods {
 namespace
 {
 
-#ifdef DEV_SETTINGS
-const char* const BayviewName = "'Bayview's Best' Car Pack";
-const char* const BayviewIni = "scripts/NFSU2VitaBayviewsBest.ini";
-#define Bayview "Bayview's_Best_Car_Pack_v1.1.1/MODCARS/"
-
-// One car of the pack: on when its six files are there; the game never reads it.
-class BayviewCar : public modreq::Setting
-{
-public:
-    BayviewCar(const char* name, const char* car) : Setting(BayviewName, name, BayviewIni, "Cars", car) {}
-
-    bool requirementsMet(const std::string& gameFolder) const override
-    {
-        for (const std::string& file : files())
-            if (!fileExists(gameFolder + "/" + file))
-                return false;
-        return true;
-    }
-
-    std::string requirementsString(const std::string&) const override
-    {
-        const std::string car = key;
-        return "CARS/" + car + "/{GEOMETRY,TEXTURES,VINYLS,PARTS_ANIMATIONS}.BIN, scripts/CarSoundData/CarTypeMapping/" +
-               car + ".ini and scripts/UnlimiterData/" + car + ".ini must be in the game folder";
-    }
-
-private:
-    std::vector<std::string> files() const
-    {
-        const std::string car = key;
-        return { "CARS/" + car + "/GEOMETRY.BIN", "CARS/" + car + "/TEXTURES.BIN", "CARS/" + car + "/VINYLS.BIN",
-                 "CARS/" + car + "/PARTS_ANIMATIONS.BIN", "scripts/CarSoundData/CarTypeMapping/" + car + ".ini",
-                 "scripts/UnlimiterData/" + car + ".ini" };
-    }
-};
-
-const BayviewCar s_gs300("Lexus GS300", "GS300");
-const BayviewCar s_civic("Honda Civic Si EG6", "CIVICEG");
-const BayviewCar s_fx45("Infiniti FX45", "INFIFX45");
-#endif
-
 Source s_sources[SourceCount] =
 {
     {
@@ -133,52 +92,8 @@ Source s_sources[SourceCount] =
         },
         {},
     },
-#ifdef DEV_SETTINGS
-    {   // https://nfsmods.xyz/mod/5196, v1.1.1: no ini of its own, the port keeps the switches in BayviewIni
-        BayviewName,
-        "1.1.1",
-        "moses",
-        BayviewIni,
-        {
-            { "Cars", "GS300", "0", true },
-            { "Cars", "CIVICEG", "0", true },
-            { "Cars", "INFIFX45", "0", true },
-        },
-        {
-            "https://nfsmods.xyz/uploads/mods/5196/3ac477-Bayview%27s_Best_Car_Pack_v1.1.1.7z",
-            47593787,
-            "b8072b5cbe47fb82eb4df2d3845c61788c7cff5f9cf39768077757c6733ed7e2",
-            {
-                { Bayview "GS300/GS300/GEOMETRY.BIN", "CARS/GS300/GEOMETRY.BIN", 8030252 },
-                { Bayview "GS300/GS300/TEXTURES.BIN", "CARS/GS300/TEXTURES.BIN", 374336 },
-                { Bayview "GS300/GS300/VINYLS.BIN", "CARS/GS300/VINYLS.BIN", 16193664 },
-                { Bayview "GS300/GS300/PARTS_ANIMATIONS.bin", "CARS/GS300/PARTS_ANIMATIONS.BIN", 38352 },
-                { Bayview "GS300/CarSoundData/CarTypeMapping/GS300.ini", "scripts/CarSoundData/CarTypeMapping/GS300.ini", 38 },
-                { Bayview "GS300/UnlimiterData/GS300.ini", "scripts/UnlimiterData/GS300.ini", 4051 },
-                { Bayview "CIVICEG/CIVICEG/GEOMETRY.BIN", "CARS/CIVICEG/GEOMETRY.BIN", 6309436 },
-                { Bayview "CIVICEG/CIVICEG/TEXTURES.BIN", "CARS/CIVICEG/TEXTURES.BIN", 643456 },
-                { Bayview "CIVICEG/CIVICEG/VINYLS.BIN", "CARS/CIVICEG/VINYLS.BIN", 14964032 },
-                { Bayview "CIVICEG/CIVICEG/PARTS_ANIMATIONS.bin", "CARS/CIVICEG/PARTS_ANIMATIONS.BIN", 32624 },
-                { Bayview "CIVICEG/CarSoundData/CarTypeMapping/CIVICEG.ini", "scripts/CarSoundData/CarTypeMapping/CIVICEG.ini", 37 },
-                { Bayview "CIVICEG/UnlimiterData/CIVICEG.ini", "scripts/UnlimiterData/CIVICEG.ini", 4051 },
-                { Bayview "FX45/INFIFX45/GEOMETRY.BIN", "CARS/INFIFX45/GEOMETRY.BIN", 2834384 },
-                { Bayview "FX45/INFIFX45/TEXTURES.BIN", "CARS/INFIFX45/TEXTURES.BIN", 442240 },
-                { Bayview "FX45/INFIFX45/VINYLS.BIN", "CARS/INFIFX45/VINYLS.BIN", 14445632 },
-                { Bayview "FX45/INFIFX45/PARTS_ANIMATIONS.bin", "CARS/INFIFX45/PARTS_ANIMATIONS.BIN", 19488 },
-                { Bayview "FX45/CarSoundData/CarTypeMapping/INFIFX45.ini", "scripts/CarSoundData/CarTypeMapping/INFIFX45.ini", 38 },
-                { Bayview "FX45/UnlimiterData/INFIFX45.ini", "scripts/UnlimiterData/INFIFX45.ini", 4051 },
-            },
-        },
-    },
-#endif
 };
 
-#ifdef DEV_SETTINGS
-#undef Bayview
-const char* const BayviewDescription = "A modpack that features 4, made from scratch, vanilla styled NFSU2 cars.";
-const char* const BayviewNote = "Experiment: tests the download only; the cars do not appear in the game yet.";
-const char* const BayviewComment = "1 when the car's files are installed";
-#endif
 
 const Mod s_mods[Count] =
 {
@@ -190,11 +105,6 @@ const Mod s_mods[Count] =
         "1 lists the Corsa and the Peugeot 106 in the US game, 0 keeps them out",
         { "eu_content" },
     },
-#ifdef DEV_SETTINGS
-    { BayviewsBest, modreq::SettingCount, BayviewDescription, BayviewComment, { "bayview_cars" }, &s_gs300, BayviewNote },
-    { BayviewsBest, modreq::SettingCount, BayviewDescription, BayviewComment, { "bayview_cars" }, &s_civic, BayviewNote },
-    { BayviewsBest, modreq::SettingCount, BayviewDescription, BayviewComment, { "bayview_cars" }, &s_fx45, BayviewNote },
-#endif
 };
 
 }

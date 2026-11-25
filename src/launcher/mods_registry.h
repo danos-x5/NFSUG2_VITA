@@ -11,12 +11,7 @@
 
 namespace ug2 { namespace mods {
 
-// Dev builds add an experiment: a car pack that only tests the download, with settings of the launcher's own.
-#ifdef DEV_SETTINGS
-enum Id { EuCarContent, BayviewGs300, BayviewCivic, BayviewFx45, Count };
-#else
 enum Id { EuCarContent, Count };
-#endif
 
 // One key of a mod's PC ini. A supported key has a feature in the registry below; flip the flag when one is added.
 struct IniKey
@@ -64,11 +59,7 @@ struct Source
     bool downloadable() const { return !download.url.empty() && !download.files.empty(); }
 };
 
-#ifdef DEV_SETTINGS
-enum SourceId { ExtraOptions, BayviewsBest, SourceCount };
-#else
 enum SourceId { ExtraOptions, SourceCount };
-#endif
 
 // A supported key: its name, section, key and requirements are the shared setting's (mods_require.h), or for a
 // launcher-only entry its own.

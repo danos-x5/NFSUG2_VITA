@@ -8,6 +8,7 @@
 #include <lib/winapp.h>
 #include <platform/cached.h>
 #include <platform/config.h>
+#include <platform/switches.h>
 #include <platform/gxm.h>
 #include <platform/log.h>
 
@@ -95,7 +96,7 @@ std::unordered_map<x86::reg32, Box> s_unitNow, s_unitLast;
 
 bool uiLog()
 {
-    return pf::cachedStatic([] { return pf::Config::getBool("ui_log", false); });
+    return NFSU_DEV_BOOL_CACHED("ui_log", false);
 }
 
 std::string guestString(x86::reg32 address)

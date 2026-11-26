@@ -32,6 +32,7 @@
 #include <recomp.h>
 #include <lib/registry.h>
 #include <platform/config.h>
+#include <platform/switches.h>
 #include <platform/cores.h>
 #include <platform/gxm.h>
 #include <platform/log.h>
@@ -259,16 +260,16 @@ int main(int argc, char** argv)
     const bool cfgRead = pf::Config::load(f.config.c_str());
 #endif
 #ifdef __vita__
-    pf::logSetConsole(pf::Config::getBool("console_log", false));
+    pf::logSetConsole(NFSU_DEV_BOOL("console_log", false));
 #else
-    pf::logSetConsole(pf::Config::getBool("console_log", true));
+    pf::logSetConsole(NFSU_DEV_BOOL("console_log", true));
 #endif
 #ifdef __vita__
     pf::logSetInfo(pf::Config::getBool("log_info", false));
 #else
     pf::logSetInfo(pf::Config::getBool("log_info", true));
 #endif
-    pf::logSetDeferred(pf::Config::getBool("log_async", true));
+    pf::logSetDeferred(NFSU_DEV_BOOL("log_async", true));
     const std::vector<std::string> notices = ug2::notice::collect(cfgRead, f.config, ug2::readModSettings(f.game));
     if (!notices.empty())
     {
@@ -276,8 +277,8 @@ int main(int argc, char** argv)
             pf::logError("%s", line.c_str());
         ug2::notice::show(notices);
     }
-    rc::g_promoteLo = x86::reg32(pf::Config::getInt("promote_lo", 0));
-    rc::g_promoteSpan = x86::reg32(pf::Config::getInt("promote_hi", -1)) - rc::g_promoteLo;
+    NFSU_DEV_SET(rc::g_promoteLo, x86::reg32(NFSU_DEV_INT("promote_lo", 0)));
+    NFSU_DEV_SET(rc::g_promoteSpan, x86::reg32(NFSU_DEV_INT("promote_hi", -1)) - rc::g_promoteLo);
 #ifdef DEV_SETTINGS
     pf::logInfo("build switches: native functions %d, audio fast paths %d, render fast paths %d, each key can be set "
                 "in the settings file (DEV_SETTINGS)", NATIVE_FUNCTIONS, AUDIO_FAST_PATHS, RENDER_FAST_PATHS);
@@ -303,7 +304,7 @@ int main(int argc, char** argv)
     std::vector<win32::Section> sections = imageSections(image);
     if (!pf::gxm::Device::get().init())
         pf::fatal("graphics initialisation failed");
-    if (pf::Config::getBool("gxm_program_list", true))
+    if (NFSU_DEV_BOOL("gxm_program_list", true))
         pf::gxm::Device::get().usePrograms(join(f.data, "gxm_programs.bin").c_str());
 
     win32::File::setDataDirectory((f.data + "/").c_str());
@@ -335,7 +336,7 @@ int main(int argc, char** argv)
         ug2::scenery::configure();
         ug2::offload::configure();
 #ifdef DEV_TOOLS
-        if (pf::Config::getBool("d3d_record_test", false))
+        if (NFSU_DEV_BOOL("d3d_record_test", false))
             ug2::dev::recordTest();
 #endif
         ug2::movies::configure(app);

@@ -24,7 +24,8 @@
 #define NFSU_DEV_BOOL_CACHED(key, def) (pf::cachedStatic([] { return pf::Config::getBool(key, (def)); }))
 #define NFSU_DEV_INT_CACHED(key, def) (pf::cachedStatic([] { return pf::Config::getInt(key, (def)); }))
 #define NFSU_DEV_STRING_CACHED(key, def) (pf::cachedStatic([] { return pf::Config::getString(key, (def)); }))
-#define NFSU_DEV_VAR(type, name, def) static type name = (def)
+#define NFSU_DEV_VARC(type, name, init, constant) static type name = (init)
+#define NFSU_DEV_VAR(type, name, def) NFSU_DEV_VARC(type, name, def, def)
 #define NFSU_DEV_FIELD(type, name, def) type name = (def)
 #define NFSU_DEV_SET(var, expr) ((void)((var) = (expr)))
 #else
@@ -35,7 +36,8 @@
 #define NFSU_DEV_BOOL_CACHED(key, def) (def)
 #define NFSU_DEV_INT_CACHED(key, def) (def)
 #define NFSU_DEV_STRING_CACHED(key, def) (def)
-#define NFSU_DEV_VAR(type, name, def) static constexpr type name = (def)
+#define NFSU_DEV_VARC(type, name, init, constant) static constexpr type name = (constant)
+#define NFSU_DEV_VAR(type, name, def) NFSU_DEV_VARC(type, name, def, def)
 #define NFSU_DEV_FIELD(type, name, def) static constexpr type name = (def)
 #define NFSU_DEV_SET(var, expr) ((void)0)
 #endif

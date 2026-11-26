@@ -1,4 +1,5 @@
 #include <platform/config.h>
+#include <platform/switches.h>
 #include <platform/ime.h>
 #include <platform/log.h>
 #include <platform/time.h>
@@ -159,7 +160,7 @@ bool requestOpen(const char16_t* title, const char16_t* text, uint32_t maxLength
     if (s_state.load(std::memory_order_acquire) != StateIdle)
         return false;
     s_maxLength = maxLength < 1 ? 1 : maxLength > MaxTextLength ? MaxTextLength : maxLength;
-    const std::string test = Config::getString("ime_test", "");
+    const std::string test = NFSU_DEV_STRING("ime_test", "");
     if (!test.empty())
     {
         snprintf(s_text, sizeof(s_text), "%s", test == "!cancel" ? "" : test.c_str());

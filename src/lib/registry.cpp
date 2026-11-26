@@ -1,6 +1,7 @@
 #include <lib/registry.h>
 #include <lib/guest.h>
 #include <platform/config.h>
+#include <platform/switches.h>
 #include <platform/log.h>
 #include <platform/sync.h>
 #include <algorithm>
@@ -278,8 +279,8 @@ static void seedDefaults()
     // Without NotFirstTime the game replaces the settings with its detected preset (0x5CEC90).
     const x86::reg32 notFirstTime = 1;
     setDefault(game, "NotFirstTime", REG_DWORD, &notFirstTime, sizeof(notFirstTime));
-    const char* overrides = pf::Config::getString("gfx_set", "");
-    const int level = std::min(5, std::max(0, pf::Config::getInt("gfx_level", 0)));
+    const char* overrides = NFSU_DEV_STRING("gfx_set", "");
+    const int level = std::min(5, std::max(0, NFSU_DEV_INT("gfx_level", 0)));
     const std::string tail = (level ? std::to_string(level) : "") + ";" + overrides;
     const std::string applied = "vita" + tail;
     {

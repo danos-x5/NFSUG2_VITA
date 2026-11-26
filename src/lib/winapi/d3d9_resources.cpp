@@ -7,6 +7,7 @@
 #include <winapi/d3d9_probe.h>
 #include <platform/cached.h>
 #include <platform/config.h>
+#include <platform/switches.h>
 #include <platform/gxm.h>
 #include <platform/log.h>
 #include <platform/perf.h>
@@ -38,7 +39,7 @@ x86::reg32 guestOf(Object* object)
 // Setting texture_async=off: unlocks swizzle on the game thread.
 bool asyncUploads()
 {
-    return pf::cachedStatic([] { return pf::Config::getBool("texture_async", true); });
+    return NFSU_DEV_BOOL_CACHED("texture_async", true);
 }
 
 // Game thread: waits until the upload is done.

@@ -132,7 +132,7 @@ Configurator::Configurator(const std::string& cfgText, const std::vector<ModView
         for (int i = 0; i < count; ++i)
         {
             const Setting& s = table[i];
-            if (int(s.group) != g || !pf::settingReadInThisBuild(s) || (s.flags & pf::SettingInGame))
+            if (int(s.group) != g || !pf::settingReadInThisBuild(s) || (s.flags & (pf::SettingInGame | pf::SettingCfgOnly)))
                 continue;
             if (!heading)
             {

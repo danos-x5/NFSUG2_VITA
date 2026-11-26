@@ -169,7 +169,7 @@ void Configurator::rebuild()
             pendingHeading = int(i);
             continue;
         }
-        const bool dev = row.group == pf::SettingGroup::Developer || strncmp(row.setting->key, "dev_", 4) == 0;
+        const bool dev = row.group == pf::SettingGroup::Developer;
         if (dev && !m_show[int(Tab::Config)])
             continue;
         if (pendingHeading >= 0)

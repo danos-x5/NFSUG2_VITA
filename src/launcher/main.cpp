@@ -3,6 +3,7 @@
 
 #include "cfgui.h"
 #include "default_cfg.h"
+#include "game_folder.h"
 #include "mods_edit.h"
 #include "notice.h"
 #ifdef NFSU_MOD_DOWNLOAD
@@ -33,7 +34,6 @@ namespace
 
 using namespace ug2;
 
-const char* const GameFolder = "ux0:data/NeedForSpeedUnderground2";
 const char* const Game = "app0:game.bin";
 const uint32_t FrameBytes = 2 * 1024 * 1024;    // 960 x 544 x 4 rounded up to the 256 KB CDRAM granule
 
@@ -159,11 +159,11 @@ void configure(Screen& screen, const std::string& configPath, const std::string&
         pf::logError("launcher: no memory for the screen, starting the game");
         return;
     }
-    cfgui::Configurator ui(text, mods::views(GameFolder), NFSU_VERSION, registryText);
+    cfgui::Configurator ui(text, mods::views(ug2::gameFolder()), NFSU_VERSION, registryText);
     ui.setConfigFile(configPath, state, notice::cfgUnreadable(configPath));
 #ifdef NFSU_MOD_DOWNLOAD
     launcher::ModDownloads::Options options;
-    options.gameFolder = GameFolder;
+    options.gameFolder = ug2::gameFolder();
     options.caFile = "app0:launcher/cacert.pem";
     options.lock = &launcher::systemLock();
     launcher::ModDownloads downloads(options);
@@ -171,7 +171,7 @@ void configure(Screen& screen, const std::string& configPath, const std::string&
 #endif
     ui.begin(sceKernelGetProcessTimeWide());
 #ifdef DEV_TOOLS
-    launcher::shots::Requests shots(GameFolder);
+    launcher::shots::Requests shots(ug2::gameFolder());
 #endif
     cfgui::Outcome outcome;
     bool opened = false;
@@ -189,7 +189,7 @@ void configure(Screen& screen, const std::string& configPath, const std::string&
         screen.present();
     }
     if (outcome == cfgui::Outcome::SaveAndBoot)
-        launcher::save(ui, configPath, state, GameFolder);
+        launcher::save(ui, configPath, state, ug2::gameFolder());
     else
         pf::logInfo("launcher: %s", opened ? "closed without saving" : "skipped");
 }
@@ -198,8 +198,8 @@ void configure(Screen& screen, const std::string& configPath, const std::string&
 
 int main()
 {
-    const std::string configPath = std::string(GameFolder) + "/NeedForSpeedUnderground2.cfg";
-    pf::logInit((std::string(GameFolder) + "/launcher.log").c_str());
+    const std::string configPath = ug2::gameFolder() + "/NeedForSpeedUnderground2.cfg";
+    pf::logInit((ug2::gameFolder() + "/launcher.log").c_str());
     std::string text;
     const pf::cfgfile::FileState state = pf::cfgfile::readText(configPath.c_str(), &text);
     if (state != pf::cfgfile::FileState::Readable)
@@ -217,7 +217,7 @@ int main()
     if (enabled)
     {
         std::string registryText;
-        if (pf::cfgfile::readText((std::string(GameFolder) + "/registry.txt").c_str(), &registryText) != pf::cfgfile::FileState::Readable)
+        if (pf::cfgfile::readText((ug2::gameFolder() + "/registry.txt").c_str(), &registryText) != pf::cfgfile::FileState::Readable)
             registryText.clear();
         configure(screen, configPath, text, state, registryText);
     }

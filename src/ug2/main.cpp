@@ -26,6 +26,7 @@
 #include "padbind.h"
 #include "textentry.h"
 #include "language.h"
+#include "game_folder.h"
 
 #include <lib/file.h>
 #include <lib/memmap.h>
@@ -118,7 +119,7 @@ std::string join(const std::string& folder, const char* name)
 Folders folders(int, char**)
 {
     Folders f;
-    f.game = f.data = "ux0:data/NeedForSpeedUnderground2";
+    f.game = f.data = ug2::gameFolder();
     f.config = join(f.game, "NeedForSpeedUnderground2.cfg");
     f.log = join(f.game, "NeedForSpeedUnderground2.log");
     mkdir("ux0:data", 0777);

@@ -3,6 +3,7 @@
 // and skip stay as they are.
 
 #include "movies.h"
+#include "game_folder.h"
 
 #include <lib/memmap.h>
 #include <platform/config.h>
@@ -826,10 +827,10 @@ void configure(win32::WinApplication& app)
 {
 #ifdef __vita__
     const Mode defaultMode = ModeVp6;
-    const char* const defaultDir = "ux0:data/NeedForSpeedUnderground2/MOVIES";
+    const std::string defaultDir = ug2::gameFolder() + "/MOVIES";
 #else
     const Mode defaultMode = ModeGame;
-    const char* const defaultDir = "";
+    const std::string defaultDir;
 #endif
     static const char* const modes[] = { "vp6preferred", "vp6only" };
     const std::string choice = pf::Config::getString("movies", "");
@@ -843,7 +844,7 @@ void configure(win32::WinApplication& app)
         s_mode = ModeVp6;
         pf::logInfo("movies: movies=%s is not one of %s/%s, %s used", choice.c_str(), modes[0], modes[1], modes[0]);
     }
-    s_dir = pf::Config::getString("movies_dir", defaultDir);
+    s_dir = pf::Config::getString("movies_dir", defaultDir.c_str());
     while (s_dir.size() > 1 && (s_dir.back() == '/' || s_dir.back() == '\\'))
         s_dir.pop_back();
     const std::string test = NFSU_DEV_STRING("movies_selftest", "");

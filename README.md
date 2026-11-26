@@ -31,6 +31,8 @@ The port sets the Vita's CPU and GPU clocks itself, so the game runs without an 
 3. On your computer, open the game folder (the one with `SPEED2.EXE`) and copy **everything inside it**, every file
    and folder including `MOVIES`, to `ux0:data/NeedForSpeedUnderground2/` (VitaShell's FTP or USB mode works).
    `SPEED2.EXE` must end up at `ux0:data/NeedForSpeedUnderground2/SPEED2.EXE`, not in a subfolder.
+   The shorter `ux0:data/NFSU2/` works too; it is used only when `ux0:data/NeedForSpeedUnderground2/` does not exist.
+   The paths below are for the long name.
 4. Start the game from the home screen.
 
 If the game closes right away, `ux0:data/NeedForSpeedUnderground2/NeedForSpeedUnderground2.log` says what is missing.

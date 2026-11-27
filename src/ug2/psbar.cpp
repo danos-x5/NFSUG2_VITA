@@ -475,7 +475,8 @@ void visibility(win32::WinApplication* app, x86::CPU& cpu, reg32 bar, bool show)
 
 void frame(win32::WinApplication* app, x86::CPU& cpu)
 {
-    static const bool enabled = NFSU_DEV_BOOL("ps2_prompts", true);
+    // A boot race allocates the bar (0xAA filled) but never constructs it; FindObject on it faults.
+    static const bool enabled = NFSU_DEV_BOOL("ps2_prompts", true) && !NFSU_DEV_BOOL("boot_race", false);
     const reg32 bar = enabled ? rc::ld32(BarObject) : 0;
     if (!bar || !rc::ld32(bar + 4))
         return;

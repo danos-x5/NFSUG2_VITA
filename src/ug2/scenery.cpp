@@ -15,7 +15,7 @@ Settings g_settings = {};
 
 void configure()
 {
-    const int world = std::min(std::max(pf::Config::getInt("dev_world_min_pixels", 8), 0), 64);
+    const int world = std::min(std::max(pf::Config::getInt("dev_world_min_pixels", 12), 0), 64);
     const int other = std::min(std::max(pf::Config::getInt("dev_reflection_min_pixels", world), 0), 64);
     g_settings.mainMinPixels = float(world);
     g_settings.otherMinPixels = float(other);

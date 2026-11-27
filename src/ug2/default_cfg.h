@@ -53,7 +53,7 @@ const char DefaultSettingsFile[] =
     "\n"
     "# Scenery smaller than this many pixels on screen is not drawn. 0 is off, 64 the most; 8 by default. More speed,\n"
     "# more pop-in.\n"
-    "#dev_world_min_pixels=8\n"
+    "#dev_world_min_pixels=12\n"
     "\n"
     "# Cheaper tyre smoke and other particles, close to the original picture: on or off (off is as the original).\n"
     "#optimised_particles=on\n"

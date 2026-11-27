@@ -57,7 +57,7 @@ const Setting s_table[] =
     INT("dev_world_lod_max_percent", Performance, 75, 0, 100, 5, "Most of a model's triangles its simpler model may keep, in percent.", 0),
     INT("dev_world_lod_min_width", Performance, 10, 0, 10000, 10, "Scenery types narrower than this many metres keep their full model.", 0),
     BOOL("dev_world_lod_signs", Performance, 0, "Signs (XS_ models) also use the simpler model; off keeps every sign at full detail.", 0),
-    INT("dev_world_min_pixels", Performance, 8, 0, 64, 1, "Scenery smaller than this many pixels is not drawn. 0 is off, 64 the most; 8 by default; more pop-in.", 0),
+    INT("dev_world_min_pixels", Performance, 12, 0, 64, 1, "Scenery smaller than this many pixels is not drawn. 0 is off, 64 the most; 12 by default; more pop-in.", 0),
     BOOL("dev_world_min_pixels_lights", Performance, 1, "Models with light markers are never culled by dev_world_min_pixels; off culls them too.", 0),
     INT("dev_reflection_min_pixels", Performance, 0, 0, 64, 1, "dev_world_min_pixels for the reflection and other views; auto uses the world value.", AUTO),
     BOOL("use_core3", Performance, 1, "Use the Vita's third CPU core when it can be unlocked.", 0),
